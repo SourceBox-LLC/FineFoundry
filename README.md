@@ -3,7 +3,7 @@
 A desktop GUI and CLI toolkit to scrape conversational pairs from 4chan and publish a clean, versioned dataset to the Hugging Face Hub.
 
 Built with Flet for a fast, native-like UI. Ships with:
-- Scraper that pairs adjacent replies from 4chan threads and cleans markup/URLs.
+- Scraper that pairs adjacent replies or uses quote-chain contextual pairing from 4chan threads, and cleans markup/URLs.
 - Dataset builder that creates train/val/test splits and saves with `datasets`.
 - One-click push to the Hugging Face Hub, including an auto-generated dataset card (README.md).
 
@@ -63,6 +63,15 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 ]
 ```
 
+### Contextual Pairing (Quote Chain)
+- **Pairing Mode**: choose `contextual` to enable advanced pairing.
+- **Context Strategy**: `quote_chain` follows 4chan quotelinks (e.g., `>>123`) backwards up to `Last K` steps to build the input context for each reply; `cumulative` falls back to the last K sequential posts.
+- **Last K**: maximum depth for quote-chain traversal or cumulative fallback.
+- **Max Input Chars**: truncate input context from the end if it exceeds this length.
+- **Merge same poster**: merges consecutive context messages from the same poster ID when available.
+- **Require question in context**: only keep pairs where the built context looks like a question.
+- Fallbacks: if no quotelinks are present, the scraper falls back to cumulative last-K; if even that is empty, it pairs adjacent posts.
+
 ### Build / Publish tab
 - Point to your `Data file (JSON)` (defaults to `scraped_training_data.json`).
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.
@@ -120,7 +129,11 @@ This saves to `SAVE_DIR` and optionally pushes to `REPO_ID`. A dataset card is g
 ## How Scraping Works
 - Uses the 4chan public JSON API (`a.4cdn.org`).
 - Samples threads across catalog pages to diversify coverage.
-- Pairs sequential posts within threads (`input` = previous post, `output` = next post).
+- Two pairing modes:
+  - **Normal**: pairs sequential posts within threads (`input` = previous post, `output` = next post).
+  - **Contextual**: builds `input` context using either:
+    - **Quote-chain**: walk backwards via the most recent quotelink on each post up to `K`, merging same-poster chunks and optionally requiring a question in context; honors `Max Input Chars`.
+    - **Cumulative**: use the last `K` sequential posts as context.
 - Cleans HTML, removes greentext quote lines, quote references, URLs, and collapses whitespace.
 - Minimum length filter is applied per post.
 
@@ -140,6 +153,7 @@ Key module: `src/scraper.py` (functions such as `fetch_catalog_pages()`, `fetch_
 - **Large previews feel slow**: Use the dataset preview dialog (paginated) or open the saved dataset with Python.
 - **Windows SmartScreen warnings**: This is a Python app; run within your venv.
 - **SSL/Cert errors**: Update `certifi` or your system certificates.
+ - **Too few pairs when using contextual**: try reducing `Last K`, unchecking "Require question", or increasing `Max Threads`/`Max Pairs`.
 
 
 ## Ethical and Legal Notes

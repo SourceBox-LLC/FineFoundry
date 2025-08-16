@@ -379,6 +379,12 @@ async def run_real_scrape(
     delay: float,
     min_len_val: int,
     output_path: str,
+    pairing_mode: str,
+    ctx_strategy: str,
+    ctx_k: int,
+    ctx_max_chars: Optional[int],
+    merge_same_id: bool,
+    require_question: bool,
 ) -> None:
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
@@ -402,7 +408,7 @@ async def run_real_scrape(
         if remaining <= 0:
             break
 
-        log(f"Scraping /{b}/ (up to {remaining} pairs)...")
+        log(f"Scraping /{b}/ (up to {remaining} pairs) — mode={pairing_mode}")
         try:
             data = await asyncio.to_thread(
                 sc.scrape,
@@ -411,6 +417,12 @@ async def run_real_scrape(
                 max_pairs=remaining,
                 delay=delay,
                 min_len=min_len_val,
+                mode=pairing_mode,
+                strategy=ctx_strategy,
+                k=ctx_k,
+                max_chars=ctx_max_chars,
+                merge_same_id=merge_same_id,
+                require_question=require_question,
             )
         except Exception as e:
             log(f"Error scraping /{b}/: {e}")
@@ -562,6 +574,38 @@ def main(page: ft.Page):
     min_len = ft.TextField(label="Min Length", value="3", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     output_path = ft.TextField(label="Output JSON Path", value="scraped_training_data.json", width=360)
 
+    # Contextual pairing controls
+    pair_mode = ft.Dropdown(
+        label="Pairing Mode",
+        value="normal",
+        options=[
+            ft.dropdown.Option("normal"),
+            ft.dropdown.Option("contextual"),
+        ],
+        width=200,
+    )
+    strategy_dd = ft.Dropdown(
+        label="Context Strategy",
+        value="cumulative",
+        options=[ft.dropdown.Option("cumulative"), ft.dropdown.Option("last_k"), ft.dropdown.Option("quote_chain")],
+        width=200,
+    )
+    k_field = ft.TextField(label="Last K", value="6", width=120, keyboard_type=ft.KeyboardType.NUMBER)
+    max_chars_field = ft.TextField(label="Max Input Chars", value="", width=160, keyboard_type=ft.KeyboardType.NUMBER)
+    merge_same_id_cb = ft.Checkbox(label="Merge same poster", value=True)
+    require_question_cb = ft.Checkbox(label="Require question in context", value=False)
+
+    def update_context_controls():
+        is_ctx = (pair_mode.value == "contextual")
+        strategy_dd.visible = is_ctx
+        k_field.visible = is_ctx
+        max_chars_field.visible = is_ctx
+        merge_same_id_cb.visible = is_ctx
+        require_question_cb.visible = is_ctx
+        page.update()
+    pair_mode.on_change = lambda e: update_context_controls()
+    update_context_controls()
+
     scrape_prog = ft.ProgressBar(width=400, value=0)
     # Animated indicator shown while scraping to make progress feel more alive
     working_ring = ft.ProgressRing(width=20, height=20, value=None, visible=False)
@@ -649,6 +693,17 @@ def main(page: ft.Page):
         except Exception:
             ml = 3
         out_path = output_path.value or "scraped_training_data.json"
+        # Context params
+        mode_val = (pair_mode.value or "normal")
+        strat_val = (strategy_dd.value or "cumulative")
+        try:
+            k_val = int(k_field.value or 6)
+        except Exception:
+            k_val = 6
+        try:
+            max_chars_val = int(max_chars_field.value) if (max_chars_field.value or "").strip() != "" else None
+        except Exception:
+            max_chars_val = None
 
         log_list.controls.append(ft.Text(
             f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards)>20 else ''}"
@@ -675,6 +730,12 @@ def main(page: ft.Page):
                 delay=dl,
                 min_len_val=ml,
                 output_path=out_path,
+                pairing_mode=mode_val,
+                ctx_strategy=strat_val,
+                ctx_k=k_val,
+                ctx_max_chars=max_chars_val,
+                merge_same_id=bool(merge_same_id_cb.value),
+                require_question=bool(require_question_cb.value),
             )
         finally:
             start_button.disabled = False
@@ -893,6 +954,8 @@ def main(page: ft.Page):
             ft.Divider(),
             section_title("Parameters", ICONS.TUNE),
             ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
+            ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
+            ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
             scrape_actions,
             ft.Container(height=10),
             section_title("Progress", ICONS.TIMELAPSE),
@@ -1332,10 +1395,113 @@ def main(page: ft.Page):
         padding=16,
     )
 
+    # ---------- MERGE DATASETS TAB (UI ONLY) ----------
+    # Operation selector
+    merge_op = ft.Dropdown(
+        label="Operation",
+        options=[
+            ft.dropdown.Option("Concatenate"),
+            ft.dropdown.Option("Interleave"),
+        ],
+        value="Concatenate",
+        width=220,
+    )
+
+    # Dynamic dataset rows
+    rows_host = ft.Column(spacing=8)
+
+    def make_dataset_row():
+        ds_id = ft.TextField(label="Dataset repo (e.g., username/dataset)", width=360)
+        split = ft.Dropdown(
+            label="Split",
+            options=[
+                ft.dropdown.Option("train"),
+                ft.dropdown.Option("validation"),
+                ft.dropdown.Option("test"),
+                ft.dropdown.Option("all"),
+            ],
+            value="train",
+            width=160,
+        )
+        config = ft.TextField(label="Config (optional)", width=220)
+        remove_btn = ft.IconButton(ICONS.DELETE)
+        row = ft.Row([ds_id, split, config, remove_btn], spacing=10, wrap=True)
+
+        def remove_row(_):
+            try:
+                rows_host.controls.remove(row)
+                page.update()
+            except Exception:
+                pass
+
+        remove_btn.on_click = remove_row
+        return row
+
+    def add_row(_=None):
+        rows_host.controls.append(make_dataset_row())
+        page.update()
+
+    add_row_btn = ft.TextButton("Add Dataset", icon=ICONS.ADD, on_click=add_row)
+    clear_btn = ft.TextButton("Clear", icon=ICONS.BACKSPACE, on_click=lambda e: (rows_host.controls.clear(), page.update()))
+
+    # Seed with one row initially
+    rows_host.controls.append(make_dataset_row())
+
+    # Output settings (UI only)
+    merge_save_dir = ft.TextField(label="Save dir", value="merged_dataset", width=240)
+
+    # Disabled actions (placeholder)
+    merge_actions = ft.Row([
+        ft.ElevatedButton("Merge Datasets", icon=ICONS.TABLE_VIEW, disabled=True),
+        ft.OutlinedButton("Cancel", icon=ICONS.CANCEL, disabled=True),
+        ft.TextButton("Refresh", icon=REFRESH_ICON, disabled=True),
+    ], spacing=10)
+
+    # Status placeholder (UI only)
+    merge_timeline = ft.Column(spacing=6)
+    merge_timeline_placeholder = make_empty_placeholder("No status yet", ICONS.TASK)
+
+    merge_tab = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Container(
+                    content=ft.Column([
+                        section_title("Merge Datasets", ICONS.TABLE_VIEW),
+                        ft.Text("Combine multiple Hugging Face datasets. UI-only for now.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+                        ft.Divider(),
+                        section_title("Operation", ICONS.SHUFFLE),
+                        ft.Row([merge_op], wrap=True),
+                        ft.Divider(),
+                        section_title("Datasets", ICONS.TABLE_VIEW),
+                        ft.Row([add_row_btn, clear_btn], spacing=8),
+                        rows_host,
+                        ft.Divider(),
+                        section_title("Output", ICONS.SAVE_ALT),
+                        ft.Row([merge_save_dir], wrap=True),
+                        merge_actions,
+                        ft.Divider(),
+                        section_title("Status", ICONS.TASK),
+                        ft.Container(
+                            ft.Stack([merge_timeline, merge_timeline_placeholder], expand=True),
+                            height=240,
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
+                    ], spacing=12),
+                    width=1000,
+                )
+            ], alignment=ft.MainAxisAlignment.CENTER)
+        ], scroll=ft.ScrollMode.AUTO, spacing=0),
+        padding=16,
+    )
+
     tabs = ft.Tabs(
         tabs=[
             ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
             ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab),
+            ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
         ],
         expand=1,
     )

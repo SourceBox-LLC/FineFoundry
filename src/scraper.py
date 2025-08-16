@@ -62,6 +62,8 @@ TAG_RE = re.compile(r"<[^>]+>")
 URL_RE = re.compile(r"https?://\S+")
 QUOTE_REF_RE = re.compile(r">>\d+")
 MULTI_WS_RE = re.compile(r"\s+")
+QUOTELINK_RX = re.compile(r"(?:>>|&gt;&gt;)(\d+)")
+QUESTION_RX = re.compile(r"\b(who|what|why|how|where|when|does|do|did|can|could|should|would|is|are|am)\b", re.I)
 
 
 def strip_html(text: str) -> str:
@@ -86,6 +88,34 @@ def clean_text(raw: Optional[str]) -> str:
     return txt
 
 
+def extract_refs(raw_html: Optional[str]) -> List[int]:
+    """Extract referenced post numbers from a post's raw HTML (quotelinks).
+    Handles both plain ">>123" and HTML-escaped "&gt;&gt;123" variants.
+    """
+    if not raw_html:
+        return []
+    try:
+        txt = unescape(raw_html)
+    except Exception:
+        txt = raw_html
+    refs = [int(m) for m in QUOTELINK_RX.findall(txt)]
+    return refs
+
+
+def _merge_same_id_chunks(ctx_chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for ch in ctx_chunks:
+        if out and out[-1].get("id") == ch.get("id"):
+            out[-1]["text"] = (out[-1]["text"] + "\n\n" + ch["text"]).strip()
+        else:
+            out.append(dict(ch))
+    return out
+
+
+def _looks_like_question(text: str) -> bool:
+    return ("?" in text) or bool(QUESTION_RX.search(text))
+
+
 def build_pairs_adjacent(posts: List[Dict[str, Any]], min_len: int = 3) -> List[Dict[str, str]]:
     pairs: List[Dict[str, str]] = []
     cleaned = [clean_text(p.get("com")) for p in posts]
@@ -95,6 +125,154 @@ def build_pairs_adjacent(posts: List[Dict[str, Any]], min_len: int = 3) -> List[
         if len(a) >= min_len and len(b) >= min_len:
             pairs.append({"input": a, "output": b})
     return pairs
+
+
+def build_pairs_contextual(
+    posts: List[Dict[str, Any]],
+    *,
+    min_len: int = 3,
+    strategy: str = "cumulative",
+    k: int = 6,
+    max_chars: Optional[int] = None,
+) -> List[Dict[str, str]]:
+    """Build context-aware input/output pairs from a thread.
+
+    For each post i (i>=1), the input is composed from prior posts according
+    to the chosen strategy and the output is the current post text.
+
+    - strategy="cumulative": input = join(posts[:i])
+    - strategy="last_k":    input = join(posts[max(0, i-k):i])
+
+    If max_chars is provided, the input will be truncated to the last
+    max_chars characters to preserve most-recent context.
+    """
+    cleaned = [clean_text(p.get("com")) for p in posts]
+    out: List[Dict[str, str]] = []
+    for i in range(1, len(cleaned)):
+        cur = cleaned[i]
+        if len(cur) < min_len:
+            continue
+        if strategy == "last_k":
+            start = max(0, i - k)
+            ctx_list = cleaned[start:i]
+        else:
+            ctx_list = cleaned[:i]
+        # Drop very short/empty context entries to reduce noise
+        ctx_list = [c for c in ctx_list if len(c) >= min_len]
+        if not ctx_list:
+            # no meaningful context; fall back to adjacent
+            prev = cleaned[i - 1]
+            if len(prev) >= min_len:
+                out.append({"input": prev, "output": cur})
+            continue
+        ctx = "\n\n".join(ctx_list).strip()
+        if not ctx:
+            continue
+        if max_chars is not None and max_chars > 0 and len(ctx) > max_chars:
+            ctx = ctx[-max_chars:]
+        if len(ctx) >= min_len:
+            out.append({"input": ctx, "output": cur})
+    return out
+
+
+def build_pairs_quote_contextual(
+    posts: List[Dict[str, Any]],
+    *,
+    min_len: int = 3,
+    k: int = 6,
+    max_chars: Optional[int] = None,
+    merge_same_id: bool = True,
+    require_question: bool = False,
+) -> List[Dict[str, str]]:
+    """Build pairs using the reply quote-chain as the primary context signal.
+
+    For each post i, we walk the last quotelink (>>no) backwards up to k steps,
+    assembling context from the referenced chain. We fall back to last-k prior
+    posts if the chain is empty, and finally to adjacent pairing.
+    """
+    # Map post number -> index for fast lookup
+    id_to_idx: Dict[int, int] = {}
+    for idx, p in enumerate(posts):
+        no = p.get("no")
+        if isinstance(no, int):
+            id_to_idx[no] = idx
+
+    cleaned = [clean_text(p.get("com")) for p in posts]
+    out: List[Dict[str, str]] = []
+
+    for i in range(1, len(posts)):
+        cur_raw = posts[i].get("com")
+        cur_txt = cleaned[i]
+        if len(cur_txt) < min_len:
+            continue
+
+        # Build chain following last valid quoted parent repeatedly
+        chain_indices: List[int] = []
+        visited: set[int] = set()
+        parent_idx: Optional[int] = None
+
+        # Choose the last quotelink that points to an earlier post
+        refs = extract_refs(cur_raw)
+        for ref in reversed(refs):
+            idx = id_to_idx.get(ref)
+            if idx is not None and idx < i:
+                parent_idx = idx
+                break
+
+        steps = 0
+        while parent_idx is not None and steps < k and parent_idx not in visited:
+            visited.add(parent_idx)
+            chain_indices.append(parent_idx)
+            # Walk further using the parent's last quotelink
+            parent_raw = posts[parent_idx].get("com")
+            parent_refs = extract_refs(parent_raw)
+            next_parent = None
+            for ref in reversed(parent_refs):
+                cand = id_to_idx.get(ref)
+                if cand is not None and cand < parent_idx:
+                    next_parent = cand
+                    break
+            parent_idx = next_parent
+            steps += 1
+
+        # Assemble context text from chain (oldest -> newest)
+        ctx_chunks: List[Dict[str, Any]] = []
+        for j in reversed(chain_indices):
+            t = cleaned[j]
+            if len(t) >= min_len:
+                ctx_chunks.append({"text": t, "id": posts[j].get("id")})
+
+        # Fallbacks if chain too short
+        if not ctx_chunks:
+            # last_k prior posts
+            start = max(0, i - k)
+            for j in range(start, i):
+                t = cleaned[j]
+                if len(t) >= min_len:
+                    ctx_chunks.append({"text": t, "id": posts[j].get("id")})
+
+        if not ctx_chunks:
+            # adjacent fallback
+            prev = cleaned[i - 1]
+            if len(prev) >= min_len:
+                out.append({"input": prev, "output": cur_txt})
+            continue
+
+        if merge_same_id:
+            ctx_chunks = _merge_same_id_chunks(ctx_chunks)
+
+        ctx = "\n\n".join(ch["text"] for ch in ctx_chunks).strip()
+        if not ctx:
+            continue
+        if max_chars is not None and max_chars > 0 and len(ctx) > max_chars:
+            ctx = ctx[-max_chars:]
+        if len(ctx) < min_len:
+            continue
+        if require_question and not _looks_like_question(ctx):
+            continue
+
+        out.append({"input": ctx, "output": cur_txt})
+    return out
 
 
 def drop_banned(pairs: List[Dict[str, str]], banned_pattern: Optional[re.Pattern]) -> List[Dict[str, str]]:
@@ -115,6 +293,13 @@ def scrape(
     max_pairs: int,
     delay: float,
     min_len: int,
+    *,
+    mode: str = "normal",  # "normal" (adjacent) or "contextual"
+    strategy: str = "cumulative",
+    k: int = 6,
+    max_chars: Optional[int] = None,
+    merge_same_id: bool = True,
+    require_question: bool = False,
 ) -> List[Dict[str, str]]:
     """Scrape one board and return up to max_pairs input/output examples."""
     # Select threads evenly across catalog pages (round-robin) to diversify sampling
@@ -134,7 +319,26 @@ def scrape(
         posts = fetch_thread(board, tid)
         if not posts:
             continue
-        thread_pairs = build_pairs_adjacent(posts, min_len=min_len)
+        if mode == "contextual":
+            if strategy == "quote_chain":
+                thread_pairs = build_pairs_quote_contextual(
+                    posts,
+                    min_len=min_len,
+                    k=k,
+                    max_chars=max_chars,
+                    merge_same_id=merge_same_id,
+                    require_question=require_question,
+                )
+            else:
+                thread_pairs = build_pairs_contextual(
+                    posts,
+                    min_len=min_len,
+                    strategy=strategy,
+                    k=k,
+                    max_chars=max_chars,
+                )
+        else:
+            thread_pairs = build_pairs_adjacent(posts, min_len=min_len)
         pairs.extend(thread_pairs)
         if len(pairs) >= max_pairs:
             break
@@ -150,6 +354,8 @@ __all__ = [
     "strip_html",
     "clean_text",
     "build_pairs_adjacent",
+    "build_pairs_contextual",
+    "build_pairs_quote_contextual",
     "drop_banned",
     "scrape",
 ]
