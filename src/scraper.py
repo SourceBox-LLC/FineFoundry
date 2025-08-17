@@ -8,6 +8,34 @@ import requests
 BASE_URL = "https://a.4cdn.org"
 USER_AGENT = "Mozilla/5.0 (compatible; QwenFineTuneScraper/1.0)"
 
+# Proxy + shared session (default to Tor via SOCKS5 for anonymity)
+# Change PROXY_URL to disable or set a different proxy as needed
+PROXY_URL: Optional[str] = "socks5h://127.0.0.1:9050"
+USE_ENV_PROXIES: bool = False  # If True, let requests use environment proxies
+
+SESSION = requests.Session()
+SESSION.headers.update({"User-Agent": USER_AGENT})
+
+def apply_session_config() -> None:
+    """Apply current proxy configuration to SESSION.
+
+    - If USE_ENV_PROXIES is True, trust environment variables (HTTP(S)_PROXY, etc.).
+    - Else, disable env proxies and use PROXY_URL if set.
+    """
+    # Environment proxies
+    if USE_ENV_PROXIES:
+        SESSION.trust_env = True
+        return
+    # Explicit config
+    SESSION.trust_env = False
+    if PROXY_URL:
+        SESSION.proxies.update({"http": PROXY_URL, "https": PROXY_URL})
+    else:
+        SESSION.proxies.clear()
+
+# Apply default proxy configuration at import time
+apply_session_config()
+
 # Static default allowlist (not used by the UI flow; kept for convenience)
 ALLOWLIST_DEFAULT: List[str] = [
     "pol", "b", "r9k", "s4s", "soc",
@@ -20,7 +48,7 @@ ALLOWLIST_DEFAULT: List[str] = [
 def fetch_catalog(board: str) -> List[int]:
     """Return a list of thread IDs for a board using the catalog endpoint."""
     url = f"{BASE_URL}/{board}/catalog.json"
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    resp = SESSION.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
     resp.raise_for_status()
     pages = resp.json()
     thread_ids: List[int] = []
@@ -34,7 +62,7 @@ def fetch_catalog(board: str) -> List[int]:
 def fetch_catalog_pages(board: str) -> List[List[int]]:
     """Return a list of pages, each page is a list of thread IDs (preserves page grouping)."""
     url = f"{BASE_URL}/{board}/catalog.json"
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    resp = SESSION.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
     resp.raise_for_status()
     pages = resp.json()
     page_threads: List[List[int]] = []
@@ -50,7 +78,7 @@ def fetch_catalog_pages(board: str) -> List[List[int]]:
 
 def fetch_thread(board: str, thread_id: int) -> List[Dict[str, Any]]:
     url = f"{BASE_URL}/{board}/thread/{thread_id}.json"
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    resp = SESSION.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
     if resp.status_code == 404:
         return []
     resp.raise_for_status()
@@ -302,6 +330,8 @@ def scrape(
     require_question: bool = False,
 ) -> List[Dict[str, str]]:
     """Scrape one board and return up to max_pairs input/output examples."""
+    # Ensure session reflects latest proxy config
+    apply_session_config()
     # Select threads evenly across catalog pages (round-robin) to diversify sampling
     pages = fetch_catalog_pages(board)
     thread_ids: List[int] = []
@@ -358,4 +388,5 @@ __all__ = [
     "build_pairs_quote_contextual",
     "drop_banned",
     "scrape",
+    "apply_session_config",
 ]

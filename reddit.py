@@ -54,8 +54,33 @@ USE_TEMP_DUMP = True            # If True, write dump into a system temp folder 
 # =========================
 # Session
 # =========================
+# Proxy configuration (default to Tor via SOCKS5 for anonymity)
+# Change PROXY_URL to disable or set a different proxy as needed
+PROXY_URL: Optional[str] = "socks5h://127.0.0.1:9050"
+USE_ENV_PROXIES: bool = False  # If True, let requests use environment proxies
+
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": UA})
+
+def apply_session_config() -> None:
+    """Apply current proxy configuration to SESSION.
+
+    - If USE_ENV_PROXIES is True, trust environment variables (HTTP(S)_PROXY, etc.).
+    - Else, disable env proxies and use PROXY_URL if set.
+    """
+    # Environment proxies
+    if USE_ENV_PROXIES:
+        SESSION.trust_env = True
+        return
+    # Explicit config
+    SESSION.trust_env = False
+    if PROXY_URL:
+        SESSION.proxies.update({"http": PROXY_URL, "https": PROXY_URL})
+    else:
+        SESSION.proxies.clear()
+
+# Apply default proxy configuration at import time
+apply_session_config()
 
 # Global counters
 START_TS = time.time()

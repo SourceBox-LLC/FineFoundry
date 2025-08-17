@@ -2,6 +2,7 @@ import asyncio
 import random
 import time
 import os
+import shutil
 from datetime import datetime
 from typing import List, Optional
 import json
@@ -16,6 +17,17 @@ except Exception:
     import sys as _sys
     _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     import save_dataset as sd
+
+# Reddit scraper import (ensure root is on sys.path when running from src/)
+try:
+    import reddit as rdt
+except Exception:
+    try:
+        import sys as _sys
+        _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+        import reddit as rdt
+    except Exception:
+        rdt = None  # Fallback; UI will guard against use if not importable
 
 # Robust color aliasing: prefer ft.Colors, fall back to ft.colors if present
 if hasattr(ft, "Colors"):
@@ -209,6 +221,78 @@ def make_empty_placeholder(text: str, icon) -> ft.Container:
     )
 
 
+def _env_truthy(val: Optional[str]) -> bool:
+    """Interpret common truthy strings from environment variables."""
+    try:
+        return str(val).strip().lower() in {"1", "true", "yes", "on"}
+    except Exception:
+        return False
+
+
+def apply_proxy_from_env() -> str:
+    """Apply proxy settings from environment to both scrapers.
+
+    Env vars:
+    - TOR_PROXY / PROXY_URL: e.g., socks5h://127.0.0.1:9050
+    - USE_ENV_PROXIES: if truthy, allow requests to use HTTP(S)_PROXY from env
+    Returns a short status string for logging.
+    """
+    raw_proxy = os.getenv("TOR_PROXY") or os.getenv("PROXY_URL")
+    raw_use_env = os.getenv("USE_ENV_PROXIES")
+    use_env = _env_truthy(raw_use_env) if raw_use_env is not None else None
+
+    # 4chan scraper
+    try:
+        if raw_proxy is not None and hasattr(sc, "PROXY_URL"):
+            sc.PROXY_URL = raw_proxy
+        if use_env is not None and hasattr(sc, "USE_ENV_PROXIES"):
+            sc.USE_ENV_PROXIES = bool(use_env)
+        if hasattr(sc, "apply_session_config"):
+            sc.apply_session_config()
+    except Exception:
+        pass
+
+    # Reddit scraper (optional)
+    try:
+        if rdt is not None:
+            if raw_proxy is not None and hasattr(rdt, "PROXY_URL"):
+                rdt.PROXY_URL = raw_proxy
+            if use_env is not None and hasattr(rdt, "USE_ENV_PROXIES"):
+                rdt.USE_ENV_PROXIES = bool(use_env)
+            if hasattr(rdt, "apply_session_config"):
+                rdt.apply_session_config()
+    except Exception:
+        pass
+
+    # Determine effective configuration for logging
+    if use_env is True:
+        return "Proxy: using environment proxies (USE_ENV_PROXIES=on)"
+    if raw_proxy:
+        return f"Proxy: routing via {raw_proxy}"
+
+    # No env overrides provided; report module defaults
+    try:
+        eff_env = bool(getattr(sc, "USE_ENV_PROXIES", False)) or bool(getattr(rdt, "USE_ENV_PROXIES", False) if rdt is not None else False)
+    except Exception:
+        eff_env = False
+    if eff_env:
+        return "Proxy: using environment proxies (module default)"
+
+    eff_proxy = None
+    try:
+        eff_proxy = getattr(rdt, "PROXY_URL", None) if rdt is not None else None
+    except Exception:
+        eff_proxy = None
+    if not eff_proxy:
+        try:
+            eff_proxy = getattr(sc, "PROXY_URL", None)
+        except Exception:
+            eff_proxy = None
+    if eff_proxy:
+        return f"Proxy: routing via {eff_proxy} (module default)"
+    return "Proxy: disabled (no proxy configured)"
+
+
 def cell_text(text: str, width: int | None = None, size: int = 13) -> ft.Text:
     """Create text for DataTable cells that wraps properly within its cell.
     Do not force width or VISIBLE overflow to avoid overlap; let the table layout size cells.
@@ -365,6 +449,186 @@ async def simulate_scrape(page: ft.Page, log_view: ft.ListView, prog: ft.Progres
     page.snack_bar.open = True
     await safe_update(page)
 
+async def run_reddit_scrape(
+    page: ft.Page,
+    log_view: ft.ListView,
+    prog: ft.ProgressBar,
+    labels: dict,
+    preview_host: ft.ListView,
+    cancel_flag: dict,
+    url: str,
+    max_posts: int,
+    delay: float,
+    min_len_val: int,
+    output_path: str,
+    pairing_mode: str,
+    ctx_k: int,
+    ctx_max_chars: Optional[int],
+    merge_same_id: bool,
+    require_question: bool,
+) -> None:
+    """Run the Reddit scraper in a worker thread and integrate results into the UI."""
+    def log(msg: str):
+        log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
+    await safe_update(page)
+
+    if rdt is None:
+        log("Reddit scraper module not available.")
+        await safe_update(page)
+        return
+
+    # Configure reddit module from UI inputs
+    try:
+        # Reset run-scoped counters to make stop caps reliable
+        rdt.START_TS = time.time()
+        rdt.REQUESTS_MADE = 0
+        rdt.MAX_REQUESTS_TOTAL = None
+        rdt.STOP_AFTER_SECONDS = None
+
+        rdt.DEFAULT_URL = (url or rdt.DEFAULT_URL).strip()
+        rdt.MAX_POSTS = int(max_posts)
+        rdt.REQUEST_DELAY = max(0.0, float(delay))
+        # Always build dataset; we'll copy pairs to desired path
+        rdt.BUILD_DATASET = True
+        rdt.PAIRING_MODE = "contextual" if (pairing_mode or "normal") == "contextual" else "parent_child"
+        rdt.CONTEXT_K = int(ctx_k)
+        rdt.MAX_INPUT_CHARS = None if (ctx_max_chars is None) else int(ctx_max_chars)
+        rdt.MERGE_SAME_AUTHOR = bool(merge_same_id)
+        rdt.REQUIRE_QUESTION = bool(require_question)
+        rdt.MIN_LEN = max(0, int(min_len_val))
+        # Keep dumps temp so we can clean after copying pairs
+        rdt.OUTPUT_DIR = None
+        rdt.USE_TEMP_DUMP = True
+    except Exception as e:
+        log(f"Invalid Reddit configuration: {e}")
+        await safe_update(page)
+        return
+
+    # Apply proxy settings from environment (Tor, etc.)
+    try:
+        pmsg = apply_proxy_from_env()
+        log(pmsg)
+    except Exception:
+        pass
+
+    prog.value = 0
+    labels.get("threads").value = "Threads Visited: 0"
+    labels.get("pairs").value = "Pairs Found: 0"
+    await safe_update(page)
+
+    log("Starting Reddit scrape...")
+    await safe_update(page)
+
+    # Kick off the blocking scraper in a background thread
+    fut = asyncio.create_task(asyncio.to_thread(rdt.run))
+
+    # A soft progress pulse and cooperative cancellation monitor
+    async def pulse_and_watch():
+        try:
+            tick = 0.0
+            while not fut.done():
+                if cancel_flag.get("cancelled"):
+                    # Force the worker to abort on next HTTP call
+                    rdt.MAX_REQUESTS_TOTAL = 0
+                    rdt.STOP_AFTER_SECONDS = 0
+                # Pulse progress to indicate activity
+                cur = (prog.value or 0.0)
+                cur = 0.4 if cur >= 0.9 else (cur + 0.04)
+                prog.value = cur
+                await safe_update(page)
+                await asyncio.sleep(0.35)
+        except Exception:
+            # Ignore UI pulse errors
+            pass
+
+    pulse_task = asyncio.create_task(pulse_and_watch())
+
+    base_out = None
+    pairs_src = None
+    try:
+        base_out, pairs_src = await fut
+    except Exception as e:
+        if cancel_flag.get("cancelled"):
+            log("Scrape cancelled by user.")
+            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
+            page.snack_bar.open = True
+        else:
+            log(f"Reddit scrape failed: {e}")
+            page.snack_bar = ft.SnackBar(ft.Text(f"Reddit scrape failed: {e}"))
+            page.snack_bar.open = True
+        await safe_update(page)
+        try:
+            pulse_task.cancel()
+        except Exception:
+            pass
+        return
+    finally:
+        try:
+            pulse_task.cancel()
+        except Exception:
+            pass
+
+    # Completed
+    prog.value = 1.0
+    await safe_update(page)
+
+    # Copy pairs to desired output path and load for preview
+    pairs_count = 0
+    preview_pairs = []
+    try:
+        if pairs_src is not None and os.path.exists(str(pairs_src)):
+            dest = output_path or "scraped_training_data.json"
+            dest_abs = os.path.abspath(dest)
+            os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
+            # Copy contents
+            txt = await asyncio.to_thread(lambda: open(str(pairs_src), "r", encoding="utf-8").read())
+            await asyncio.to_thread(lambda: open(dest_abs, "w", encoding="utf-8").write(txt))
+            log(f"Copied pairs to: {dest_abs}")
+            # Load for preview
+            data = await asyncio.to_thread(lambda: json.loads(txt))
+            if isinstance(data, list):
+                pairs_count = len(data)
+                preview_pairs = [(d.get("input", "") or "", d.get("output", "") or "") for d in data[:10]]
+        else:
+            log("No pairs JSON produced (pairs_src missing).")
+    except Exception as e:
+        log(f"Failed to copy/load pairs: {e}")
+    await safe_update(page)
+
+    # Read index.json for post count (threads label)
+    try:
+        idx_path = os.path.join(str(base_out), "index.json") if base_out else None
+        if idx_path and os.path.exists(idx_path):
+            idx = await asyncio.to_thread(lambda: json.load(open(idx_path, "r", encoding="utf-8")))
+            pc = int(idx.get("post_count") or 0)
+            labels.get("threads").value = f"Posts processed: {pc}"
+    except Exception:
+        pass
+
+    labels.get("pairs").value = f"Pairs Found: {pairs_count}"
+
+    # Populate preview grid
+    try:
+        preview_host.controls.clear()
+        lfx, rfx = compute_two_col_flex(preview_pairs)
+        preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+        for a, b in preview_pairs:
+            preview_host.controls.append(two_col_row(a, b, lfx, rfx))
+    except Exception as e:
+        log(f"Failed to render preview: {e}")
+    await safe_update(page)
+
+    # Cleanup temporary dump folder
+    try:
+        if base_out and os.path.isdir(str(base_out)) and getattr(rdt, "USE_TEMP_DUMP", False):
+            shutil.rmtree(str(base_out), ignore_errors=True)
+            log(f"Cleaned up temp dump: {base_out}")
+    except Exception as e:
+        log(f"Cleanup warning: {e}")
+    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
+    page.snack_bar.open = True
+    await safe_update(page)
+
 
 async def run_real_scrape(
     page: ft.Page,
@@ -395,6 +659,13 @@ async def run_real_scrape(
         return
     prog.value = 0
     pairs_accum: List[dict] = []
+
+    # Apply proxy settings from environment (Tor, etc.)
+    try:
+        pmsg = apply_proxy_from_env()
+        log(pmsg)
+    except Exception:
+        pass
 
     for idx, b in enumerate(boards, start=1):
         if cancel_flag.get("cancelled"):
@@ -568,6 +839,14 @@ def main(page: ft.Page):
     ], spacing=8)
 
     # Inputs
+    source_dd = ft.Dropdown(
+        label="Source",
+        value="4chan",
+        options=[ft.dropdown.Option("4chan"), ft.dropdown.Option("reddit")],
+        width=180,
+    )
+    reddit_url = ft.TextField(label="Reddit URL (subreddit or post)", value="https://www.reddit.com/r/Conservative/", width=420)
+    reddit_max_posts = ft.TextField(label="Max Posts (Reddit)", value="30", width=180, keyboard_type=ft.KeyboardType.NUMBER)
     max_threads = ft.TextField(label="Max Threads", value="50", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     max_pairs = ft.TextField(label="Max Pairs", value="5000", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     delay = ft.TextField(label="Delay (s)", value="1.0", width=160, keyboard_type=ft.KeyboardType.NUMBER)
@@ -606,6 +885,29 @@ def main(page: ft.Page):
     pair_mode.on_change = lambda e: update_context_controls()
     update_context_controls()
 
+    # Toggle visibility between 4chan and Reddit controls
+    def update_source_controls():
+        use_reddit = (source_dd.value == "reddit")
+        # Boards area
+        try:
+            boards_wrap.visible = not use_reddit
+            board_actions.visible = not use_reddit
+            board_warning.visible = not use_reddit
+        except Exception:
+            pass
+        # Reddit params
+        try:
+            reddit_params_row.visible = use_reddit
+        except Exception:
+            pass
+        # Some parameter labels are shared
+        max_threads.visible = not use_reddit  # 4chan-specific
+        max_pairs.visible = not use_reddit    # 4chan target pairs
+        # For Reddit, delay/min_len/output_path and pairing controls still apply
+        page.update()
+
+    source_dd.on_change = lambda e: (update_source_controls(), update_board_validation())
+
     scrape_prog = ft.ProgressBar(width=400, value=0)
     # Animated indicator shown while scraping to make progress feel more alive
     working_ring = ft.ProgressRing(width=20, height=20, value=None, visible=False)
@@ -640,9 +942,14 @@ def main(page: ft.Page):
     )
 
     def update_board_validation():
-        any_selected = any(p.data and p.data.get("selected") for p in board_pills)
-        start_button.disabled = not any_selected
-        board_warning.value = "Select at least one board to scrape." if not any_selected else ""
+        # If scraping 4chan, enforce board selection; Reddit doesn't require boards
+        if source_dd.value == "reddit":
+            start_button.disabled = False
+            board_warning.value = ""
+        else:
+            any_selected = any(p.data and p.data.get("selected") for p in board_pills)
+            start_button.disabled = not any_selected
+            board_warning.value = "Select at least one board to scrape." if not any_selected else ""
         page.update()
 
     def update_scrape_placeholders():
@@ -667,9 +974,9 @@ def main(page: ft.Page):
         scrape_prog.value = 0
         working_ring.visible = True
         update_scrape_placeholders()
-        # Collect selected boards
+        # Collect selected boards (only for 4chan)
         selected_boards = [p.data.get("label") for p in board_pills if p.data and p.data.get("selected")]
-        if not selected_boards:
+        if source_dd.value != "reddit" and not selected_boards:
             page.snack_bar = ft.SnackBar(ft.Text("Select at least one board to scrape."))
             page.snack_bar.open = True
             await safe_update(page)
@@ -705,9 +1012,15 @@ def main(page: ft.Page):
         except Exception:
             max_chars_val = None
 
-        log_list.controls.append(ft.Text(
-            f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards)>20 else ''}"
-        ))
+        # High-level run summary line
+        if source_dd.value == "reddit":
+            log_list.controls.append(ft.Text(
+                f"Reddit URL: {reddit_url.value} | Max posts: {reddit_max_posts.value}"
+            ))
+        else:
+            log_list.controls.append(ft.Text(
+                f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards)>20 else ''}"
+            ))
         await safe_update(page)
 
         # Disable Start while running
@@ -717,26 +1030,51 @@ def main(page: ft.Page):
         await safe_update(page)
 
         try:
-            await run_real_scrape(
-                page=page,
-                log_view=log_list,
-                prog=scrape_prog,
-                labels={"threads": threads_label, "pairs": pairs_label},
-                preview_host=preview_host,
-                cancel_flag=cancel_state,
-                boards=selected_boards,
-                max_threads=mt,
-                max_pairs_total=mp,
-                delay=dl,
-                min_len_val=ml,
-                output_path=out_path,
-                pairing_mode=mode_val,
-                ctx_strategy=strat_val,
-                ctx_k=k_val,
-                ctx_max_chars=max_chars_val,
-                merge_same_id=bool(merge_same_id_cb.value),
-                require_question=bool(require_question_cb.value),
-            )
+            if source_dd.value == "reddit":
+                # Branch: Reddit scraper
+                try:
+                    rp = int(reddit_max_posts.value or 30)
+                except Exception:
+                    rp = 30
+                await run_reddit_scrape(
+                    page=page,
+                    log_view=log_list,
+                    prog=scrape_prog,
+                    labels={"threads": threads_label, "pairs": pairs_label},
+                    preview_host=preview_host,
+                    cancel_flag=cancel_state,
+                    url=reddit_url.value or "https://www.reddit.com/",
+                    max_posts=rp,
+                    delay=dl,
+                    min_len_val=ml,
+                    output_path=out_path,
+                    pairing_mode=mode_val,
+                    ctx_k=k_val,
+                    ctx_max_chars=max_chars_val,
+                    merge_same_id=bool(merge_same_id_cb.value),
+                    require_question=bool(require_question_cb.value),
+                )
+            else:
+                await run_real_scrape(
+                    page=page,
+                    log_view=log_list,
+                    prog=scrape_prog,
+                    labels={"threads": threads_label, "pairs": pairs_label},
+                    preview_host=preview_host,
+                    cancel_flag=cancel_state,
+                    boards=selected_boards,
+                    max_threads=mt,
+                    max_pairs_total=mp,
+                    delay=dl,
+                    min_len_val=ml,
+                    output_path=out_path,
+                    pairing_mode=mode_val,
+                    ctx_strategy=strat_val,
+                    ctx_k=k_val,
+                    ctx_max_chars=max_chars_val,
+                    merge_same_id=bool(merge_same_id_cb.value),
+                    require_question=bool(require_question_cb.value),
+                )
         finally:
             start_button.disabled = False
             start_button.text = "Start"
@@ -945,14 +1283,21 @@ def main(page: ft.Page):
             pass
         schedule_task(on_preview_dataset)
 
+    # Reddit params row (hidden by default)
+    reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True)
+    reddit_params_row.visible = False
+
     scrape_tab = ft.Container(
         content=ft.Column([
+            section_title("Source", ICONS.DASHBOARD),
+            ft.Row([source_dd], wrap=True),
             section_title("4chan Boards", ICONS.DASHBOARD),
             board_actions,
             boards_wrap,
             board_warning,
             ft.Divider(),
             section_title("Parameters", ICONS.TUNE),
+            reddit_params_row,
             ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
             ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
             ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
@@ -1507,6 +1852,8 @@ def main(page: ft.Page):
     )
 
     page.add(tabs)
+    # Initialize visibility by current source value
+    update_source_controls()
 
 
 if __name__ == "__main__":
