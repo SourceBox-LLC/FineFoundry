@@ -489,7 +489,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--min-len", type=int, default=MIN_LEN, help="Minimum chars for input/output after cleaning")
     p.add_argument("--include-automod", action="store_true", help="Include AutoModerator comments")
     p.add_argument("--pairs-path", default=None, help="If set, also write pairs to this path in addition to dump/pairs")
-    p.add_argument("--cleanup", action="store_true", help="Delete the reddit_dump_* folder after run (use with --pairs-path to preserve pairs)")
+    p.add_argument("--cleanup", action="store_true", help="Delete the reddit_dump_* folder after run (use with --pairs_path to preserve pairs)")
 
     return p.parse_args()
 

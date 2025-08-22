@@ -10,7 +10,7 @@ from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
 import flet as ft
-import scraper as sc
+import fourchan_scraper as sc
 try:
     import save_dataset as sd
 except Exception:
@@ -18,16 +18,7 @@ except Exception:
     _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     import save_dataset as sd
 
-# Reddit scraper import (ensure root is on sys.path when running from src/)
-try:
-    import reddit as rdt
-except Exception:
-    try:
-        import sys as _sys
-        _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        import reddit as rdt
-    except Exception:
-        rdt = None  # Fallback; UI will guard against use if not importable
+import reddit_scraper as rdt
 
 # Robust color aliasing: prefer ft.Colors, fall back to ft.colors if present
 if hasattr(ft, "Colors"):
@@ -293,6 +284,47 @@ def apply_proxy_from_env() -> str:
     return "Proxy: disabled (no proxy configured)"
 
 
+def apply_proxy_from_ui(enabled: bool, proxy_url: Optional[str], use_env: bool) -> str:
+    """Apply proxy settings based on UI controls.
+
+    Priority:
+    - If not enabled: disable all proxies for both scrapers.
+    - If enabled and use_env: allow requests to use environment proxies.
+    - If enabled and not use_env: route via explicit proxy_url (if provided), else disable.
+    Returns a status string for logging.
+    """
+    try:
+        # 4chan
+        if hasattr(sc, "USE_ENV_PROXIES"):
+            sc.USE_ENV_PROXIES = bool(use_env) if enabled else False
+        if hasattr(sc, "PROXY_URL"):
+            sc.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
+        if hasattr(sc, "apply_session_config"):
+            sc.apply_session_config()
+    except Exception:
+        pass
+
+    try:
+        # Reddit (optional)
+        if rdt is not None:
+            if hasattr(rdt, "USE_ENV_PROXIES"):
+                rdt.USE_ENV_PROXIES = bool(use_env) if enabled else False
+            if hasattr(rdt, "PROXY_URL"):
+                rdt.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
+            if hasattr(rdt, "apply_session_config"):
+                rdt.apply_session_config()
+    except Exception:
+        pass
+
+    if not enabled:
+        return "Proxy: disabled via UI"
+    if use_env:
+        return "Proxy: using environment proxies (UI)"
+    if proxy_url:
+        return f"Proxy: routing via {proxy_url} (UI)"
+    return "Proxy: disabled (no proxy URL provided)"
+
+
 def cell_text(text: str, width: int | None = None, size: int = 13) -> ft.Text:
     """Create text for DataTable cells that wraps properly within its cell.
     Do not force width or VISIBLE overflow to avoid overlap; let the table layout size cells.
@@ -466,6 +498,9 @@ async def run_reddit_scrape(
     ctx_max_chars: Optional[int],
     merge_same_id: bool,
     require_question: bool,
+    ui_proxy_enabled: bool,
+    ui_proxy_url: Optional[str],
+    ui_use_env_proxies: bool,
 ) -> None:
     """Run the Reddit scraper in a worker thread and integrate results into the UI."""
     def log(msg: str):
@@ -504,9 +539,9 @@ async def run_reddit_scrape(
         await safe_update(page)
         return
 
-    # Apply proxy settings from environment (Tor, etc.)
+    # Apply proxy settings from UI (overrides env/defaults)
     try:
-        pmsg = apply_proxy_from_env()
+        pmsg = apply_proxy_from_ui(bool(ui_proxy_enabled), ui_proxy_url, bool(ui_use_env_proxies))
         log(pmsg)
     except Exception:
         pass
@@ -649,6 +684,9 @@ async def run_real_scrape(
     ctx_max_chars: Optional[int],
     merge_same_id: bool,
     require_question: bool,
+    ui_proxy_enabled: bool,
+    ui_proxy_url: Optional[str],
+    ui_use_env_proxies: bool,
 ) -> None:
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
@@ -660,9 +698,9 @@ async def run_real_scrape(
     prog.value = 0
     pairs_accum: List[dict] = []
 
-    # Apply proxy settings from environment (Tor, etc.)
+    # Apply proxy settings from UI (overrides env/defaults)
     try:
-        pmsg = apply_proxy_from_env()
+        pmsg = apply_proxy_from_ui(bool(ui_proxy_enabled), ui_proxy_url, bool(ui_use_env_proxies))
         log(pmsg)
     except Exception:
         pass
@@ -931,6 +969,26 @@ def main(page: ft.Page):
     preview_placeholder = make_empty_placeholder("Preview not available", ICONS.PREVIEW)
     preview_area = ft.Stack([preview_host, preview_placeholder], expand=True)
 
+    # ---------- SETTINGS (Proxy) CONTROLS ----------
+    proxy_enable_cb = ft.Checkbox(label="Enable proxy (override defaults)", value=False)
+    proxy_url_tf = ft.TextField(
+        label="Proxy URL (e.g., socks5h://127.0.0.1:9050)",
+        value="",
+        width=380,
+    )
+    use_env_cb = ft.Checkbox(label="Use environment proxies (HTTP(S)_PROXY)", value=False)
+
+    def update_proxy_controls(_=None):
+        en = bool(proxy_enable_cb.value)
+        use_env = bool(use_env_cb.value)
+        use_env_cb.visible = en
+        proxy_url_tf.visible = en and not use_env
+        page.update()
+
+    proxy_enable_cb.on_change = update_proxy_controls
+    use_env_cb.on_change = update_proxy_controls
+    update_proxy_controls()
+
     # Actions
     cancel_state = {"cancelled": False}
 
@@ -1053,6 +1111,9 @@ def main(page: ft.Page):
                     ctx_max_chars=max_chars_val,
                     merge_same_id=bool(merge_same_id_cb.value),
                     require_question=bool(require_question_cb.value),
+                    ui_proxy_enabled=bool(proxy_enable_cb.value),
+                    ui_proxy_url=(proxy_url_tf.value or "").strip(),
+                    ui_use_env_proxies=bool(use_env_cb.value),
                 )
             else:
                 await run_real_scrape(
@@ -1074,6 +1135,9 @@ def main(page: ft.Page):
                     ctx_max_chars=max_chars_val,
                     merge_same_id=bool(merge_same_id_cb.value),
                     require_question=bool(require_question_cb.value),
+                    ui_proxy_enabled=bool(proxy_enable_cb.value),
+                    ui_proxy_url=(proxy_url_tf.value or "").strip(),
+                    ui_use_env_proxies=bool(use_env_cb.value),
                 )
         finally:
             start_button.disabled = False
@@ -1842,11 +1906,40 @@ def main(page: ft.Page):
         padding=16,
     )
 
+    # ---------- SETTINGS TAB (Proxy config) ----------
+    settings_tab = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Container(
+                    content=ft.Column([
+                        section_title("Proxy Settings", ICONS.SETTINGS),
+                        ft.Text(
+                            "Configure how network requests route. When enabled, UI settings override environment variables and defaults.",
+                            size=12,
+                            color=WITH_OPACITY(0.7, BORDER_BASE),
+                        ),
+                        ft.Divider(),
+                        ft.Row([proxy_enable_cb], wrap=True),
+                        ft.Row([use_env_cb, proxy_url_tf], wrap=True),
+                        ft.Text(
+                            "Tip: Tor default is socks5h://127.0.0.1:9050. Leave disabled to use direct connections.",
+                            size=11,
+                            color=WITH_OPACITY(0.6, BORDER_BASE),
+                        ),
+                    ], spacing=12),
+                    width=1000,
+                )
+            ], alignment=ft.MainAxisAlignment.CENTER)
+        ], scroll=ft.ScrollMode.AUTO, spacing=0),
+        padding=16,
+    )
+
     tabs = ft.Tabs(
         tabs=[
             ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
             ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab),
             ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
+            ft.Tab(text="Settings", icon=ICONS.SETTINGS, content=settings_tab),
         ],
         expand=1,
     )
