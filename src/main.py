@@ -19,6 +19,21 @@ except Exception:
     import save_dataset as sd
 
 import reddit_scraper as rdt
+try:
+    # Hugging Face datasets (for merge tab)
+    from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets, get_dataset_config_names, load_from_disk
+    try:
+        from datasets import interleave_datasets as hf_interleave
+    except Exception:
+        hf_interleave = None
+except Exception:
+    load_dataset = None
+    Dataset = None
+    DatasetDict = None
+    concatenate_datasets = None
+    hf_interleave = None
+    get_dataset_config_names = None
+    load_from_disk = None
 
 # Robust color aliasing: prefer ft.Colors, fall back to ft.colors if present
 if hasattr(ft, "Colors"):
@@ -1428,8 +1443,8 @@ def main(page: ft.Page):
         "test": (COLORS.PURPLE, ICONS.SSID_CHART),
     }
 
-    # Timeline
-    timeline = ft.Column(spacing=6)
+    # Timeline (scrollable)
+    timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
     timeline_placeholder = make_empty_placeholder("No status yet", ICONS.TASK)
 
     cancel_build = {"cancelled": False}
@@ -1804,7 +1819,7 @@ def main(page: ft.Page):
         padding=16,
     )
 
-    # ---------- MERGE DATASETS TAB (UI ONLY) ----------
+    # ---------- MERGE DATASETS TAB ----------
     # Operation selector
     merge_op = ft.Dropdown(
         label="Operation",
@@ -1832,9 +1847,20 @@ def main(page: ft.Page):
             value="train",
             width=160,
         )
-        config = ft.TextField(label="Config (optional)", width=220)
+        config = ft.TextField(label="Config (optional)", width=180)
+        in_col = ft.TextField(label="Input column (optional)", width=200)
+        out_col = ft.TextField(label="Output column (optional)", width=200)
         remove_btn = ft.IconButton(ICONS.DELETE)
-        row = ft.Row([ds_id, split, config, remove_btn], spacing=10, wrap=True)
+        row = ft.Row([ds_id, split, config, in_col, out_col, remove_btn], spacing=10, wrap=True)
+
+        # Keep references for later retrieval
+        row.data = {
+            "ds": ds_id,
+            "split": split,
+            "config": config,
+            "in": in_col,
+            "out": out_col,
+        }
 
         def remove_row(_):
             try:
@@ -1856,19 +1882,492 @@ def main(page: ft.Page):
     # Seed with one row initially
     rows_host.controls.append(make_dataset_row())
 
-    # Output settings (UI only)
+    # Output settings
     merge_save_dir = ft.TextField(label="Save dir", value="merged_dataset", width=240)
 
-    # Disabled actions (placeholder)
-    merge_actions = ft.Row([
-        ft.ElevatedButton("Merge Datasets", icon=ICONS.TABLE_VIEW, disabled=True),
-        ft.OutlinedButton("Cancel", icon=ICONS.CANCEL, disabled=True),
-        ft.TextButton("Refresh", icon=REFRESH_ICON, disabled=True),
-    ], spacing=10)
-
-    # Status placeholder (UI only)
-    merge_timeline = ft.Column(spacing=6)
+    # Status & preview
+    merge_timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
     merge_timeline_placeholder = make_empty_placeholder("No status yet", ICONS.TASK)
+    merge_preview_host = ft.ListView(expand=1, auto_scroll=False)
+    merge_preview_placeholder = make_empty_placeholder("Preview not available", ICONS.PREVIEW)
+
+    merge_cancel = {"cancelled": False}
+    merge_busy_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
+
+    def update_merge_placeholders():
+        try:
+            merge_timeline_placeholder.visible = len(getattr(merge_timeline, "controls", []) or []) == 0
+            merge_preview_placeholder.visible = len(getattr(merge_preview_host, "controls", []) or []) == 0
+        except Exception:
+            pass
+        page.update()
+
+    def _guess_cols(names: list[str]) -> tuple[Optional[str], Optional[str]]:
+        low = {n.lower(): n for n in names}
+        in_cands = [
+            "input", "prompt", "question", "instruction", "source", "text", "query", "context", "post",
+        ]
+        out_cands = [
+            "output", "response", "answer", "completion", "target", "label", "reply",
+        ]
+        inn = next((low[x] for x in in_cands if x in low), None)
+        outn = next((low[x] for x in out_cands if x in low), None)
+        # Common paired fallbacks
+        if inn is None and outn is None:
+            if "question" in low and "answer" in low:
+                return low["question"], low["answer"]
+        return inn, outn
+
+    async def _load_and_prepare(repo: str, split: str, config: Optional[str], in_col: Optional[str], out_col: Optional[str]):
+        if load_dataset is None:
+            raise RuntimeError("datasets library not available — cannot load from Hub")
+        # Load
+        def do_load():
+            if split == "all":
+                dd = load_dataset(repo, name=(config or None))
+                return dd
+            return load_dataset(repo, split=split, name=(config or None))
+
+        try:
+            obj = await asyncio.to_thread(do_load)
+        except Exception as e:
+            # Handle datasets that require an explicit config
+            msg = str(e).lower()
+            auto_loaded = False
+            if (get_dataset_config_names is not None) and ("config name is missing" in msg or "config name is required" in msg):
+                try:
+                    cfgs = await asyncio.to_thread(lambda: get_dataset_config_names(repo))
+                except Exception:
+                    cfgs = []
+                pick = None
+                for pref in ("main", "default", "socratic"):
+                    if pref in cfgs:
+                        pick = pref
+                        break
+                if not pick and cfgs:
+                    pick = cfgs[0]
+                if pick:
+                    # Log auto-pick to timeline
+                    try:
+                        merge_timeline.controls.append(ft.Row([
+                            ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.8, ACCENT_COLOR)),
+                            ft.Text(f"'{repo}' requires a config; using '{pick}' automatically"),
+                        ]))
+                        await safe_update(page)
+                    except Exception:
+                        pass
+                    def do_load_cfg():
+                        if split == "all":
+                            return load_dataset(repo, name=pick)
+                        return load_dataset(repo, split=split, name=pick)
+                    obj = await asyncio.to_thread(do_load_cfg)
+                    auto_loaded = True
+            if not auto_loaded:
+                raise
+
+        # Normalize to list[Dataset]
+        ds_list: list = []
+        if isinstance(obj, dict) or (DatasetDict is not None and isinstance(obj, DatasetDict)):
+            for k in ["train", "validation", "test"]:
+                try:
+                    if k in obj:
+                        ds_list.append(obj[k])
+                except Exception:
+                    pass
+            # Fallback to any other splits
+            try:
+                for k in getattr(obj, "keys", lambda: [])():
+                    if k not in {"train", "validation", "test"}:
+                        ds_list.append(obj[k])
+            except Exception:
+                pass
+        else:
+            ds_list = [obj]
+
+        prepped = []
+        for ds in ds_list:
+            try:
+                names = list(getattr(ds, "column_names", []) or [])
+            except Exception:
+                names = []
+            # Resolve columns
+            inn = (in_col or "").strip() or None
+            outn = (out_col or "").strip() or None
+            if not inn or inn not in names or not outn or outn not in names:
+                gi, go = _guess_cols(names)
+                inn = inn if (inn and inn in names) else gi
+                outn = outn if (outn and outn in names) else go
+            if not inn or not outn:
+                raise RuntimeError(f"Could not resolve input/output columns for {repo} (have: {', '.join(names)})")
+
+            def mapper(batch):
+                # batched mapping
+                src = batch.get(inn, [])
+                tgt = batch.get(outn, [])
+                return {
+                    "input": ["" if v is None else str(v).strip() for v in src],
+                    "output": ["" if v is None else str(v).strip() for v in tgt],
+                }
+
+            try:
+                mapped = await asyncio.to_thread(
+                    lambda: ds.map(mapper, batched=True, remove_columns=list(getattr(ds, "column_names", []) or []))
+                )
+            except Exception:
+                # Fallback: construct from python list (may be slower)
+                try:
+                    to_list = [
+                        {"input": "" if r.get(inn) is None else str(r.get(inn)).strip(),
+                         "output": "" if r.get(outn) is None else str(r.get(outn)).strip()}
+                        for r in ds
+                    ]
+                    mapped = await asyncio.to_thread(lambda: Dataset.from_list(to_list))
+                except Exception as e:
+                    raise RuntimeError(f"Failed to map columns for {repo}: {e}")
+
+            # Optional filtering of empty rows
+            try:
+                mapped = await asyncio.to_thread(lambda: mapped.filter(lambda r: (len(r.get("input", "") or "") > 0 and len(r.get("output", "") or "") > 0)))
+            except Exception:
+                pass
+
+            prepped.append(mapped)
+            if merge_cancel.get("cancelled"):
+                break
+        return prepped
+
+    async def on_merge():
+        merge_cancel["cancelled"] = False
+        merge_timeline.controls.clear()
+        merge_preview_host.controls.clear()
+        merge_busy_ring.visible = True
+        update_merge_placeholders()
+        await safe_update(page)
+
+        # Validate inputs
+        rows = [r for r in list(getattr(rows_host, "controls", []) or []) if isinstance(r, ft.Row)]
+        entries = []
+        for r in rows:
+            d = getattr(r, "data", None) or {}
+            ds_tf = d.get("ds")
+            sp_dd = d.get("split")
+            cfg_tf = d.get("config")
+            in_tf = d.get("in")
+            out_tf = d.get("out")
+            repo = (getattr(ds_tf, "value", "") or "").strip() if ds_tf else ""
+            if repo:
+                entries.append({
+                    "repo": repo,
+                    "split": (getattr(sp_dd, "value", "train") or "train") if sp_dd else "train",
+                    "config": (getattr(cfg_tf, "value", "") or "").strip() if cfg_tf else "",
+                    "in": (getattr(in_tf, "value", "") or "").strip() if in_tf else "",
+                    "out": (getattr(out_tf, "value", "") or "").strip() if out_tf else "",
+                })
+        if len(entries) < 2:
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Add at least two datasets")]))
+            update_merge_placeholders(); await safe_update(page)
+            merge_busy_ring.visible = False
+            await safe_update(page)
+            return
+
+        out_dir = merge_save_dir.value or "merged_dataset"
+        op = merge_op.value or "Concatenate"
+
+        # Load and map each dataset
+        prepped_all = []
+        for i, ent in enumerate(entries, start=1):
+            if merge_cancel.get("cancelled"):
+                break
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.DOWNLOAD, color=COLORS.BLUE), ft.Text(f"Loading {ent['repo']} [{ent['split']}]…")]))
+            update_merge_placeholders(); await safe_update(page)
+            try:
+                dss = await _load_and_prepare(ent["repo"], ent["split"], ent["config"], ent["in"], ent["out"])
+                prepped_all.extend(dss)
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {ent['repo']}")]))
+            except Exception as e:
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Failed {ent['repo']}: {e}")]))
+                await safe_update(page)
+                merge_busy_ring.visible = False
+                update_merge_placeholders()
+                return
+            await safe_update(page)
+
+        if merge_cancel.get("cancelled"):
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Merge cancelled by user")]))
+            merge_busy_ring.visible = False
+            update_merge_placeholders(); await safe_update(page)
+            return
+
+        # Merge
+        try:
+            if not prepped_all:
+                raise RuntimeError("No datasets to merge after preparation")
+            if op == "Concatenate" or len(prepped_all) == 1:
+                merged = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
+            else:
+                if hf_interleave is not None:
+                    merged = await asyncio.to_thread(lambda: hf_interleave(prepped_all, probabilities=None, seed=42))
+                else:
+                    # Fallback: concatenate + shuffle (approximate interleave)
+                    tmp = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
+                    try:
+                        merged = await asyncio.to_thread(lambda: tmp.shuffle(seed=42))
+                        merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SHUFFLE, color=COLORS.ORANGE), ft.Text("Interleave not available — using shuffle fallback")]))
+                    except Exception:
+                        merged = tmp
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=COLORS.BLUE), ft.Text(f"Merged rows: {len(merged)}")]))
+            await safe_update(page)
+        except Exception as e:
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Merge failed: {e}")]))
+            merge_busy_ring.visible = False
+            update_merge_placeholders(); await safe_update(page)
+            return
+
+        # Save to disk
+        try:
+            dd = DatasetDict({"train": merged}) if DatasetDict is not None else {"train": merged}
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), ft.Text(f"Saving to {out_dir}")]))
+            await safe_update(page)
+            await asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
+            await safe_update(page)
+        except Exception as e:
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Save failed: {e}")]))
+            merge_busy_ring.visible = False
+            update_merge_placeholders(); await safe_update(page)
+            return
+
+        # Preview first N rows in-place
+        try:
+            merge_preview_host.controls.clear()
+            head_n = min(12, len(merged))
+            idxs = list(range(head_n))
+            head = await asyncio.to_thread(lambda: merged.select(idxs)) if head_n > 0 else None
+            pairs = []
+            if head is not None:
+                for rec in head:
+                    pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
+            lfx, rfx = compute_two_col_flex(pairs)
+            merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+            for a, b in pairs:
+                merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
+        except Exception:
+            pass
+
+        merge_busy_ring.visible = False
+        page.snack_bar = ft.SnackBar(ft.Text("Merge complete ✨"))
+        page.snack_bar.open = True
+        update_merge_placeholders(); await safe_update(page)
+
+    def on_cancel_merge(_):
+        merge_cancel["cancelled"] = True
+        try:
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — will stop ASAP")]))
+            update_merge_placeholders(); page.update()
+        except Exception:
+            pass
+
+    def on_refresh_merge(_):
+        merge_cancel["cancelled"] = False
+        merge_timeline.controls.clear()
+        merge_preview_host.controls.clear()
+        merge_busy_ring.visible = False
+        update_merge_placeholders(); page.update()
+
+    async def on_preview_merged():
+        """Open a modal dialog showing the merged dataset saved to disk (DatasetDict)."""
+        # Immediate feedback
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Opening merged dataset preview..."))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception:
+            pass
+
+        # Resolve save dir robustly
+        orig_dir = merge_save_dir.value or "merged_dataset"
+        candidates = []
+        if os.path.isabs(orig_dir):
+            candidates.append(orig_dir)
+        else:
+            candidates.extend([
+                orig_dir,
+                os.path.abspath(orig_dir),
+                os.path.join(os.getcwd(), orig_dir),
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_dir),
+            ])
+        seen = set(); resolved_list = []
+        for pth in candidates:
+            ap = os.path.abspath(pth)
+            if ap not in seen:
+                seen.add(ap); resolved_list.append(ap)
+        existing = next((p for p in resolved_list if os.path.exists(p)), None)
+        if not existing:
+            page.snack_bar = ft.SnackBar(ft.Text(
+                "Merged dataset not found. Tried:\n" + "\n".join(resolved_list[:4])
+            ))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        if load_from_disk is None:
+            page.snack_bar = ft.SnackBar(ft.Text("datasets.load_from_disk unavailable — cannot open preview"))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        # Load dataset from disk
+        try:
+            obj = await asyncio.to_thread(lambda: load_from_disk(existing))
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to load dataset from {existing}: {e}"))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        # Extract a Dataset
+        ds = None
+        try:
+            if DatasetDict is not None and isinstance(obj, DatasetDict):
+                for k in ["train", "validation", "test"]:
+                    if k in obj:
+                        ds = obj[k]; break
+                if ds is None:
+                    # fallback: any split
+                    for k in getattr(obj, "keys", lambda: [])():
+                        ds = obj[k]; break
+            else:
+                ds = obj
+        except Exception:
+            ds = obj
+        if ds is None:
+            page.snack_bar = ft.SnackBar(ft.Text("No split found to preview"))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        # Pagination state
+        try:
+            total = len(ds)
+        except Exception:
+            try:
+                total = int(getattr(ds, "num_rows", 0))
+            except Exception:
+                total = 0
+        page_size = 100
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        state = {"page": 0}
+
+        grid_list = ft.ListView(expand=1, auto_scroll=False)
+        info_text = ft.Text("")
+        prev_btn = ft.TextButton("Prev")
+        next_btn = ft.TextButton("Next")
+
+        def render_page():
+            start = state["page"] * page_size
+            end = min(start + page_size, total)
+            grid_list.controls.clear()
+            # Fetch a small slice efficiently
+            try:
+                idxs = list(range(start, end))
+                page_ds = ds.select(idxs)
+            except Exception:
+                page_ds = None
+            pairs = []
+            try:
+                if page_ds is not None:
+                    for rec in page_ds:
+                        pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
+            except Exception:
+                pass
+
+            lfx, rfx = compute_two_col_flex(pairs)
+            grid_list.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+            for a, b in pairs:
+                grid_list.controls.append(two_col_row(a, b, lfx, rfx))
+            info_text.value = f"Page {state['page']+1}/{total_pages} • Showing {start+1}-{end} of {total}"
+            prev_btn.disabled = state["page"] <= 0
+            next_btn.disabled = state["page"] >= (total_pages - 1)
+            page.update()
+
+        def on_prev(_):
+            if state["page"] > 0:
+                state["page"] -= 1
+                render_page()
+
+        def on_next(_):
+            if state["page"] < (total_pages - 1):
+                state["page"] += 1
+                render_page()
+
+        prev_btn.on_click = on_prev
+        next_btn.on_click = on_next
+
+        controls_bar = ft.Row([
+            prev_btn,
+            next_btn,
+            info_text,
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Merged Dataset Viewer — {total} rows"),
+            content=ft.Container(
+                width=900,
+                height=600,
+                content=ft.Column([
+                    controls_bar,
+                    ft.Container(grid_list, expand=True),
+                ], expand=True),
+            ),
+            actions=[],
+        )
+
+        def close_dlg(_):
+            dlg.open = False
+            page.update()
+
+        dlg.actions = [ft.TextButton("Close", on_click=close_dlg)]
+        try:
+            dlg.on_dismiss = lambda e: page.update()
+        except Exception:
+            pass
+        render_page()
+        opened = False
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(dlg)
+                opened = True
+        except Exception:
+            opened = False
+        if not opened:
+            page.dialog = dlg
+            dlg.open = True
+        await safe_update(page)
+
+    def handle_merge_preview_click(_):
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Opening merged dataset preview..."))
+            page.snack_bar.open = True
+            page.update()
+        except Exception:
+            pass
+        # Use scheduler utility for consistency
+        try:
+            if hasattr(page, "run_task") and callable(getattr(page, "run_task")):
+                page.run_task(on_preview_merged)
+            else:
+                asyncio.create_task(on_preview_merged())
+        except Exception:
+            asyncio.get_event_loop().run_in_executor(None, lambda: asyncio.run(on_preview_merged()))
+
+    merge_actions = ft.Row([
+        ft.ElevatedButton("Merge Datasets", icon=ICONS.TABLE_VIEW, on_click=lambda e: page.run_task(on_merge)),
+        ft.OutlinedButton("Cancel", icon=ICONS.CANCEL, on_click=on_cancel_merge),
+        ft.TextButton("Refresh", icon=REFRESH_ICON, on_click=on_refresh_merge),
+        ft.TextButton("Preview Merged", icon=ICONS.PREVIEW, on_click=handle_merge_preview_click),
+        merge_busy_ring,
+    ], spacing=10)
 
     merge_tab = ft.Container(
         content=ft.Column([
@@ -1876,7 +2375,7 @@ def main(page: ft.Page):
                 ft.Container(
                     content=ft.Column([
                         section_title("Merge Datasets", ICONS.TABLE_VIEW),
-                        ft.Text("Combine multiple Hugging Face datasets. UI-only for now.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+                        ft.Text("Combine multiple Hugging Face datasets. Map columns to a unified input/output schema and merge.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
                         ft.Divider(),
                         section_title("Operation", ICONS.SHUFFLE),
                         ft.Row([merge_op], wrap=True),
@@ -1889,10 +2388,19 @@ def main(page: ft.Page):
                         ft.Row([merge_save_dir], wrap=True),
                         merge_actions,
                         ft.Divider(),
+                        section_title("Preview", ICONS.PREVIEW),
+                        ft.Container(ft.Stack([merge_preview_host, merge_preview_placeholder], expand=True),
+                                     height=220,
+                                     width=1000,
+                                     border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                                     border_radius=8,
+                                     padding=6,
+                        ),
+                        ft.Divider(),
                         section_title("Status", ICONS.TASK),
                         ft.Container(
                             ft.Stack([merge_timeline, merge_timeline_placeholder], expand=True),
-                            height=240,
+                            height=200,
                             width=1000,
                             border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                             border_radius=8,
