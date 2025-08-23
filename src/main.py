@@ -2856,6 +2856,204 @@ def main(page: ft.Page):
         padding=16,
     )
 
+    # ---------- TRAINING TAB (Mock UI) ----------
+    # Dataset source
+    train_source = ft.Dropdown(
+        label="Dataset source",
+        options=[ft.dropdown.Option("Hugging Face"), ft.dropdown.Option("JSON file")],
+        value="Hugging Face",
+        width=180,
+    )
+    train_hf_repo = ft.TextField(label="Dataset repo (e.g., username/dataset)", width=360, visible=True)
+    train_hf_split = ft.Dropdown(
+        label="Split",
+        options=[ft.dropdown.Option("train"), ft.dropdown.Option("validation"), ft.dropdown.Option("test")],
+        value="train",
+        width=140,
+        visible=True,
+    )
+    train_hf_config = ft.TextField(label="Config (optional)", width=180, visible=True)
+    train_json_path = ft.TextField(label="JSON path", width=360, visible=False)
+
+    def _update_train_source(_=None):
+        is_hf = (getattr(train_source, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
+        train_hf_repo.visible = is_hf
+        train_hf_split.visible = is_hf
+        train_hf_config.visible = is_hf
+        train_json_path.visible = (not is_hf)
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    try:
+        train_source.on_change = _update_train_source
+    except Exception:
+        pass
+
+    # Training parameters
+    base_model = ft.Dropdown(
+        label="Base model",
+        options=[
+            ft.dropdown.Option("unsloth/mistral-7b-instruct-v0.3-bnb-4bit"),
+            ft.dropdown.Option("Qwen/Qwen2-1.5B-Instruct"),
+            ft.dropdown.Option("meta-llama/Llama-3.1-8B-Instruct"),
+        ],
+        value="unsloth/mistral-7b-instruct-v0.3-bnb-4bit",
+        width=360,
+    )
+    epochs_tf = ft.TextField(label="Epochs", value="1", width=120)
+    lr_tf = ft.TextField(label="Learning rate", value="2e-5", width=140)
+    batch_tf = ft.TextField(label="Batch size", value="2", width=120)
+    grad_acc_tf = ft.TextField(label="Grad accum", value="4", width=120)
+    max_steps_tf = ft.TextField(label="Max steps (mock)", value="200", width=160)
+    use_lora_cb = ft.Checkbox(label="Use LoRA", value=True)
+    out_dir_tf = ft.TextField(label="Output dir", value="outputs/mock_run", width=260)
+
+    # Status & progress
+    train_timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
+    train_timeline_placeholder = make_empty_placeholder("No training logs yet", ICONS.TASK)
+    train_progress = ft.ProgressBar(value=0, expand=True)
+    train_prog_text = ft.Text("0%")
+    train_busy_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
+
+    def update_train_placeholders():
+        try:
+            train_timeline_placeholder.visible = len(getattr(train_timeline, "controls", []) or []) == 0
+        except Exception:
+            pass
+        page.update()
+
+    cancel_train = {"cancelled": False}
+    train_state = {"running": False}
+
+    async def on_train_mock():
+        if train_state["running"]:
+            return
+        # Reset
+        cancel_train["cancelled"] = False
+        train_state["running"] = True
+        train_busy_ring.visible = True
+        train_timeline.controls.clear()
+        train_progress.value = 0
+        train_prog_text.value = "0%"
+        update_train_placeholders(); await safe_update(page)
+
+        # Read UI params for display (no actual training)
+        src = train_source.value or "Hugging Face"
+        repo = train_hf_repo.value or ""
+        split = train_hf_split.value or "train"
+        cfg = train_hf_config.value or ""
+        jpath = train_json_path.value or ""
+        model = base_model.value or ""
+        epochs_s = (epochs_tf.value or "1").strip()
+        lr_s = (lr_tf.value or "2e-5").strip()
+        bsz_s = (batch_tf.value or "2").strip()
+        acc_s = (grad_acc_tf.value or "4").strip()
+        max_steps_s = (max_steps_tf.value or "200").strip()
+        out_dir = (out_dir_tf.value or "outputs/mock_run").strip()
+        try:
+            total_steps = max(10, min(2000, int(float(max_steps_s))))
+        except Exception:
+            total_steps = 200
+
+        # Intro logs
+        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Starting mock training…")]))
+        ds_desc = f"HF: {repo} [{split}]" if (src == "Hugging Face") else f"JSON: {jpath}"
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={epochs_s} • LR={lr_s} • BSZ={bsz_s} • GA={acc_s} • LoRA={'on' if use_lora_cb.value else 'off'}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Output dir: {out_dir}")]))
+        update_train_placeholders(); await safe_update(page)
+
+        # Simulate steps with heartbeat-style logs
+        for step in range(1, total_steps + 1):
+            if cancel_train.get("cancelled"):
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Training cancelled by user")]))
+                break
+            frac = step / float(total_steps)
+            train_progress.value = frac
+            train_prog_text.value = f"{int(frac*100)}%"
+            # heartbeat every ~5% or every 25 steps, whichever is smaller
+            do_beat = (step % max(1, total_steps // 20) == 0) or (step % 25 == 0)
+            if do_beat:
+                # make a decreasing fake loss curve
+                loss = 2.0 * (1.0 - 0.75 * frac)
+                lr_now = lr_s
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TIMER, color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text(f"Step {step}/{total_steps} | loss={loss:.4f} | lr={lr_now}")]))
+            if step in {1, total_steps // 2, total_steps}:
+                # GPU memory heartbeat placeholder
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.MEMORY, color=WITH_OPACITY(0.9, BORDER_BASE)), ft.Text("GPU: n/a (mock)")]))
+            await safe_update(page)
+            await asyncio.sleep(0.08)
+
+        if not cancel_train.get("cancelled"):
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Training complete (mock)")]))
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Training finished ✨"))
+                page.snack_bar.open = True
+            except Exception:
+                pass
+        train_busy_ring.visible = False
+        train_state["running"] = False
+        update_train_placeholders(); await safe_update(page)
+
+    def on_cancel_train(_):
+        cancel_train["cancelled"] = True
+        try:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — will stop ASAP")]))
+            update_train_placeholders(); page.update()
+        except Exception:
+            pass
+
+    def on_refresh_train(_):
+        if train_state.get("running"):
+            return
+        cancel_train["cancelled"] = False
+        train_timeline.controls.clear()
+        train_progress.value = 0
+        train_prog_text.value = "0%"
+        train_busy_ring.visible = False
+        update_train_placeholders(); page.update()
+
+    train_actions = ft.Row([
+        ft.ElevatedButton("Start Training (mock)", icon=getattr(ICONS, "PLAY_ARROW", ICONS.PLAY_CIRCLE), on_click=lambda e: page.run_task(on_train_mock)),
+        ft.OutlinedButton("Stop", icon=ICONS.CANCEL, on_click=on_cancel_train),
+        ft.TextButton("Refresh", icon=REFRESH_ICON, on_click=on_refresh_train),
+        train_busy_ring,
+    ], spacing=10)
+
+    training_tab = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Container(
+                    content=ft.Column([
+                        section_title("Dataset", ICONS.TABLE_VIEW),
+                        ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
+                        ft.Divider(),
+                        section_title("Training Params", ICONS.SETTINGS),
+                        ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
+                        train_actions,
+                        ft.Divider(),
+                        section_title("Progress", ICONS.TIMER),
+                        ft.Row([train_progress, train_prog_text]),
+                        ft.Divider(),
+                        section_title("Status", ICONS.TASK),
+                        ft.Container(
+                            ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
+                            height=240,
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
+                    ], spacing=12),
+                    width=1000,
+                )
+            ], alignment=ft.MainAxisAlignment.CENTER)
+        ], scroll=ft.ScrollMode.AUTO, spacing=0),
+        padding=16,
+    )
+
     # ---------- SETTINGS TAB (Proxy config) ----------
     settings_tab = ft.Container(
         content=ft.Column([
@@ -2888,6 +3086,7 @@ def main(page: ft.Page):
         tabs=[
             ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
             ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab),
+            ft.Tab(text="Training", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), content=training_tab),
             ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
             ft.Tab(text="Settings", icon=ICONS.SETTINGS, content=settings_tab),
         ],
@@ -2897,6 +3096,10 @@ def main(page: ft.Page):
     page.add(tabs)
     # Initialize visibility by current source value
     update_source_controls()
+    try:
+        _update_train_source()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
