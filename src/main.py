@@ -1404,7 +1404,17 @@ def main(page: ft.Page):
     )
 
     # ---------- BUILD/PUBLISH TAB ----------
+    source_mode = ft.Dropdown(
+        label="Source",
+        options=[
+            ft.dropdown.Option("JSON file"),
+            ft.dropdown.Option("Merged dataset"),
+        ],
+        value="JSON file",
+        width=180,
+    )
     data_file = ft.TextField(label="Data file (JSON)", value="scraped_training_data.json", width=360)
+    merged_dir = ft.TextField(label="Merged dataset dir", value="merged_dataset", width=240)
     seed = ft.TextField(label="Seed", value="42", width=120, keyboard_type=ft.KeyboardType.NUMBER)
     shuffle = ft.Switch(label="Shuffle", value=True)
     val_slider = ft.Slider(min=0, max=0.2, value=0.01, divisions=20, label="{value}")
@@ -1430,6 +1440,27 @@ def main(page: ft.Page):
 
     val_slider.on_change = on_split_change
     test_slider.on_change = on_split_change
+
+    # Toggle UI fields based on source selection (JSON vs Merged dataset)
+    def on_source_change(_):
+        mode = (source_mode.value or "JSON file").strip()
+        is_json = mode == "JSON file"
+        try:
+            data_file.visible = is_json
+            merged_dir.visible = not is_json
+            # Enable JSON-only processing params for JSON mode; disable in merged mode
+            for ctl in [seed, shuffle, min_len_b, val_slider, test_slider]:
+                try:
+                    ctl.disabled = not is_json
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        page.update()
+
+    source_mode.on_change = on_source_change
+    # Initialize visibility/disabled state
+    on_source_change(None)
 
     # Split badges (mock values updated during build)
     split_badges = {
@@ -1488,6 +1519,8 @@ def main(page: ft.Page):
 
         # Parse inputs
         data_path = data_file.value or "scraped_training_data.json"
+        source_val = (source_mode.value or "JSON file").strip()
+        merged_path = merged_dir.value or "merged_dataset"
         try:
             seed_val = int(seed.value or 42)
         except Exception:
@@ -1517,6 +1550,148 @@ def main(page: ft.Page):
                 timeline_placeholder.visible = len(timeline.controls) == 0
             except Exception:
                 pass
+
+        # If using locally merged dataset, skip JSON pipeline and load from disk
+        if source_val == "Merged dataset":
+            add_step(f"Loading merged dataset from: {merged_path}", COLORS.BLUE, ICONS.UPLOAD_FILE)
+            await safe_update(page)
+            try:
+                loaded = await asyncio.to_thread(load_from_disk, merged_path)
+            except Exception as e:
+                add_step(f"Failed loading merged dataset: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
+                page.snack_bar = ft.SnackBar(ft.Text(f"Merged dataset not found or invalid at '{merged_path}'."))
+                page.snack_bar.open = True
+                await safe_update(page)
+                return
+
+            # Coerce to DatasetDict if needed
+            try:
+                is_dd = isinstance(loaded, DatasetDict)
+            except Exception:
+                is_dd = False
+            if not is_dd:
+                try:
+                    # Treat as single-train dataset
+                    loaded = DatasetDict({"train": loaded})
+                except Exception:
+                    add_step("Loaded object is not a datasets.Dataset or DatasetDict", COLORS.RED, ICONS.ERROR_OUTLINE)
+                    await safe_update(page)
+                    return
+
+            dd = loaded
+
+            # Update split badges with counts
+            train_n = len(dd.get("train", []))
+            val_n = len(dd.get("validation", [])) if "validation" in dd else 0
+            test_n = len(dd.get("test", [])) if "test" in dd else 0
+            split_badges["train"].content = pill(f"Train: {train_n}", split_meta["train"][0], split_meta["train"][1]).content
+            split_badges["val"].content = pill(f"Val: {val_n}", split_meta["val"][0], split_meta["val"][1]).content
+            split_badges["test"].content = pill(f"Test: {test_n}", split_meta["test"][0], split_meta["test"][1]).content
+            await safe_update(page)
+
+            # Save to disk with heartbeat
+            save_text = ft.Text(f"Saving dataset to {out_dir}")
+            timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), save_text]))
+            await safe_update(page)
+            save_task = asyncio.create_task(asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir))))
+            i = 0
+            while not save_task.done():
+                if cancel_build["cancelled"]:
+                    save_text.value = "Cancel requested — waiting for current save to finish…"
+                else:
+                    save_text.value = f"Saving dataset{'.' * (i % 4)}"
+                i += 1
+                await safe_update(page)
+                await asyncio.sleep(0.4)
+            try:
+                await save_task
+            except Exception as e:
+                save_text.value = f"Save failed: {e}"
+                timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Save failed")]))
+                await safe_update(page)
+                return
+            save_text.value = "Saved dataset"
+            timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
+            await safe_update(page)
+            dd_ref["dd"] = dd
+
+            # Optional push
+            if do_push:
+                if not repo:
+                    add_step("Missing Repo ID for push", COLORS.RED, ICONS.ERROR_OUTLINE)
+                    await safe_update(page)
+                    return
+                if not token_val:
+                    try:
+                        token_val = sd.HfFolder.get_token()
+                    except Exception:
+                        token_val = ""
+                if not token_val:
+                    add_step("No HF token found — cannot push", COLORS.RED, ICONS.ERROR_OUTLINE)
+                    await safe_update(page)
+                    return
+                add_step(f"Pushing to Hub: {repo}", COLORS.BLUE, ICONS.CLOUD_UPLOAD)
+                await safe_update(page)
+                try:
+                    push_text = ft.Text(f"Pushing to Hub: {repo}")
+                    timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), push_text]))
+                    await safe_update(page)
+                    push_task = asyncio.create_task(asyncio.to_thread(sd.push_to_hub, dd, repo, is_private, token_val))
+                    j = 0
+                    while not push_task.done():
+                        if cancel_build["cancelled"]:
+                            push_text.value = "Cancel requested — waiting for current upload to finish…"
+                        else:
+                            push_text.value = f"Uploading{'.' * (j % 4)}"
+                        j += 1
+                        await safe_update(page)
+                        await asyncio.sleep(0.6)
+                    await push_task
+
+                    if cancel_build["cancelled"]:
+                        timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")]))
+                        await safe_update(page)
+                        return
+
+                    # Build README and upload
+                    readme_text = ft.Text("Building dataset card (README)")
+                    timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.BLUE), readme_text]))
+                    await safe_update(page)
+                    readme = await asyncio.to_thread(sd.build_dataset_card_content, dd, repo)
+                    readme_text.value = "Built dataset card"
+                    await safe_update(page)
+
+                    up_text = ft.Text("Uploading README.md")
+                    timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.BLUE), up_text]))
+                    await safe_update(page)
+                    up_task = asyncio.create_task(asyncio.to_thread(sd.upload_readme, repo, token_val, readme))
+                    k = 0
+                    while not up_task.done():
+                        if cancel_build["cancelled"]:
+                            up_text.value = "Cancel requested — waiting for current upload to finish…"
+                        else:
+                            up_text.value = f"Uploading README{'.' * (k % 4)}"
+                        k += 1
+                        await safe_update(page)
+                        await asyncio.sleep(0.6)
+                    await up_task
+
+                    _url = f"https://huggingface.co/datasets/{repo}"
+                    timeline.controls.append(
+                        ft.Row([
+                            ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
+                            ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
+                        ])
+                    )
+                    add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
+                    page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
+                    page.snack_bar.open = True
+                    await safe_update(page)
+                except Exception as e:
+                    add_step(f"Push failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
+                    await safe_update(page)
+
+            return
 
         # Validate splits
         if val_frac + test_frac >= 1.0:
@@ -1786,7 +1961,7 @@ def main(page: ft.Page):
                 ft.Container(
                     content=ft.Column([
                         section_title("Dataset Params", ICONS.SETTINGS),
-                        ft.Row([data_file, seed, shuffle, min_len_b, save_dir], wrap=True),
+                        ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
                         ft.Divider(),
                         section_title("Splits", ICONS.TABLE_VIEW),
                         ft.Row([
@@ -1835,7 +2010,16 @@ def main(page: ft.Page):
     rows_host = ft.Column(spacing=8)
 
     def make_dataset_row():
-        ds_id = ft.TextField(label="Dataset repo (e.g., username/dataset)", width=360)
+        source_dd = ft.Dropdown(
+            label="Source",
+            options=[
+                ft.dropdown.Option("Hugging Face"),
+                ft.dropdown.Option("JSON file"),
+            ],
+            value="Hugging Face",
+            width=160,
+        )
+        ds_id = ft.TextField(label="Dataset repo (e.g., username/dataset)", width=360, visible=True)
         split = ft.Dropdown(
             label="Split",
             options=[
@@ -1846,21 +2030,43 @@ def main(page: ft.Page):
             ],
             value="train",
             width=160,
+            visible=True,
         )
-        config = ft.TextField(label="Config (optional)", width=180)
-        in_col = ft.TextField(label="Input column (optional)", width=200)
-        out_col = ft.TextField(label="Output column (optional)", width=200)
+        config = ft.TextField(label="Config (optional)", width=180, visible=True)
+        in_col = ft.TextField(label="Input column (optional)", width=200, visible=True)
+        out_col = ft.TextField(label="Output column (optional)", width=200, visible=True)
+        json_path = ft.TextField(label="JSON path", width=360, visible=False)
         remove_btn = ft.IconButton(ICONS.DELETE)
-        row = ft.Row([ds_id, split, config, in_col, out_col, remove_btn], spacing=10, wrap=True)
+        row = ft.Row([source_dd, ds_id, split, config, in_col, out_col, json_path, remove_btn], spacing=10, wrap=True)
 
         # Keep references for later retrieval
         row.data = {
+            "source": source_dd,
             "ds": ds_id,
             "split": split,
             "config": config,
             "in": in_col,
             "out": out_col,
+            "json": json_path,
         }
+
+        def on_source_change(_):
+            is_hf = (getattr(source_dd, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
+            ds_id.visible = is_hf
+            split.visible = is_hf
+            config.visible = is_hf
+            in_col.visible = is_hf
+            out_col.visible = is_hf
+            json_path.visible = not is_hf
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        try:
+            source_dd.on_change = on_source_change
+        except Exception:
+            pass
 
         def remove_row(_):
             try:
@@ -1883,7 +2089,33 @@ def main(page: ft.Page):
     rows_host.controls.append(make_dataset_row())
 
     # Output settings
+    merge_output_format = ft.Dropdown(
+        label="Output format",
+        options=[ft.dropdown.Option("HF dataset dir"), ft.dropdown.Option("JSON file")],
+        value="HF dataset dir",
+        width=220,
+    )
     merge_save_dir = ft.TextField(label="Save dir", value="merged_dataset", width=240)
+
+    def update_output_controls(_=None):
+        fmt = (merge_output_format.value or "").lower()
+        if "json" in fmt:
+            merge_save_dir.label = "Save file (.json)"
+            if (merge_save_dir.value or "").strip() == "merged_dataset":
+                merge_save_dir.value = "merged.json"
+        else:
+            merge_save_dir.label = "Save dir"
+            if (merge_save_dir.value or "").strip() == "merged.json":
+                merge_save_dir.value = "merged_dataset"
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    try:
+        merge_output_format.on_change = update_output_controls
+    except Exception:
+        pass
 
     # Status & preview
     merge_timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
@@ -2049,19 +2281,25 @@ def main(page: ft.Page):
         entries = []
         for r in rows:
             d = getattr(r, "data", None) or {}
+            src_dd = d.get("source")
             ds_tf = d.get("ds")
             sp_dd = d.get("split")
             cfg_tf = d.get("config")
             in_tf = d.get("in")
             out_tf = d.get("out")
+            json_tf = d.get("json")
+            src = (getattr(src_dd, "value", "Hugging Face") or "Hugging Face") if src_dd else "Hugging Face"
             repo = (getattr(ds_tf, "value", "") or "").strip() if ds_tf else ""
-            if repo:
+            json_path = (getattr(json_tf, "value", "") or "").strip() if json_tf else ""
+            if (src == "Hugging Face" and repo) or (src == "JSON file" and json_path):
                 entries.append({
+                    "source": src,
                     "repo": repo,
                     "split": (getattr(sp_dd, "value", "train") or "train") if sp_dd else "train",
                     "config": (getattr(cfg_tf, "value", "") or "").strip() if cfg_tf else "",
                     "in": (getattr(in_tf, "value", "") or "").strip() if in_tf else "",
                     "out": (getattr(out_tf, "value", "") or "").strip() if out_tf else "",
+                    "json": json_path,
                 })
         if len(entries) < 2:
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Add at least two datasets")]))
@@ -2070,22 +2308,74 @@ def main(page: ft.Page):
             await safe_update(page)
             return
 
-        out_dir = merge_save_dir.value or "merged_dataset"
+        out_path = merge_save_dir.value or "merged_dataset"
         op = merge_op.value or "Concatenate"
+        fmt = (merge_output_format.value or "HF dataset dir").lower()
+        output_json = ("json" in fmt) or (out_path.lower().endswith(".json"))
+        # Auto-infer JSON output if all sources are JSON files and user didn't explicitly choose JSON
+        try:
+            if (not output_json) and all(ent.get("source") == "JSON file" for ent in entries):
+                output_json = True
+                if not out_path.lower().endswith(".json"):
+                    out_path = f"{out_path}.json"
+                # Reflect this choice in the UI so Preview button resolves correctly
+                try:
+                    merge_save_dir.value = out_path
+                    if merge_output_format is not None:
+                        merge_output_format.value = "JSON file"
+                    update_output_controls()
+                except Exception:
+                    pass
+                await safe_update(page)
+        except Exception:
+            pass
 
         # Load and map each dataset
-        prepped_all = []
+        hf_prepped = []  # list[Dataset]
+        json_sources: list[list[dict]] = []  # list of lists for interleave/concat
         for i, ent in enumerate(entries, start=1):
             if merge_cancel.get("cancelled"):
                 break
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.DOWNLOAD, color=COLORS.BLUE), ft.Text(f"Loading {ent['repo']} [{ent['split']}]…")]))
+            src = ent.get("source", "Hugging Face")
+            label = ent['repo'] if src == "Hugging Face" else ent.get("json", "(json)")
+            split_lbl = ent['split'] if src == "Hugging Face" else "-"
+            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.DOWNLOAD, color=COLORS.BLUE), ft.Text(f"Loading {label} [{split_lbl}]…")]))
             update_merge_placeholders(); await safe_update(page)
             try:
-                dss = await _load_and_prepare(ent["repo"], ent["split"], ent["config"], ent["in"], ent["out"])
-                prepped_all.extend(dss)
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {ent['repo']}")]))
+                if src == "Hugging Face":
+                    dss = await _load_and_prepare(ent["repo"], ent["split"], ent["config"], ent["in"], ent["out"])
+                    hf_prepped.extend(dss)
+                    merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {ent['repo']}")]))
+                else:
+                    # JSON file source
+                    path = ent.get("json")
+                    if not path:
+                        raise RuntimeError("JSON path required")
+                    try:
+                        records = await asyncio.to_thread(sd.load_records, path)
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to read JSON: {e}")
+                    try:
+                        examples = await asyncio.to_thread(sd.normalize_records, records, 1)
+                    except Exception:
+                        # Fallback: minimal normalization
+                        examples = []
+                        for r in records or []:
+                            if isinstance(r, dict):
+                                a = str((r.get("input") or "")).strip()
+                                b = str((r.get("output") or "")).strip()
+                                if a and b:
+                                    examples.append({"input": a, "output": b})
+                    if output_json:
+                        json_sources.append(examples)
+                    else:
+                        if Dataset is None:
+                            raise RuntimeError("datasets library unavailable to convert JSON -> HF")
+                        ds = await asyncio.to_thread(lambda: Dataset.from_list(examples))
+                        hf_prepped.append(ds)
+                    merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {os.path.basename(path)}")]))
             except Exception as e:
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Failed {ent['repo']}: {e}")]))
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Failed {label}: {e}")]))
                 await safe_update(page)
                 merge_busy_ring.visible = False
                 update_merge_placeholders()
@@ -2098,25 +2388,59 @@ def main(page: ft.Page):
             update_merge_placeholders(); await safe_update(page)
             return
 
+        # Convert HF prepped to JSON if output is JSON
+        if output_json and hf_prepped:
+            for ds in hf_prepped:
+                try:
+                    exs = []
+                    for rec in ds:
+                        exs.append({"input": (rec.get("input", "") or ""), "output": (rec.get("output", "") or "")})
+                    json_sources.append(exs)
+                except Exception:
+                    pass
+
         # Merge
         try:
-            if not prepped_all:
-                raise RuntimeError("No datasets to merge after preparation")
-            if op == "Concatenate" or len(prepped_all) == 1:
-                merged = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
-            else:
-                if hf_interleave is not None:
-                    merged = await asyncio.to_thread(lambda: hf_interleave(prepped_all, probabilities=None, seed=42))
+            if output_json:
+                if not json_sources and not hf_prepped:
+                    raise RuntimeError("No datasets to merge after preparation")
+                # Interleave or concatenate JSON sources
+                merged_examples: list[dict] = []
+                if op == "Interleave" and len(json_sources) > 1:
+                    # Round-robin across sources
+                    indices = [0] * len(json_sources)
+                    total = sum(len(s) for s in json_sources)
+                    while len(merged_examples) < total:
+                        for i, s in enumerate(json_sources):
+                            if indices[i] < len(s):
+                                merged_examples.append(s[indices[i]])
+                                indices[i] += 1
+                    # no shuffle; deterministic RR
                 else:
-                    # Fallback: concatenate + shuffle (approximate interleave)
-                    tmp = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
-                    try:
-                        merged = await asyncio.to_thread(lambda: tmp.shuffle(seed=42))
-                        merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SHUFFLE, color=COLORS.ORANGE), ft.Text("Interleave not available — using shuffle fallback")]))
-                    except Exception:
-                        merged = tmp
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=COLORS.BLUE), ft.Text(f"Merged rows: {len(merged)}")]))
-            await safe_update(page)
+                    for s in json_sources:
+                        merged_examples.extend(s)
+                merged_len = len(merged_examples)
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=COLORS.BLUE), ft.Text(f"Merged rows: {merged_len}")]))
+                await safe_update(page)
+            else:
+                prepped_all = hf_prepped
+                if not prepped_all:
+                    raise RuntimeError("No datasets to merge after preparation")
+                if op == "Concatenate" or len(prepped_all) == 1:
+                    merged = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
+                else:
+                    if hf_interleave is not None:
+                        merged = await asyncio.to_thread(lambda: hf_interleave(prepped_all, probabilities=None, seed=42))
+                    else:
+                        # Fallback: concatenate + shuffle (approximate interleave)
+                        tmp = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
+                        try:
+                            merged = await asyncio.to_thread(lambda: tmp.shuffle(seed=42))
+                            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SHUFFLE, color=COLORS.ORANGE), ft.Text("Interleave not available — using shuffle fallback")]))
+                        except Exception:
+                            merged = tmp
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=COLORS.BLUE), ft.Text(f"Merged rows: {len(merged)}")]))
+                await safe_update(page)
         except Exception as e:
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Merge failed: {e}")]))
             merge_busy_ring.visible = False
@@ -2125,12 +2449,28 @@ def main(page: ft.Page):
 
         # Save to disk
         try:
-            dd = DatasetDict({"train": merged}) if DatasetDict is not None else {"train": merged}
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), ft.Text(f"Saving to {out_dir}")]))
-            await safe_update(page)
-            await asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
-            await safe_update(page)
+            if output_json:
+                target = out_path
+                # ensure dir exists if nested
+                try:
+                    dname = os.path.dirname(target)
+                    if dname:
+                        await asyncio.to_thread(lambda: os.makedirs(dname, exist_ok=True))
+                except Exception:
+                    pass
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), ft.Text(f"Saving JSON to {target}")]))
+                await safe_update(page)
+                await asyncio.to_thread(lambda: open(target, "w", encoding="utf-8").write(json.dumps(merged_examples, ensure_ascii=False, indent=2)))
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
+                await safe_update(page)
+            else:
+                out_dir = out_path
+                dd = DatasetDict({"train": merged}) if DatasetDict is not None else {"train": merged}
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), ft.Text(f"Saving to {out_dir}")]))
+                await safe_update(page)
+                await asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
+                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
+                await safe_update(page)
         except Exception as e:
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Save failed: {e}")]))
             merge_busy_ring.visible = False
@@ -2140,13 +2480,18 @@ def main(page: ft.Page):
         # Preview first N rows in-place
         try:
             merge_preview_host.controls.clear()
-            head_n = min(12, len(merged))
-            idxs = list(range(head_n))
-            head = await asyncio.to_thread(lambda: merged.select(idxs)) if head_n > 0 else None
             pairs = []
-            if head is not None:
-                for rec in head:
-                    pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
+            if output_json:
+                head_n = min(12, len(merged_examples))
+                for rec in merged_examples[:head_n]:
+                    pairs.append(((rec.get("input", "") or ""), (rec.get("output", "") or "")))
+            else:
+                head_n = min(12, len(merged))
+                idxs = list(range(head_n))
+                head = await asyncio.to_thread(lambda: merged.select(idxs)) if head_n > 0 else None
+                if head is not None:
+                    for rec in head:
+                        pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
             lfx, rfx = compute_two_col_flex(pairs)
             merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
             for a, b in pairs:
@@ -2175,7 +2520,7 @@ def main(page: ft.Page):
         update_merge_placeholders(); page.update()
 
     async def on_preview_merged():
-        """Open a modal dialog showing the merged dataset saved to disk (DatasetDict)."""
+        """Open a modal dialog showing the merged dataset saved to disk (DatasetDict or JSON)."""
         # Immediate feedback
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Opening merged dataset preview..."))
@@ -2186,6 +2531,8 @@ def main(page: ft.Page):
 
         # Resolve save dir robustly
         orig_dir = merge_save_dir.value or "merged_dataset"
+        fmt_now = (merge_output_format.value or "").lower()
+        wants_json = ("json" in fmt_now) or (str(orig_dir).lower().endswith(".json"))
         candidates = []
         if os.path.isabs(orig_dir):
             candidates.append(orig_dir)
@@ -2207,6 +2554,101 @@ def main(page: ft.Page):
                 "Merged dataset not found. Tried:\n" + "\n".join(resolved_list[:4])
             ))
             page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        if wants_json:
+            # Load JSON and preview
+            try:
+                data = await asyncio.to_thread(sd.load_records, existing)
+            except Exception as e:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to read JSON: {e}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+                return
+            try:
+                data = await asyncio.to_thread(sd.normalize_records, data, 1)
+            except Exception:
+                pass
+            total = len(data or [])
+            page_size = 100
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            state = {"page": 0}
+
+            grid_list = ft.ListView(expand=1, auto_scroll=False)
+            info_text = ft.Text("")
+            prev_btn = ft.TextButton("Prev")
+            next_btn = ft.TextButton("Next")
+
+            def render_page_json():
+                start = state["page"] * page_size
+                end = min(start + page_size, total)
+                grid_list.controls.clear()
+                pairs = []
+                for rec in (data or [])[start:end]:
+                    pairs.append(((rec.get("input", "") or ""), (rec.get("output", "") or "")))
+                lfx, rfx = compute_two_col_flex(pairs)
+                grid_list.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+                for a, b in pairs:
+                    grid_list.controls.append(two_col_row(a, b, lfx, rfx))
+                info_text.value = f"Page {state['page']+1}/{total_pages} • Showing {start+1}-{end} of {total}"
+                prev_btn.disabled = state["page"] <= 0
+                next_btn.disabled = state["page"] >= (total_pages - 1)
+                page.update()
+
+            def on_prev_json(_):
+                if state["page"] > 0:
+                    state["page"] -= 1
+                    render_page_json()
+
+            def on_next_json(_):
+                if state["page"] < (total_pages - 1):
+                    state["page"] += 1
+                    render_page_json()
+
+            prev_btn.on_click = on_prev_json
+            next_btn.on_click = on_next_json
+
+            controls_bar = ft.Row([
+                prev_btn,
+                next_btn,
+                info_text,
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Merged Dataset Viewer — {total} rows"),
+                content=ft.Container(
+                    width=900,
+                    height=600,
+                    content=ft.Column([
+                        controls_bar,
+                        ft.Container(grid_list, expand=True),
+                    ], expand=True),
+                ),
+                actions=[],
+            )
+
+            def close_dlg_json(_):
+                dlg.open = False
+                page.update()
+
+            dlg.actions = [ft.TextButton("Close", on_click=close_dlg_json)]
+            try:
+                dlg.on_dismiss = lambda e: page.update()
+            except Exception:
+                pass
+            render_page_json()
+            opened = False
+            try:
+                if hasattr(page, "open") and callable(getattr(page, "open")):
+                    page.open(dlg)
+                    opened = True
+            except Exception:
+                opened = False
+            if not opened:
+                page.dialog = dlg
+                dlg.open = True
             await safe_update(page)
             return
 
@@ -2375,7 +2817,7 @@ def main(page: ft.Page):
                 ft.Container(
                     content=ft.Column([
                         section_title("Merge Datasets", ICONS.TABLE_VIEW),
-                        ft.Text("Combine multiple Hugging Face datasets. Map columns to a unified input/output schema and merge.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+                        ft.Text("Combine multiple datasets (Hugging Face or local JSON). Map columns to a unified input/output schema and merge.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
                         ft.Divider(),
                         section_title("Operation", ICONS.SHUFFLE),
                         ft.Row([merge_op], wrap=True),
@@ -2385,7 +2827,7 @@ def main(page: ft.Page):
                         rows_host,
                         ft.Divider(),
                         section_title("Output", ICONS.SAVE_ALT),
-                        ft.Row([merge_save_dir], wrap=True),
+                        ft.Row([merge_output_format, merge_save_dir], wrap=True),
                         merge_actions,
                         ft.Divider(),
                         section_title("Preview", ICONS.PREVIEW),
