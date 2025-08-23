@@ -4,7 +4,7 @@ import time
 import os
 import shutil
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import json
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
@@ -19,6 +19,7 @@ except Exception:
     import save_dataset as sd
 
 import reddit_scraper as rdt
+import stackexchange_scraper as sx
 try:
     # Hugging Face datasets (for merge tab)
     from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets, get_dataset_config_names, load_from_disk
@@ -270,6 +271,18 @@ def apply_proxy_from_env() -> str:
     except Exception:
         pass
 
+    # StackExchange scraper (optional)
+    try:
+        if sx is not None:
+            if raw_proxy is not None and hasattr(sx, "PROXY_URL"):
+                sx.PROXY_URL = raw_proxy
+            if use_env is not None and hasattr(sx, "USE_ENV_PROXIES"):
+                sx.USE_ENV_PROXIES = bool(use_env)
+            if hasattr(sx, "apply_session_config"):
+                sx.apply_session_config()
+    except Exception:
+        pass
+
     # Determine effective configuration for logging
     if use_env is True:
         return "Proxy: using environment proxies (USE_ENV_PROXIES=on)"
@@ -328,6 +341,17 @@ def apply_proxy_from_ui(enabled: bool, proxy_url: Optional[str], use_env: bool) 
                 rdt.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
             if hasattr(rdt, "apply_session_config"):
                 rdt.apply_session_config()
+    except Exception:
+        pass
+
+    try:
+        # StackExchange
+        if hasattr(sx, "USE_ENV_PROXIES"):
+            sx.USE_ENV_PROXIES = bool(use_env) if enabled else False
+        if hasattr(sx, "PROXY_URL"):
+            sx.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
+        if hasattr(sx, "apply_session_config"):
+            sx.apply_session_config()
     except Exception:
         pass
 
@@ -783,6 +807,126 @@ async def run_real_scrape(
     page.snack_bar.open = True
     await safe_update(page)
 
+async def run_stackexchange_scrape(
+    page: ft.Page,
+    log_view: ft.ListView,
+    prog: ft.ProgressBar,
+    labels: dict,
+    preview_host: ft.ListView,
+    cancel_flag: dict,
+    site: str,
+    max_pairs: int,
+    delay: float,
+    min_len_val: int,
+    output_path: str,
+    ui_proxy_enabled: bool,
+    ui_proxy_url: Optional[str],
+    ui_use_env_proxies: bool,
+) -> None:
+    """Run the Stack Exchange scraper in a worker thread and integrate results into the UI."""
+    def log(msg: str):
+        log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
+    await safe_update(page)
+
+    # Apply proxy settings from UI (overrides env/defaults)
+    try:
+        pmsg = apply_proxy_from_ui(bool(ui_proxy_enabled), ui_proxy_url, bool(ui_use_env_proxies))
+        log(pmsg)
+    except Exception:
+        pass
+
+    prog.value = 0
+    labels.get("threads").value = "Pages processed: 0"
+    labels.get("pairs").value = "Pairs Found: 0"
+    await safe_update(page)
+
+    log(f"Starting StackExchange scrape (site={site}, max_pairs={max_pairs})...")
+    await safe_update(page)
+
+    # Kick off the blocking scraper in a background thread with cancellation support
+    fut = asyncio.create_task(asyncio.to_thread(
+        sx.scrape,
+        site=site or "stackoverflow",
+        max_pairs=int(max_pairs),
+        delay=float(delay),
+        min_len=int(min_len_val),
+        cancel_cb=lambda: bool(cancel_flag.get("cancelled")),
+    ))
+
+    # Progress pulse and cooperative cancellation monitor
+    async def pulse_and_watch():
+        try:
+            while not fut.done():
+                # Nothing to force-cancel; cancel_cb will be polled in the worker
+                cur = (prog.value or 0.0)
+                cur = 0.4 if cur >= 0.9 else (cur + 0.04)
+                prog.value = cur
+                await safe_update(page)
+                await asyncio.sleep(0.35)
+        except Exception:
+            pass
+
+    pulse_task = asyncio.create_task(pulse_and_watch())
+
+    try:
+        results = await fut
+    except Exception as e:
+        if cancel_flag.get("cancelled"):
+            log("Scrape cancelled by user.")
+            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
+            page.snack_bar.open = True
+        else:
+            log(f"StackExchange scrape failed: {e}")
+            page.snack_bar = ft.SnackBar(ft.Text(f"StackExchange scrape failed: {e}"))
+            page.snack_bar.open = True
+        await safe_update(page)
+        try:
+            pulse_task.cancel()
+        except Exception:
+            pass
+        return
+    finally:
+        try:
+            pulse_task.cancel()
+        except Exception:
+            pass
+
+    # Completed
+    prog.value = 1.0
+    await safe_update(page)
+
+    # Write JSON
+    pairs_count = 0
+    preview_pairs: List[Tuple[str, str]] = []
+    try:
+        await asyncio.to_thread(
+            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(results or [], ensure_ascii=False, indent=4))
+        )
+        log(f"Wrote {len(results or [])} records to {output_path}")
+        pairs_count = len(results or [])
+        preview_pairs = [
+            (d.get("input", "") or "", d.get("output", "") or "") for d in (results or [])[:10]
+        ]
+    except Exception as e:
+        log(f"Failed to write results: {e}")
+    await safe_update(page)
+
+    labels.get("pairs").value = f"Pairs Found: {pairs_count}"
+    labels.get("threads").value = f"Questions processed: {pairs_count}"
+
+    # Populate preview grid
+    try:
+        preview_host.controls.clear()
+        lfx, rfx = compute_two_col_flex(preview_pairs)
+        preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+        for a, b in preview_pairs:
+            preview_host.controls.append(two_col_row(a, b, lfx, rfx))
+    except Exception as e:
+        log(f"Failed to render preview: {e}")
+    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
+    page.snack_bar.open = True
+    await safe_update(page)
+
 async def simulate_build(page: ft.Page, timeline: ft.Column, split_badges: dict,
                          split_meta: dict, cancel_flag: dict) -> None:
     def add_step(text: str, color: str, icon: str):
@@ -895,11 +1039,12 @@ def main(page: ft.Page):
     source_dd = ft.Dropdown(
         label="Source",
         value="4chan",
-        options=[ft.dropdown.Option("4chan"), ft.dropdown.Option("reddit")],
+        options=[ft.dropdown.Option("4chan"), ft.dropdown.Option("reddit"), ft.dropdown.Option("stackexchange")],
         width=180,
     )
     reddit_url = ft.TextField(label="Reddit URL (subreddit or post)", value="https://www.reddit.com/r/Conservative/", width=420)
     reddit_max_posts = ft.TextField(label="Max Posts (Reddit)", value="30", width=180, keyboard_type=ft.KeyboardType.NUMBER)
+    se_site = ft.TextField(label="StackExchange Site", value="stackoverflow", width=260)
     max_threads = ft.TextField(label="Max Threads", value="50", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     max_pairs = ft.TextField(label="Max Pairs", value="5000", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     delay = ft.TextField(label="Delay (s)", value="1.0", width=160, keyboard_type=ft.KeyboardType.NUMBER)
@@ -938,25 +1083,37 @@ def main(page: ft.Page):
     pair_mode.on_change = lambda e: update_context_controls()
     update_context_controls()
 
-    # Toggle visibility between 4chan and Reddit controls
+    # Toggle visibility between 4chan, Reddit and StackExchange controls
     def update_source_controls():
-        use_reddit = (source_dd.value == "reddit")
-        # Boards area
+        src = (source_dd.value or "").strip().lower()
+        is_reddit = (src == "reddit")
+        is_se = (src == "stackexchange")
+        # Boards area (4chan only)
         try:
-            boards_wrap.visible = not use_reddit
-            board_actions.visible = not use_reddit
-            board_warning.visible = not use_reddit
+            boards_wrap.visible = not (is_reddit or is_se)
+            board_actions.visible = not (is_reddit or is_se)
+            board_warning.visible = not (is_reddit or is_se)
         except Exception:
             pass
         # Reddit params
         try:
-            reddit_params_row.visible = use_reddit
+            reddit_params_row.visible = is_reddit
         except Exception:
             pass
-        # Some parameter labels are shared
-        max_threads.visible = not use_reddit  # 4chan-specific
-        max_pairs.visible = not use_reddit    # 4chan target pairs
-        # For Reddit, delay/min_len/output_path and pairing controls still apply
+        # StackExchange params
+        try:
+            se_params_row.visible = is_se
+        except Exception:
+            pass
+        # Parameters visibility
+        max_threads.visible = not (is_reddit or is_se)  # 4chan-specific
+        max_pairs.visible = not is_reddit               # used by 4chan and StackExchange
+        # Pairing/context controls apply to 4chan and Reddit, hide for StackExchange
+        for ctl in [pair_mode, strategy_dd, k_field, max_chars_field, merge_same_id_cb, require_question_cb]:
+            try:
+                ctl.visible = not is_se
+            except Exception:
+                pass
         page.update()
 
     source_dd.on_change = lambda e: (update_source_controls(), update_board_validation())
@@ -1015,8 +1172,8 @@ def main(page: ft.Page):
     )
 
     def update_board_validation():
-        # If scraping 4chan, enforce board selection; Reddit doesn't require boards
-        if source_dd.value == "reddit":
+        # If scraping 4chan, enforce board selection; Reddit/StackExchange don't require boards
+        if source_dd.value in ("reddit", "stackexchange"):
             start_button.disabled = False
             board_warning.value = ""
         else:
@@ -1049,7 +1206,7 @@ def main(page: ft.Page):
         update_scrape_placeholders()
         # Collect selected boards (only for 4chan)
         selected_boards = [p.data.get("label") for p in board_pills if p.data and p.data.get("selected")]
-        if source_dd.value != "reddit" and not selected_boards:
+        if source_dd.value == "4chan" and not selected_boards:
             page.snack_bar = ft.SnackBar(ft.Text("Select at least one board to scrape."))
             page.snack_bar.open = True
             await safe_update(page)
@@ -1090,6 +1247,10 @@ def main(page: ft.Page):
             log_list.controls.append(ft.Text(
                 f"Reddit URL: {reddit_url.value} | Max posts: {reddit_max_posts.value}"
             ))
+        elif source_dd.value == "stackexchange":
+            log_list.controls.append(ft.Text(
+                f"StackExchange site: {se_site.value} | Max pairs: {max_pairs.value}"
+            ))
         else:
             log_list.controls.append(ft.Text(
                 f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards)>20 else ''}"
@@ -1126,6 +1287,23 @@ def main(page: ft.Page):
                     ctx_max_chars=max_chars_val,
                     merge_same_id=bool(merge_same_id_cb.value),
                     require_question=bool(require_question_cb.value),
+                    ui_proxy_enabled=bool(proxy_enable_cb.value),
+                    ui_proxy_url=(proxy_url_tf.value or "").strip(),
+                    ui_use_env_proxies=bool(use_env_cb.value),
+                )
+            elif source_dd.value == "stackexchange":
+                await run_stackexchange_scrape(
+                    page=page,
+                    log_view=log_list,
+                    prog=scrape_prog,
+                    labels={"threads": threads_label, "pairs": pairs_label},
+                    preview_host=preview_host,
+                    cancel_flag=cancel_state,
+                    site=se_site.value or "stackoverflow",
+                    max_pairs=mp,
+                    delay=dl,
+                    min_len_val=ml,
+                    output_path=out_path,
                     ui_proxy_enabled=bool(proxy_enable_cb.value),
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
@@ -1365,6 +1543,9 @@ def main(page: ft.Page):
     # Reddit params row (hidden by default)
     reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True)
     reddit_params_row.visible = False
+    # StackExchange params row (hidden by default)
+    se_params_row = ft.Row([se_site], wrap=True)
+    se_params_row.visible = False
 
     scrape_tab = ft.Container(
         content=ft.Column([
@@ -1377,6 +1558,7 @@ def main(page: ft.Page):
             ft.Divider(),
             section_title("Parameters", ICONS.TUNE),
             reddit_params_row,
+            se_params_row,
             ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
             ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
             ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
@@ -2886,68 +3068,136 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-    try:
-        train_source.on_change = _update_train_source
-    except Exception:
-        pass
-
     # Training parameters
+    skill_level = ft.Dropdown(
+        label="Skill level",
+        options=[ft.dropdown.Option("Beginner"), ft.dropdown.Option("Expert")],
+        value="Beginner",
+        width=160,
+    )
     base_model = ft.Dropdown(
         label="Base model",
         options=[
-            ft.dropdown.Option("unsloth/mistral-7b-instruct-v0.3-bnb-4bit"),
-            ft.dropdown.Option("Qwen/Qwen2-1.5B-Instruct"),
-            ft.dropdown.Option("meta-llama/Llama-3.1-8B-Instruct"),
+            ft.dropdown.Option("microsoft/phi-2"),
+            ft.dropdown.Option("TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
+            ft.dropdown.Option("google/gemma-2b"),
         ],
-        value="unsloth/mistral-7b-instruct-v0.3-bnb-4bit",
-        width=360,
+        value="microsoft/phi-2",
+        width=320,
     )
-    epochs_tf = ft.TextField(label="Epochs", value="1", width=120)
-    lr_tf = ft.TextField(label="Learning rate", value="2e-5", width=140)
-    batch_tf = ft.TextField(label="Batch size", value="2", width=120)
-    grad_acc_tf = ft.TextField(label="Grad accum", value="4", width=120)
-    max_steps_tf = ft.TextField(label="Max steps (mock)", value="200", width=160)
+    epochs_tf = ft.TextField(label="Epochs", value="3", width=120)
+    lr_tf = ft.TextField(label="Learning rate", value="2e-4", width=160)
+    batch_tf = ft.TextField(label="Per-device batch size", value="2", width=200)
+    grad_acc_tf = ft.TextField(label="Grad accum steps", value="4", width=180)
+    max_steps_tf = ft.TextField(label="Max steps (mock)", value="200", width=180)
     use_lora_cb = ft.Checkbox(label="Use LoRA", value=True)
     out_dir_tf = ft.TextField(label="Output dir", value="outputs/mock_run", width=260)
 
-    # Status & progress
-    train_timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
-    train_timeline_placeholder = make_empty_placeholder("No training logs yet", ICONS.TASK)
-    train_progress = ft.ProgressBar(value=0, expand=True)
-    train_prog_text = ft.Text("0%")
-    train_busy_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
+    # Advanced parameters (Expert mode)
+    warmup_steps_tf = ft.TextField(label="Warmup steps", value="10", width=140)
+    weight_decay_tf = ft.TextField(label="Weight decay", value="0.01", width=140)
+    lr_sched_dd = ft.Dropdown(
+        label="LR scheduler",
+        options=[ft.dropdown.Option("linear"), ft.dropdown.Option("cosine"), ft.dropdown.Option("constant")],
+        value="linear",
+        width=160,
+    )
+    optim_dd = ft.Dropdown(
+        label="Optimizer",
+        options=[ft.dropdown.Option("adamw_8bit"), ft.dropdown.Option("adamw_torch")],
+        value="adamw_8bit",
+        width=180,
+    )
+    logging_steps_tf = ft.TextField(label="Logging steps", value="25", width=160)
+    logging_first_step_cb = ft.Checkbox(label="Log first step", value=True)
+    disable_tqdm_cb = ft.Checkbox(label="Disable tqdm", value=False)
+    seed_tf = ft.TextField(label="Seed", value="3407", width=140)
+    save_strategy_dd = ft.Dropdown(
+        label="Save strategy",
+        options=[ft.dropdown.Option("epoch"), ft.dropdown.Option("steps"), ft.dropdown.Option("no")],
+        value="epoch",
+        width=160,
+    )
+    save_total_limit_tf = ft.TextField(label="Save total limit", value="2", width=180)
+    pin_memory_cb = ft.Checkbox(label="Pin dataloader memory", value=False)
+    report_to_dd = ft.Dropdown(
+        label="Report to",
+        options=[ft.dropdown.Option("none"), ft.dropdown.Option("wandb")],
+        value="none",
+        width=160,
+    )
+    fp16_cb = ft.Checkbox(label="Use FP16", value=True)
+    bf16_cb = ft.Checkbox(label="Use BF16 (if supported)", value=False)
+
+    advanced_params_section = ft.Column([
+        ft.Row([warmup_steps_tf, weight_decay_tf, lr_sched_dd, optim_dd], wrap=True),
+        ft.Row([logging_steps_tf, logging_first_step_cb, disable_tqdm_cb, seed_tf], wrap=True),
+        ft.Row([save_strategy_dd, save_total_limit_tf, pin_memory_cb, report_to_dd], wrap=True),
+        ft.Row([fp16_cb, bf16_cb], wrap=True),
+    ], spacing=8)
+
+    # Progress & logs
+    train_progress = ft.ProgressBar(value=0.0, width=400)
+    train_prog_label = ft.Text("Progress: 0%")
+    train_timeline = ft.Column([], spacing=4)
+    train_timeline_placeholder = make_empty_placeholder("No training logs yet", getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE))
 
     def update_train_placeholders():
         try:
-            train_timeline_placeholder.visible = len(getattr(train_timeline, "controls", []) or []) == 0
+            has_logs = len(getattr(train_timeline, "controls", []) or []) > 0
+            train_timeline_placeholder.visible = not has_logs
         except Exception:
             pass
-        page.update()
 
     cancel_train = {"cancelled": False}
     train_state = {"running": False}
 
-    async def on_train_mock():
-        if train_state["running"]:
+    def _update_skill_controls(_=None):
+        level = (skill_level.value or "Beginner").lower()
+        is_beginner = (level == "beginner")
+        # Hide some tweak knobs for beginners
+        for ctl in [lr_tf, batch_tf, grad_acc_tf, max_steps_tf]:
+            try:
+                ctl.visible = (not is_beginner)
+            except Exception:
+                pass
+        # Advanced block
+        try:
+            advanced_params_section.visible = (not is_beginner)
+        except Exception:
+            pass
+        # Set beginner defaults
+        if is_beginner:
+            try:
+                epochs_tf.value = epochs_tf.value or "1"
+                lr_tf.value = "2e-5"
+                batch_tf.value = "2"
+                grad_acc_tf.value = "4"
+                max_steps_tf.value = "200"
+            except Exception:
+                pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    skill_level.on_change = _update_skill_controls
+    train_source.on_change = _update_train_source
+
+    async def on_start_training():
+        if train_state.get("running"):
             return
-        # Reset
         cancel_train["cancelled"] = False
         train_state["running"] = True
-        train_busy_ring.visible = True
-        train_timeline.controls.clear()
-        train_progress.value = 0
-        train_prog_text.value = "0%"
-        update_train_placeholders(); await safe_update(page)
 
-        # Read UI params for display (no actual training)
+        # Read inputs
         src = train_source.value or "Hugging Face"
-        repo = train_hf_repo.value or ""
-        split = train_hf_split.value or "train"
-        cfg = train_hf_config.value or ""
-        jpath = train_json_path.value or ""
-        model = base_model.value or ""
-        epochs_s = (epochs_tf.value or "1").strip()
-        lr_s = (lr_tf.value or "2e-5").strip()
+        repo = (train_hf_repo.value or "").strip()
+        split = (train_hf_split.value or "train").strip()
+        jpath = (train_json_path.value or "").strip()
+        model = base_model.value or "microsoft/phi-2"
+        epochs_s = (epochs_tf.value or "3").strip()
+        lr_s = (lr_tf.value or "2e-4").strip()
         bsz_s = (batch_tf.value or "2").strip()
         acc_s = (grad_acc_tf.value or "4").strip()
         max_steps_s = (max_steps_tf.value or "200").strip()
@@ -2965,39 +3215,36 @@ def main(page: ft.Page):
         train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Output dir: {out_dir}")]))
         update_train_placeholders(); await safe_update(page)
 
-        # Simulate steps with heartbeat-style logs
+        # Simulate steps
         for step in range(1, total_steps + 1):
             if cancel_train.get("cancelled"):
                 train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Training cancelled by user")]))
-                break
-            frac = step / float(total_steps)
-            train_progress.value = frac
-            train_prog_text.value = f"{int(frac*100)}%"
-            # heartbeat every ~5% or every 25 steps, whichever is smaller
-            do_beat = (step % max(1, total_steps // 20) == 0) or (step % 25 == 0)
-            if do_beat:
-                # make a decreasing fake loss curve
-                loss = 2.0 * (1.0 - 0.75 * frac)
-                lr_now = lr_s
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TIMER, color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text(f"Step {step}/{total_steps} | loss={loss:.4f} | lr={lr_now}")]))
-            if step in {1, total_steps // 2, total_steps}:
-                # GPU memory heartbeat placeholder
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.MEMORY, color=WITH_OPACITY(0.9, BORDER_BASE)), ft.Text("GPU: n/a (mock)")]))
-            await safe_update(page)
-            await asyncio.sleep(0.08)
-
-        if not cancel_train.get("cancelled"):
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Training complete (mock)")]))
+                train_state["running"] = False
+                await safe_update(page)
+                return
+            await asyncio.sleep(0.035 + random.uniform(0.0, 0.015))
+            train_progress.value = step / total_steps
             try:
-                page.snack_bar = ft.SnackBar(ft.Text("Training finished ✨"))
-                page.snack_bar.open = True
+                pct = int(100 * float(train_progress.value or 0))
+                train_prog_label.value = f"Progress: {pct}%"
             except Exception:
                 pass
-        train_busy_ring.visible = False
-        train_state["running"] = False
-        update_train_placeholders(); await safe_update(page)
+            # Heartbeat logs
+            if step == 1 or (step % max(1, total_steps // 20) == 0) or (step % 25 == 0):
+                fake_loss = max(0.02, 2.0 / (1.0 + 0.02 * step) + random.uniform(-0.05, 0.05))
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.FAVORITE, color=WITH_OPACITY(0.9, COLORS.PINK)), ft.Text(f"Step {step}/{total_steps} — loss={fake_loss:.3f}")]))
+            await safe_update(page)
 
-    def on_cancel_train(_):
+        # Completed
+        train_progress.value = 1.0
+        train_prog_label.value = "Progress: 100%"
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Training finished ✔")]))
+        train_state["running"] = False
+        await safe_update(page)
+
+    def on_stop_training(_):
+        if not train_state.get("running"):
+            return
         cancel_train["cancelled"] = True
         try:
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — will stop ASAP")]))
@@ -3005,21 +3252,21 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-    def on_refresh_train(_):
+    def on_refresh_training(_):
         if train_state.get("running"):
             return
-        cancel_train["cancelled"] = False
-        train_timeline.controls.clear()
-        train_progress.value = 0
-        train_prog_text.value = "0%"
-        train_busy_ring.visible = False
-        update_train_placeholders(); page.update()
+        try:
+            train_timeline.controls.clear()
+            train_progress.value = 0.0
+            train_prog_label.value = "Progress: 0%"
+            update_train_placeholders(); page.update()
+        except Exception:
+            pass
 
     train_actions = ft.Row([
-        ft.ElevatedButton("Start Training (mock)", icon=getattr(ICONS, "PLAY_ARROW", ICONS.PLAY_CIRCLE), on_click=lambda e: page.run_task(on_train_mock)),
-        ft.OutlinedButton("Stop", icon=ICONS.CANCEL, on_click=on_cancel_train),
-        ft.TextButton("Refresh", icon=REFRESH_ICON, on_click=on_refresh_train),
-        train_busy_ring,
+        ft.ElevatedButton("Start Training (mock)", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), on_click=lambda e: page.run_task(on_start_training)),
+        ft.OutlinedButton("Stop", icon=ICONS.STOP_CIRCLE, on_click=on_stop_training),
+        ft.TextButton("Refresh", icon=REFRESH_ICON, on_click=on_refresh_training),
     ], spacing=10)
 
     training_tab = ft.Container(
@@ -3031,13 +3278,12 @@ def main(page: ft.Page):
                         ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
                         ft.Divider(),
                         section_title("Training Params", ICONS.SETTINGS),
+                        ft.Row([skill_level], wrap=True),
                         ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
-                        train_actions,
+                        advanced_params_section,
                         ft.Divider(),
-                        section_title("Progress", ICONS.TIMER),
-                        ft.Row([train_progress, train_prog_text]),
-                        ft.Divider(),
-                        section_title("Status", ICONS.TASK),
+                        section_title("Progress & Logs", ICONS.TASK_ALT),
+                        ft.Row([train_progress, train_prog_label], spacing=12),
                         ft.Container(
                             ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
                             height=240,
@@ -3046,6 +3292,7 @@ def main(page: ft.Page):
                             border_radius=8,
                             padding=10,
                         ),
+                        train_actions,
                     ], spacing=12),
                     width=1000,
                 )
@@ -3098,6 +3345,10 @@ def main(page: ft.Page):
     update_source_controls()
     try:
         _update_train_source()
+    except Exception:
+        pass
+    try:
+        _update_skill_controls()
     except Exception:
         pass
 
