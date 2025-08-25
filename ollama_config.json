@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "base_url": "http://127.0.0.1:11434",
+  "default_model": "",
+  "selected_model": "qwen3:latest"
+}
