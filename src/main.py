@@ -29,6 +29,14 @@ except Exception:
     __sys.path.append(os.path.dirname(__file__))
     import ensure_infra as rp_infra
 
+# Runpod pod helper (local module)
+try:
+    import runpod_pod as rp_pod
+except Exception:
+    import sys as __sys2
+    __sys2.path.append(os.path.dirname(__file__))
+    import runpod_pod as rp_pod
+
 import reddit_scraper as rdt
 import stackexchange_scraper as sx
 try:
@@ -3824,20 +3832,29 @@ Specify license and any restrictions.
     base_model = ft.Dropdown(
         label="Base model",
         options=[
-            ft.dropdown.Option("microsoft/phi-2"),
-            ft.dropdown.Option("TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
-            ft.dropdown.Option("google/gemma-2b"),
+            ft.dropdown.Option("unsloth/Meta-Llama-3.1-8B-bnb-4bit"),  # Llama-3.1 15T tokens, 2x faster
+            ft.dropdown.Option("unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"),
+            ft.dropdown.Option("unsloth/Meta-Llama-3.1-70B-bnb-4bit"),
+            ft.dropdown.Option("unsloth/Meta-Llama-3.1-405B-bnb-4bit"),  # 4bit for 405B
+            ft.dropdown.Option("unsloth/Mistral-Nemo-Base-2407-bnb-4bit"),  # New Mistral 12B, 2x faster
+            ft.dropdown.Option("unsloth/Mistral-Nemo-Instruct-2407-bnb-4bit"),
+            ft.dropdown.Option("unsloth/mistral-7b-v0.3-bnb-4bit"),       # Mistral v3, 2x faster
+            ft.dropdown.Option("unsloth/mistral-7b-instruct-v0.3-bnb-4bit"),
+            ft.dropdown.Option("unsloth/Phi-3.5-mini-instruct"),          # Phi-3.5, 2x faster
+            ft.dropdown.Option("unsloth/Phi-3-medium-4k-instruct"),
+            ft.dropdown.Option("unsloth/gemma-2-9b-bnb-4bit"),
+            ft.dropdown.Option("unsloth/gemma-2-27b-bnb-4bit"),
         ],
-        value="microsoft/phi-2",
+        value="unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
         width=320,
     )
     epochs_tf = ft.TextField(label="Epochs", value="3", width=120)
     lr_tf = ft.TextField(label="Learning rate", value="2e-4", width=160)
     batch_tf = ft.TextField(label="Per-device batch size", value="2", width=200)
     grad_acc_tf = ft.TextField(label="Grad accum steps", value="4", width=180)
-    max_steps_tf = ft.TextField(label="Max steps (mock)", value="200", width=180)
+    max_steps_tf = ft.TextField(label="Max steps", value="200", width=180)
     use_lora_cb = ft.Checkbox(label="Use LoRA", value=True)
-    out_dir_tf = ft.TextField(label="Output dir", value="outputs/mock_run", width=260)
+    out_dir_tf = ft.TextField(label="Output dir", value="outputs/runpod_run", width=260)
 
     # Advanced parameters (Expert mode)
     warmup_steps_tf = ft.TextField(label="Warmup steps", value="10", width=140)
@@ -3885,7 +3902,7 @@ Specify license and any restrictions.
     # Progress & logs
     train_progress = ft.ProgressBar(value=0.0, width=400)
     train_prog_label = ft.Text("Progress: 0%")
-    train_timeline = ft.Column([], spacing=4)
+    train_timeline = ft.ListView([], spacing=4, auto_scroll=True, expand=True)
     train_timeline_placeholder = make_empty_placeholder("No training logs yet", getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE))
 
     def update_train_placeholders():
@@ -3896,7 +3913,7 @@ Specify license and any restrictions.
             pass
 
     cancel_train = {"cancelled": False}
-    train_state = {"running": False}
+    train_state = {"running": False, "pod_id": None, "infra": None, "api_key": ""}
 
     def _update_skill_controls(_=None):
         level = (skill_level.value or "Beginner").lower()
@@ -3936,75 +3953,222 @@ Specify license and any restrictions.
         cancel_train["cancelled"] = False
         train_state["running"] = True
 
+        # Ensure infra and API key
+        infra = train_state.get("infra") or {}
+        tpl_id = ((infra.get("template") or {}).get("id") or "").strip()
+        vol_id = ((infra.get("volume") or {}).get("id") or "").strip()
+        if not tpl_id or not vol_id:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure not ready. Click Ensure Infrastructure first.")]))
+            train_state["running"] = False
+            update_train_placeholders(); await safe_update(page)
+            return
+        saved_key = ((train_state.get("api_key") or (_runpod_cfg.get("api_key") if isinstance(_runpod_cfg, dict) else "") or "").strip())
+        temp_key = (rp_temp_key_tf.value or "").strip()
+        api_key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
+        if not api_key:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings or temp field.")]))
+            train_state["running"] = False
+            update_train_placeholders(); await safe_update(page)
+            return
+
+        # Persist key and set running UI state
+        try:
+            train_state["api_key"] = api_key
+        except Exception:
+            pass
+        try:
+            start_train_btn.disabled = True
+            start_train_btn.visible = False
+            stop_train_btn.disabled = False
+            refresh_train_btn.disabled = False
+        except Exception:
+            pass
+        # Reset log de-duplication buffer for this session
+        train_state["log_seen"] = set()
+        await safe_update(page)
+
         # Read inputs
         src = train_source.value or "Hugging Face"
         repo = (train_hf_repo.value or "").strip()
         split = (train_hf_split.value or "train").strip()
         jpath = (train_json_path.value or "").strip()
-        model = base_model.value or "microsoft/phi-2"
+        model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
         epochs_s = (epochs_tf.value or "3").strip()
         lr_s = (lr_tf.value or "2e-4").strip()
         bsz_s = (batch_tf.value or "2").strip()
         acc_s = (grad_acc_tf.value or "4").strip()
         max_steps_s = (max_steps_tf.value or "200").strip()
-        out_dir = (out_dir_tf.value or "outputs/mock_run").strip()
-        try:
-            total_steps = max(10, min(2000, int(float(max_steps_s))))
-        except Exception:
-            total_steps = 200
+        out_dir = (out_dir_tf.value or "outputs/runpod_run").strip()
 
-        # Intro logs
-        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Starting mock training…")]))
-        ds_desc = f"HF: {repo} [{split}]" if (src == "Hugging Face") else f"JSON: {jpath}"
+        # Advanced
+        hp = {
+            "base_model": model,
+            "epochs": epochs_s,
+            "learning_rate": lr_s,
+            "batch_size": bsz_s,
+            "gradient_accumulation_steps": acc_s,
+            "max_steps": max_steps_s,
+            "use_lora": bool(getattr(use_lora_cb, "value", False)),
+            "output_dir": out_dir,
+            # dataset
+            "dataset_source": src.lower().replace(" ", "_"),
+            "dataset_repo": repo,
+            "dataset_split": split,
+            "json_path": jpath,
+            # advanced opts
+            "warmup_steps": (warmup_steps_tf.value or "").strip() or None,
+            "weight_decay": (weight_decay_tf.value or "").strip() or None,
+            "lr_scheduler_type": (lr_sched_dd.value or "").strip() or None,
+            "optim": (optim_dd.value or "").strip() or None,
+            "logging_steps": (logging_steps_tf.value or "").strip() or None,
+            "logging_first_step": bool(getattr(logging_first_step_cb, "value", False)),
+            "disable_tqdm": bool(getattr(disable_tqdm_cb, "value", False)),
+            "seed": (seed_tf.value or "").strip() or None,
+            "save_strategy": (save_strategy_dd.value or "").strip() or None,
+            "save_total_limit": (save_total_limit_tf.value or "").strip() or None,
+            "pin_memory": bool(getattr(pin_memory_cb, "value", False)),
+            "report_to": (report_to_dd.value or "").strip() or None,
+            "fp16": bool(getattr(fp16_cb, "value", True)),
+            "bf16": bool(getattr(bf16_cb, "value", False)),
+        }
+
+        # Logs
+        ds_desc = f"HF: {repo} [{split}]" if (src == "Hugging Face") else (f"JSON: {jpath}" if jpath else "JSON: (unset)")
+        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Creating Runpod pod and starting training…")]))
         train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
         train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={epochs_s} • LR={lr_s} • BSZ={bsz_s} • GA={acc_s} • LoRA={'on' if use_lora_cb.value else 'off'}")]))
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Output dir: {out_dir}")]))
         update_train_placeholders(); await safe_update(page)
 
-        # Simulate steps
-        for step in range(1, total_steps + 1):
-            if cancel_train.get("cancelled"):
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Training cancelled by user")]))
-                train_state["running"] = False
+        # Create pod
+        try:
+            def _mk_pod():
+                return rp_pod.create_pod(
+                    api_key=api_key,
+                    template_id=tpl_id,
+                    volume_id=vol_id,
+                    pod_name=f"ds-train-{int(time.time())}",
+                    hp=hp,
+                    gpu_type_id="AUTO",
+                    gpu_count=1,
+                    interruptible=False
+                )
+            pod = await asyncio.to_thread(_mk_pod)
+            pod_id = pod.get("id") or pod.get("podId") or pod.get("pod_id")
+            train_state["pod_id"] = pod_id
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod created: {pod_id}")]))
+            update_train_placeholders(); await safe_update(page)
+        except Exception as e:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Pod create failed: {e}")]))
+            train_state["running"] = False
+            await safe_update(page)
+            return
+
+        # Poll status
+        try:
+            last_state = None
+            while True:
+                if cancel_train.get("cancelled"):
+                    try:
+                        await asyncio.to_thread(rp_pod.delete_pod, api_key, train_state.get("pod_id"))
+                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — pod termination sent")]))
+                    except Exception as ex:
+                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to terminate pod: {ex}")]))
+                    break
+                pod = await asyncio.to_thread(rp_pod.get_pod, api_key, train_state.get("pod_id"))
+                state = (rp_pod.state_of(pod) or "").upper()
+                if state != last_state:
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TASK_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod state: {state}")]))
+                    last_state = state
+                if state in rp_pod.TERMINAL_STATES:
+                    break
+                # Live log streaming: fetch recent logs and append only new lines
+                try:
+                    lines = await asyncio.to_thread(rp_pod.get_pod_logs, api_key, train_state.get("pod_id"), 200)
+                except Exception:
+                    lines = []
+                seen = train_state.get("log_seen") or set()
+                new_lines = []
+                for ln in (lines or []):
+                    s = str(ln)
+                    if s not in seen:
+                        new_lines.append(s)
+                        seen.add(s)
+                        if len(seen) > 5000:
+                            # shrink set to recent size to avoid unbounded growth
+                            seen = set(list(seen)[-2000:])
+                train_state["log_seen"] = seen
+                if new_lines:
+                    for s in new_lines:
+                        _log_icon = getattr(ICONS, "ARTICLE", getattr(ICONS, "TERMINAL", getattr(ICONS, "DESCRIPTION", ICONS.TASK_ALT)))
+                        train_timeline.controls.append(ft.Row([ft.Icon(_log_icon, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(s)]))
+                    update_train_placeholders()
+                    try:
+                        # keep UI list from growing unbounded
+                        if len(train_timeline.controls) > 1200:
+                            train_timeline.controls[:] = train_timeline.controls[-900:]
+                    except Exception:
+                        pass
                 await safe_update(page)
-                return
-            await asyncio.sleep(0.035 + random.uniform(0.0, 0.015))
-            train_progress.value = step / total_steps
+                await asyncio.sleep(3.0)
+
+            # Final state
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Training finished with state: {last_state}")]))
+        except Exception as e:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Polling error: {e}")]))
+        finally:
+            train_state["running"] = False
             try:
-                pct = int(100 * float(train_progress.value or 0))
-                train_prog_label.value = f"Progress: {pct}%"
+                start_train_btn.visible = True
+                start_train_btn.disabled = False
+                stop_train_btn.disabled = True
+                refresh_train_btn.disabled = False
             except Exception:
                 pass
-            # Heartbeat logs
-            if step == 1 or (step % max(1, total_steps // 20) == 0) or (step % 25 == 0):
-                fake_loss = max(0.02, 2.0 / (1.0 + 0.02 * step) + random.uniform(-0.05, 0.05))
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.FAVORITE, color=WITH_OPACITY(0.9, COLORS.PINK)), ft.Text(f"Step {step}/{total_steps} — loss={fake_loss:.3f}")]))
             await safe_update(page)
-
-        # Completed
-        train_progress.value = 1.0
-        train_prog_label.value = "Progress: 100%"
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Training finished ✔")]))
-        train_state["running"] = False
-        await safe_update(page)
 
     def on_stop_training(_):
         if not train_state.get("running"):
+            # If a pod exists but not marked running, allow manual terminate
+            pod_id = train_state.get("pod_id")
+            if pod_id:
+                try:
+                    async def _terminate():
+                        try:
+                            await asyncio.to_thread(
+                                rp_pod.delete_pod,
+                                (train_state.get("api_key") or os.environ.get("RUNPOD_API_KEY") or "").strip(),
+                                pod_id,
+                            )
+                        finally:
+                            try:
+                                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Termination requested for existing pod")]))
+                                # Reset UI to idle state
+                                start_train_btn.visible = True
+                                start_train_btn.disabled = False
+                                stop_train_btn.disabled = True
+                                refresh_train_btn.disabled = False
+                                train_state["pod_id"] = None
+                                update_train_placeholders(); await safe_update(page)
+                            except Exception:
+                                pass
+                    schedule_task(_terminate)
+                except Exception:
+                    pass
             return
         cancel_train["cancelled"] = True
         try:
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — will stop ASAP")]))
+            # Prevent multiple stop presses
+            stop_train_btn.disabled = True
             update_train_placeholders(); page.update()
         except Exception:
             pass
 
     def on_refresh_training(_):
-        if train_state.get("running"):
-            return
         try:
+            # Clear current log space only; keep progress and state intact
             train_timeline.controls.clear()
-            train_progress.value = 0.0
-            train_prog_label.value = "Progress: 0%"
+            train_state["log_seen"] = set()
             update_train_placeholders(); page.update()
         except Exception:
             pass
@@ -4127,6 +4291,12 @@ Specify license and any restrictions.
             result = await asyncio.to_thread(do_call)
             vol = result.get("volume", {})
             tpl = result.get("template", {})
+            # Persist infra and key for training handlers
+            try:
+                train_state["infra"] = result
+                train_state["api_key"] = key
+            except Exception:
+                pass
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Template {tpl.get('action')} — id={tpl.get('id')} image={tpl.get('image')}")]))
 
@@ -4203,7 +4373,7 @@ Specify license and any restrictions.
 
     # Training action buttons are disabled until infra is ready
     start_train_btn = ft.ElevatedButton(
-        "Start Training (mock)",
+        "Start Training",
         icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE),
         on_click=lambda e: page.run_task(on_start_training),
         disabled=True,
@@ -4232,8 +4402,8 @@ Specify license and any restrictions.
             section_title(
                 "Dataset",
                 ICONS.TABLE_VIEW,
-                "Select the dataset used for mock training.",
-                on_help_click=_mk_help_handler("Select the dataset used for mock training."),
+                "Select the dataset for training.",
+                on_help_click=_mk_help_handler("Select the dataset for training."),
             ),
             ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
             ft.Divider(),
@@ -4246,8 +4416,8 @@ Specify license and any restrictions.
             section_title(
                 "Training Params",
                 ICONS.SETTINGS,
-                "Basic hyperparameters and LoRA toggle. Not executed for real.",
-                on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle. Not executed for real."),
+                "Basic hyperparameters and LoRA toggle for training.",
+                on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
             ),
             ft.Row([skill_level], wrap=True),
             ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
@@ -4281,8 +4451,8 @@ Specify license and any restrictions.
                         section_title(
                             "Progress & Logs",
                             ICONS.TASK_ALT,
-                            "Mocked progress bar and log output.",
-                            on_help_click=_mk_help_handler("Mocked progress bar and log output."),
+                            "Pod status updates and training logs.",
+                            on_help_click=_mk_help_handler("Pod status updates and training logs."),
                         ),
                         ft.Row([train_progress, train_prog_label], spacing=12),
                         ft.Container(
