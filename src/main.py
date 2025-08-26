@@ -21,6 +21,14 @@ except Exception:
     _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     import save_dataset as sd
 
+# Runpod infra helper (local module)
+try:
+    import ensure_infra as rp_infra
+except Exception:
+    import sys as __sys
+    __sys.path.append(os.path.dirname(__file__))
+    import ensure_infra as rp_infra
+
 import reddit_scraper as rdt
 import stackexchange_scraper as sx
 try:
@@ -4001,11 +4009,253 @@ Specify license and any restrictions.
         except Exception:
             pass
 
-    train_actions = ft.Row([
-        ft.ElevatedButton("Start Training (mock)", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), on_click=lambda e: page.run_task(on_start_training)),
-        ft.OutlinedButton("Stop", icon=ICONS.STOP_CIRCLE, on_click=on_stop_training),
-        ft.TextButton("Refresh", icon=REFRESH_ICON, on_click=on_refresh_training),
+    # ---------- Runpod Infrastructure (Ensure volume + template) ----------
+    rp_dc_tf = ft.TextField(label="Datacenter ID", value="US-NC-1", width=140)
+    rp_vol_name_tf = ft.TextField(label="Volume name", value="unsloth-volume", width=220)
+    rp_vol_size_tf = ft.TextField(label="Volume size (GB)", value="50", width=180)
+    rp_resize_cb = ft.Checkbox(label="Resize if smaller", value=True)
+
+    # Info icon for "Resize if smaller": explains that existing smaller volumes will be expanded (never shrunk)
+    rp_resize_info = ft.IconButton(
+        icon=getattr(ICONS, "INFO_OUTLINE", getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", None))),
+        tooltip="If enabled, an existing volume smaller than the requested size will be expanded. It never shrinks volumes.",
+        on_click=_mk_help_handler(
+            "When ensuring the Runpod Network Volume: if a volume with this name already exists and its size is smaller than the size you specify, it will be automatically increased to match your requested size. Existing volumes are never shrunk."
+        ),
+    )
+
+    # Keep the info icon on the right of the checkbox by grouping them together
+    rp_resize_row = ft.Row([rp_resize_cb, rp_resize_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    rp_tpl_name_tf = ft.TextField(label="Template name", value="unsloth-trainer-template", width=260)
+    rp_image_tf = ft.TextField(label="Image name", value="docker.io/sbussiso/unsloth-trainer:latest", width=360)
+    rp_container_disk_tf = ft.TextField(label="Container disk (GB)", value="30", width=200)
+    rp_volume_in_gb_tf = ft.TextField(label="Pod volume (GB)", value="0", width=180, tooltip="Optional pod-local disk, not the network volume")
+    rp_mount_path_tf = ft.TextField(label="Mount path", value="/workspace", width=220)
+    rp_category_tf = ft.TextField(label="Category", value="NVIDIA", width=160)
+    rp_public_cb = ft.Checkbox(label="Public template", value=False)
+
+    # Info icon for "Public template": clarifies visibility and considerations
+    rp_public_info = ft.IconButton(
+        icon=getattr(ICONS, "INFO_OUTLINE", getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", None))),
+        tooltip="Make this template visible to all Runpod users. Be mindful of sensitive env vars.",
+        on_click=_mk_help_handler(
+            "Public templates are discoverable by other Runpod users. Others can launch pods using this template. If your image is private or requires registry auth, they will need access to run it. Avoid putting sensitive environment variables in the template."
+        ),
+    )
+    rp_public_row = ft.Row([rp_public_cb, rp_public_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    rp_infra_busy = ft.ProgressRing(visible=False)
+    rp_temp_key_tf = ft.TextField(
+        label="API key (optional, temp)",
+        password=True,
+        can_reveal_password=True,
+        width=320,
+        tooltip="Temporary key used only here. If a key is saved in Settings, that one takes precedence.",
+    )
+
+    async def on_ensure_infra():
+        print("EnsureInfra: on_ensure_infra started")
+        # Resolve API key: Settings > temp (this tab) > env
+        saved_key = ((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip()
+        temp_key = (rp_temp_key_tf.value or "").strip()
+        key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
+        if not key:
+            try:
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
+                update_train_placeholders(); await safe_update(page)
+            except Exception:
+                pass
+            return
+
+        # Read params with defaults
+        dc = (rp_dc_tf.value or "US-NC-1").strip()
+        vol_name = (rp_vol_name_tf.value or "unsloth-volume").strip()
+        vol_size_s = (rp_vol_size_tf.value or "50").strip()
+        resize = bool(getattr(rp_resize_cb, "value", True))
+        tpl_name = (rp_tpl_name_tf.value or "unsloth-trainer-template").strip()
+        image = (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest").strip()
+        container_disk_s = (rp_container_disk_tf.value or "30").strip()
+        vol_in_gb_s = (rp_volume_in_gb_tf.value or "0").strip()
+        mount_path = (rp_mount_path_tf.value or "/workspace").strip()
+        category = (rp_category_tf.value or "NVIDIA").strip()
+        is_public = bool(getattr(rp_public_cb, "value", False))
+
+        # Coerce numbers safely
+        try:
+            vol_size = int(float(vol_size_s))
+        except Exception:
+            vol_size = 50
+        try:
+            container_disk = int(float(container_disk_s))
+        except Exception:
+            container_disk = 30
+        try:
+            vol_in_gb = int(float(vol_in_gb_s))
+        except Exception:
+            vol_in_gb = 0
+
+        # Log start
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=ACCENT_COLOR), ft.Text("Ensuring Runpod infrastructure (volume + template)…")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"DC={dc} • Vol={vol_name} ({vol_size}GB) • Tpl={tpl_name}")]))
+        update_train_placeholders(); await safe_update(page)
+
+        # Busy indicator
+        try:
+            rp_infra_busy.visible = True
+            await safe_update(page)
+        except Exception:
+            pass
+
+        # Call infra helper
+        try:
+            def do_call():
+                return rp_infra.ensure_infrastructure(
+                    api_key=key,
+                    datacenter_id=dc,
+                    volume_name=vol_name,
+                    volume_size_gb=vol_size,
+                    resize_if_smaller=resize,
+                    template_name=tpl_name,
+                    image_name=image,
+                    container_disk_gb=container_disk,
+                    volume_in_gb=vol_in_gb,
+                    volume_mount_path=mount_path,
+                    category=category,
+                    is_public=is_public,
+                )
+            result = await asyncio.to_thread(do_call)
+            vol = result.get("volume", {})
+            tpl = result.get("template", {})
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Template {tpl.get('action')} — id={tpl.get('id')} image={tpl.get('image')}")]))
+
+            # Beautiful success message (snack + dialog)
+            try:
+                success_title = "Runpod infrastructure ready!"
+                vol_line = f"Volume {vol.get('action')} • {vol.get('name')} ({vol.get('size')}GB) • DC {vol.get('dc')}"
+                tpl_line = f"Template {tpl.get('action')} • {tpl.get('name')} • {tpl.get('image')}"
+
+                # Quick celebratory snackbar
+                page.snack_bar = ft.SnackBar(
+                    ft.Row([
+                        ft.Icon(getattr(ICONS, "CHECK_CIRCLE", getattr(ICONS, "CHECK", getattr(ICONS, "DONE", None))), color=COLORS.GREEN),
+                        ft.Text(success_title),
+                    ])
+                )
+                page.snack_bar.open = True
+                await safe_update(page)
+
+                # Detailed dialog
+                dlg = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Row([
+                        ft.Icon(getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)), color=COLORS.GREEN),
+                        ft.Text("Infrastructure ready"),
+                    ], alignment=ft.MainAxisAlignment.START),
+                    content=ft.Column([
+                        ft.Row([ft.Icon(getattr(ICONS, "DONE_ALL", getattr(ICONS, "DONE", getattr(ICONS, "CHECK", None))), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(vol_line)]),
+                        ft.Row([ft.Icon(getattr(ICONS, "DONE_ALL", getattr(ICONS, "DONE", getattr(ICONS, "CHECK", None))), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(tpl_line)]),
+                    ], tight=True, spacing=6),
+                    actions=[ft.TextButton("Great!", on_click=lambda e: (setattr(dlg, "open", False), page.update()))],
+                )
+                page.dialog = dlg
+                dlg.open = True
+                await safe_update(page)
+                try:
+                    dataset_section.visible = True
+                    train_params_section.visible = True
+                    # Enable training controls once infra is ready
+                    start_train_btn.disabled = False
+                    stop_train_btn.disabled = False
+                    refresh_train_btn.disabled = False
+                except Exception:
+                    pass
+                await safe_update(page)
+            except Exception:
+                pass
+        except Exception as e:
+            msg = str(e)
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Infra setup failed: {msg}")]))
+        finally:
+            try:
+                rp_infra_busy.visible = False
+            except Exception:
+                pass
+            await safe_update(page)
+
+    def on_click_ensure_infra(e):
+        # Immediate feedback to confirm click registered and show activity
+        try:
+            print("EnsureInfra: click handler fired")
+            page.snack_bar = ft.SnackBar(ft.Text("Ensuring Runpod infrastructure…"))
+            page.snack_bar.open = True
+            rp_infra_busy.visible = True
+            update_train_placeholders(); page.update()
+        except Exception:
+            pass
+        schedule_task(on_ensure_infra)
+
+    rp_infra_actions = ft.Row([
+        ft.ElevatedButton("Ensure Infrastructure", icon=getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)), on_click=on_click_ensure_infra),
+        rp_infra_busy,
     ], spacing=10)
+
+    # Training action buttons are disabled until infra is ready
+    start_train_btn = ft.ElevatedButton(
+        "Start Training (mock)",
+        icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE),
+        on_click=lambda e: page.run_task(on_start_training),
+        disabled=True,
+    )
+    stop_train_btn = ft.OutlinedButton(
+        "Stop",
+        icon=ICONS.STOP_CIRCLE,
+        on_click=on_stop_training,
+        disabled=True,
+    )
+    refresh_train_btn = ft.TextButton(
+        "Refresh",
+        icon=REFRESH_ICON,
+        on_click=on_refresh_training,
+        disabled=True,
+    )
+    train_actions = ft.Row([
+        start_train_btn,
+        stop_train_btn,
+        refresh_train_btn,
+    ], spacing=10)
+
+    # Sections hidden until infrastructure is ensured successfully
+    dataset_section = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Dataset",
+                ICONS.TABLE_VIEW,
+                "Select the dataset used for mock training.",
+                on_help_click=_mk_help_handler("Select the dataset used for mock training."),
+            ),
+            ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
+            ft.Divider(),
+        ], spacing=0),
+        visible=False,
+    )
+
+    train_params_section = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Training Params",
+                ICONS.SETTINGS,
+                "Basic hyperparameters and LoRA toggle. Not executed for real.",
+                on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle. Not executed for real."),
+            ),
+            ft.Row([skill_level], wrap=True),
+            ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
+            advanced_params_section,
+            ft.Divider(),
+        ], spacing=0),
+        visible=False,
+    )
 
     training_tab = ft.Container(
         content=ft.Column([
@@ -4013,23 +4263,21 @@ Specify license and any restrictions.
                 ft.Container(
                     content=ft.Column([
                         section_title(
-                            "Dataset",
-                            ICONS.TABLE_VIEW,
-                            "Select the dataset used for mock training.",
-                            on_help_click=_mk_help_handler("Select the dataset used for mock training."),
+                            "Runpod Infrastructure",
+                            getattr(ICONS, "CLOUD", ICONS.SETTINGS),
+                            "Create or update the required Runpod Network Volume and Template before training.",
+                            on_help_click=_mk_help_handler("Create or update the required Runpod Network Volume and Template before training."),
                         ),
-                        ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
+                        ft.Text("Defaults are provided; change any value to customize. Key precedence: Settings > Training temp field > environment.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+                        ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
+                        ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
+                        ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
+                        ft.Row([rp_category_tf, rp_public_row], wrap=True),
+                        ft.Row([rp_temp_key_tf], wrap=True),
+                        rp_infra_actions,
                         ft.Divider(),
-                        section_title(
-                            "Training Params",
-                            ICONS.SETTINGS,
-                            "Basic hyperparameters and LoRA toggle. Not executed for real.",
-                            on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle. Not executed for real."),
-                        ),
-                        ft.Row([skill_level], wrap=True),
-                        ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
-                        advanced_params_section,
-                        ft.Divider(),
+                        dataset_section,
+                        train_params_section,
                         section_title(
                             "Progress & Logs",
                             ICONS.TASK_ALT,
@@ -4098,11 +4346,11 @@ Specify license and any restrictions.
                         section_title(
                             "Runpod API Access",
                             getattr(ICONS, "VPN_KEY", getattr(ICONS, "KEY", ICONS.SETTINGS)),
-                            "Save and test your Runpod API key. Not used elsewhere yet.",
-                            on_help_click=_mk_help_handler("Save and test your Runpod API key. Not used elsewhere yet."),
+                            "Save and test your Runpod API key. Used by Training → Runpod Infrastructure.",
+                            on_help_click=_mk_help_handler("Save and test your Runpod API key. Used by Training → Runpod Infrastructure."),
                         ),
                         ft.Text(
-                            "Stored locally and applied to RUNPOD_API_KEY environment variable when saved.",
+                            "Stored locally and applied to RUNPOD_API_KEY when saved. Required for ensuring Runpod Network Volume & Template.",
                             size=12,
                             color=WITH_OPACITY(0.7, BORDER_BASE),
                         ),
