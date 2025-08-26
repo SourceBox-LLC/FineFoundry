@@ -4,8 +4,10 @@ import time
 import os
 import shutil
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 import json
+import re
+from collections import Counter
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
@@ -36,6 +38,12 @@ except Exception:
     hf_interleave = None
     get_dataset_config_names = None
     load_from_disk = None
+
+try:
+    from huggingface_hub import HfApi, HfFolder
+except Exception:
+    HfApi = None
+    HfFolder = None
 
 # Robust color aliasing: prefer ft.Colors, fall back to ft.colors if present
 if hasattr(ft, "Colors"):
@@ -155,11 +163,43 @@ def make_board_chip(text: str, selected: bool, base_color) :
     )
 
 
-def section_title(title: str, icon: str) -> ft.Row:
-    return ft.Row([
+def section_title(title: str, icon: str, help_text: Optional[str] = None, on_help_click: Optional[Callable] = None) -> ft.Row:
+    controls = [
         ft.Icon(icon, color=ACCENT_COLOR),
         ft.Text(title, size=16, weight=ft.FontWeight.BOLD),
-    ])
+    ]
+    if help_text:
+        try:
+            _info_icon_name = getattr(
+                ICONS,
+                "INFO_OUTLINE",
+                getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", getattr(ICONS, "HELP", None))),
+            )
+            if _info_icon_name is None:
+                raise AttributeError("No suitable info icon available")
+            try:
+                controls.append(
+                    ft.IconButton(
+                        icon=_info_icon_name,
+                        icon_color=WITH_OPACITY(0.8, BORDER_BASE),
+                        tooltip=help_text,
+                        on_click=on_help_click,
+                    )
+                )
+            except Exception:
+                # Fallback to Tooltip wrapper if IconButton not available
+                info_ic = ft.Icon(_info_icon_name, size=16, color=WITH_OPACITY(0.8, BORDER_BASE))
+                try:
+                    controls.append(ft.Tooltip(message=help_text, content=ft.Container(content=info_ic, padding=0)))
+                except Exception:
+                    controls.append(ft.Container(content=info_ic, tooltip=help_text))
+        except Exception:
+            # Last resort: simple text with optional tooltip
+            try:
+                controls.append(ft.Tooltip(message=help_text, content=ft.Text("ⓘ")))
+            except Exception:
+                controls.append(ft.Text("ⓘ"))
+    return ft.Row(controls)
 
 
 def make_wrap(controls: list, spacing: int = 6, run_spacing: int = 6):
@@ -865,6 +905,7 @@ async def run_stackexchange_scrape(
                 await safe_update(page)
                 await asyncio.sleep(0.35)
         except Exception:
+            # Ignore UI pulse errors
             pass
 
     pulse_task = asyncio.create_task(pulse_and_watch())
@@ -1008,6 +1049,23 @@ def main(page: ft.Page):
             ft.IconButton(ICONS.DARK_MODE_OUTLINED, tooltip="Toggle theme", on_click=toggle_theme),
         ],
     )
+
+    # Reusable: build a click handler that opens a small dialog with the given help text
+    def _mk_help_handler(text: str):
+        def _handler(e):
+            try:
+                dlg = ft.AlertDialog(title=ft.Text("Info"), content=ft.Text(text))
+                page.dialog = dlg
+                dlg.open = True
+                page.update()
+            except Exception:
+                try:
+                    page.snack_bar = ft.SnackBar(ft.Text(text))
+                    page.snack_bar.open = True
+                    page.update()
+                except Exception:
+                    pass
+        return _handler
 
     # ---------- SCRAPE TAB ----------
     # Boards (dynamic from API with fallback) and multi-select pills
@@ -1161,6 +1219,89 @@ def main(page: ft.Page):
     proxy_enable_cb.on_change = update_proxy_controls
     use_env_cb.on_change = update_proxy_controls
     update_proxy_controls()
+
+    # ---------- SETTINGS (Hugging Face) CONTROLS ----------
+    HF_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "hf_config.json")
+
+    def _load_hf_config() -> dict:
+        try:
+            with open(HF_CFG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f) or {}
+        except Exception:
+            cfg = {}
+        return {"token": (cfg.get("token") or "")}
+
+    def _save_hf_config(cfg: dict):
+        try:
+            with open(HF_CFG_PATH, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _apply_hf_env_from_cfg(cfg: dict):
+        tok = (cfg.get("token") or "").strip()
+        if tok:
+            os.environ["HF_TOKEN"] = tok
+        else:
+            try:
+                if os.environ.get("HF_TOKEN"):
+                    del os.environ["HF_TOKEN"]
+            except Exception:
+                pass
+
+    _hf_cfg = _load_hf_config()
+    _apply_hf_env_from_cfg(_hf_cfg)
+
+    hf_token_tf = ft.TextField(label="Hugging Face API token", password=True, can_reveal_password=True, width=420)
+    hf_status = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
+
+    async def on_test_hf():
+        tok = (hf_token_tf.value or "").strip() or (_hf_cfg.get("token") or "").strip()
+        if not tok:
+            hf_status.value = "No token provided or saved"
+            await safe_update(page)
+            return
+        if HfApi is None:
+            hf_status.value = "huggingface_hub not available"
+            await safe_update(page)
+            return
+        hf_status.value = "Testing token…"
+        await safe_update(page)
+        try:
+            api = HfApi()
+            who = await asyncio.to_thread(lambda: api.whoami(token=tok))
+            name = who.get("name") or who.get("email") or who.get("username") or "user"
+            hf_status.value = f"Valid ✓ — {name}"
+        except Exception as e:
+            hf_status.value = f"Invalid or error: {e}"
+        await safe_update(page)
+
+    def on_save_hf(_):
+        tok = (hf_token_tf.value or "").strip()
+        if not tok:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Enter a token to save"))
+                page.snack_bar.open = True
+            except Exception:
+                pass
+            return
+        _hf_cfg["token"] = tok
+        _save_hf_config(_hf_cfg)
+        _apply_hf_env_from_cfg(_hf_cfg)
+        hf_status.value = "Saved"
+        page.update()
+
+    def on_remove_hf(_):
+        _hf_cfg["token"] = ""
+        _save_hf_config(_hf_cfg)
+        _apply_hf_env_from_cfg(_hf_cfg)
+        hf_token_tf.value = ""
+        hf_status.value = "Removed"
+        page.update()
+
+    hf_test_btn = ft.ElevatedButton("Test token", icon=ICONS.CHECK_CIRCLE, on_click=lambda e: page.run_task(on_test_hf))
+    hf_save_btn = ft.OutlinedButton("Save", icon=ICONS.SAVE, on_click=on_save_hf)
+    hf_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_hf)
 
     # ---------- SETTINGS (Ollama) CONTROLS ----------
     # Simple persistence path (project root)
@@ -1634,22 +1775,35 @@ def main(page: ft.Page):
         schedule_task(on_preview_dataset)
 
     # Reddit params row (hidden by default)
-    reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True)
-    reddit_params_row.visible = False
+    reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True, visible=False)
     # StackExchange params row (hidden by default)
-    se_params_row = ft.Row([se_site], wrap=True)
-    se_params_row.visible = False
+    se_params_row = ft.Row([se_site], wrap=True, visible=False)
 
     scrape_tab = ft.Container(
         content=ft.Column([
-            section_title("Source", ICONS.DASHBOARD),
+            section_title(
+                "Source",
+                ICONS.DASHBOARD,
+                "Choose a data source. Options: 4chan, Reddit, StackExchange.",
+                on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange."),
+            ),
             ft.Row([source_dd], wrap=True),
-            section_title("4chan Boards", ICONS.DASHBOARD),
+            section_title(
+                "4chan Boards",
+                ICONS.DASHBOARD,
+                "Select which 4chan boards to scrape.",
+                on_help_click=_mk_help_handler("Select which 4chan boards to scrape."),
+            ),
             board_actions,
             boards_wrap,
             board_warning,
             ft.Divider(),
-            section_title("Parameters", ICONS.TUNE),
+            section_title(
+                "Parameters",
+                ICONS.TUNE,
+                "Set scraping limits and pairing behavior. Context options appear when applicable.",
+                on_help_click=_mk_help_handler("Set scraping limits and pairing behavior. Context options appear when applicable."),
+            ),
             reddit_params_row,
             se_params_row,
             ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
@@ -1657,15 +1811,30 @@ def main(page: ft.Page):
             ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
             scrape_actions,
             ft.Container(height=10),
-            section_title("Progress", ICONS.TIMELAPSE),
+            section_title(
+                "Progress",
+                ICONS.TIMELAPSE,
+                "Shows current task progress and counters.",
+                on_help_click=_mk_help_handler("Shows current task progress and counters."),
+            ),
             ft.Row([scrape_prog, working_ring, ft.Text("Working...")], spacing=16),
             stats_cards,
             ft.Row([threads_label, pairs_label], spacing=20),
             ft.Divider(),
-            section_title("Live Log", ICONS.TERMINAL),
+            section_title(
+                "Live Log",
+                ICONS.TERMINAL,
+                "Streaming log of scraping activity.",
+                on_help_click=_mk_help_handler("Streaming log of scraping activity."),
+            ),
             ft.Container(log_area, height=180, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                          border_radius=8, padding=10),
-            section_title("Preview", ICONS.PREVIEW),
+            section_title(
+                "Preview",
+                ICONS.PREVIEW,
+                "Quick sample preview of scraped pairs.",
+                on_help_click=_mk_help_handler("Quick sample preview of scraped pairs."),
+            ),
             ft.Container(preview_area, height=240, border_radius=8,
                          border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), padding=6),
             ft.Row([
@@ -1677,6 +1846,7 @@ def main(page: ft.Page):
         ], scroll=ft.ScrollMode.AUTO, spacing=12),
         padding=16,
     )
+
 
     # ---------- BUILD/PUBLISH TAB ----------
     source_mode = ft.Dropdown(
@@ -1700,7 +1870,9 @@ def main(page: ft.Page):
     push_toggle = ft.Switch(label="Push to Hub", value=False)
     repo_id = ft.TextField(label="Repo ID", value="username/my-dataset", width=280)
     private = ft.Switch(label="Private", value=True)
-    token = ft.TextField(label="HF Token", password=True, can_reveal_password=True, width=320)
+    token_val_ui = ft.TextField(label="HF Token", password=True, can_reveal_password=True, width=320)
+    saved_tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+    token_val = saved_tok or token_val_ui.value
 
     # Validation chip for splits
     split_error = ft.Text("", color=COLORS.RED)
@@ -2029,8 +2201,8 @@ Specify license and any restrictions.
             await safe_update(page)
 
     load_template_btn = ft.TextButton("Load simple template", icon=ICONS.ARTICLE, on_click=_on_load_simple_template)
-    gen_from_ds_btn = ft.TextButton("Generate from built dataset", icon=ICONS.BUILD, on_click=lambda e: page.run_task(_on_generate_from_dataset, e))
-    gen_with_ollama_btn = ft.ElevatedButton("Generate with Ollama", icon=getattr(ICONS, "SMART_TOY", ICONS.HUB), on_click=lambda e: page.run_task(_on_generate_with_ollama, e))
+    gen_from_ds_btn = ft.TextButton("Generate from built dataset", icon=ICONS.BUILD, on_click=lambda e: page.run_task(_on_generate_from_dataset))
+    gen_with_ollama_btn = ft.ElevatedButton("Generate with Ollama", icon=getattr(ICONS, "SMART_TOY", ICONS.HUB), on_click=lambda e: page.run_task(_on_generate_with_ollama))
     clear_card_btn = ft.TextButton("Clear", icon=ICONS.BACKSPACE, on_click=lambda e: (setattr(card_editor, "value", ""), _update_preview(), page.update()))
 
     def update_status_placeholder():
@@ -2092,7 +2264,9 @@ Specify license and any restrictions.
         do_push = bool(push_toggle.value)
         repo = (repo_id.value or "").strip()
         is_private = bool(private.value)
-        token_val = (token.value or "").strip()
+        token_val_ui = (token_val_ui.value or "").strip()
+        saved_tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+        token_val = saved_tok or token_val_ui
 
         def add_step(text: str, color, icon):
             timeline.controls.append(ft.Row([ft.Icon(icon, color=color), ft.Text(text)]))
@@ -2173,7 +2347,7 @@ Specify license and any restrictions.
                     return
                 if not token_val:
                     try:
-                        token_val = sd.HfFolder.get_token()
+                        token_val = os.environ.get("HF_TOKEN") or sd.HfFolder.get_token()
                     except Exception:
                         token_val = ""
                 if not token_val:
@@ -2361,9 +2535,9 @@ Specify license and any restrictions.
                 return
             if not token_val:
                 try:
-                    token_val = sd.HfFolder.get_token()
+                    token_val = os.environ.get("HF_TOKEN") or sd.HfFolder.get_token()
                 except Exception:
-                    token_val = ""
+                    token_val = os.environ.get("HF_TOKEN") or ""
             if not token_val:
                 add_step("No HF token found — cannot push", COLORS.RED, ICONS.ERROR_OUTLINE)
                 await safe_update(page)
@@ -2448,7 +2622,13 @@ Specify license and any restrictions.
             await safe_update(page)
             return
         repo = (repo_id.value or "").strip()
-        tok = (token.value or "").strip() or getattr(sd.HfFolder, "get_token", lambda: "")()
+        saved_tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+        tok = (token_val_ui.value or "").strip() or saved_tok
+        if not tok:
+            try:
+                tok = os.environ.get("HF_TOKEN") or getattr(sd.HfFolder, "get_token", lambda: "")()
+            except Exception:
+                tok = ""
         if not repo or not tok:
             page.snack_bar = ft.SnackBar(ft.Text("Repo ID and a valid HF token are required."))
             page.snack_bar.open = True
@@ -2526,10 +2706,20 @@ Specify license and any restrictions.
             ft.Row([
                 ft.Container(
                     content=ft.Column([
-                        section_title("Dataset Params", ICONS.SETTINGS),
+                        section_title(
+                            "Dataset Params",
+                            ICONS.SETTINGS,
+                            "Choose input source, preprocessing, and output path for building a dataset.",
+                            on_help_click=_mk_help_handler("Choose input source, preprocessing, and output path for building a dataset."),
+                        ),
                         ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
                         ft.Divider(),
-                        section_title("Splits", ICONS.TABLE_VIEW),
+                        section_title(
+                            "Splits",
+                            ICONS.TABLE_VIEW,
+                            "Configure validation and test fractions; train is the remainder.",
+                            on_help_click=_mk_help_handler("Configure validation and test fractions; train is the remainder."),
+                        ),
                         ft.Row([
                             ft.Column([
                                 ft.Text("Validation Fraction"), val_slider,
@@ -2539,11 +2729,21 @@ Specify license and any restrictions.
                             ft.Row([split_badges["train"], split_badges["val"], split_badges["test"]], spacing=10),
                         ], wrap=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        section_title("Push to Hub", ICONS.PUBLIC),
-                        ft.Row([push_toggle, repo_id, private, token], wrap=True),
+                        section_title(
+                            "Push to Hub",
+                            ICONS.PUBLIC,
+                            "Optionally upload your dataset to the Hugging Face Hub.",
+                            on_help_click=_mk_help_handler("Optionally upload your dataset to the Hugging Face Hub."),
+                        ),
+                        ft.Row([push_toggle, repo_id, private, token_val_ui], wrap=True),
                         build_actions,
                         ft.Divider(),
-                        section_title("Model Card Creator", ICONS.ARTICLE),
+                        section_title(
+                            "Model Card Creator",
+                            ICONS.ARTICLE,
+                            "Draft and preview the README dataset card; can generate from template or dataset.",
+                            on_help_click=_mk_help_handler("Draft and preview the README dataset card; can generate from template or dataset."),
+                        ),
                         ft.Row([use_custom_card, card_preview_switch], wrap=True),
                         ft.Row([load_template_btn, gen_from_ds_btn, gen_with_ollama_btn, clear_card_btn], wrap=True),
                         ft.Row([ollama_gen_status], wrap=True),
@@ -2564,7 +2764,12 @@ Specify license and any restrictions.
                             padding=8,
                         ),
                         ft.Divider(),
-                        section_title("Status", ICONS.TASK),
+                        section_title(
+                            "Status",
+                            ICONS.TASK,
+                            "Build timeline with step-by-step status.",
+                            on_help_click=_mk_help_handler("Build timeline with step-by-step status."),
+                        ),
                         ft.Container(
                             ft.Stack([timeline, timeline_placeholder], expand=True),
                             height=260,
@@ -2580,6 +2785,7 @@ Specify license and any restrictions.
         ], scroll=ft.ScrollMode.AUTO, spacing=0),
         padding=16,
     )
+
 
     # ---------- MERGE DATASETS TAB ----------
     # Operation selector
@@ -2671,9 +2877,6 @@ Specify license and any restrictions.
 
     add_row_btn = ft.TextButton("Add Dataset", icon=ICONS.ADD, on_click=add_row)
     clear_btn = ft.TextButton("Clear", icon=ICONS.BACKSPACE, on_click=lambda e: (rows_host.controls.clear(), page.update()))
-
-    # Seed with one row initially
-    rows_host.controls.append(make_dataset_row())
 
     # Output settings
     merge_output_format = ft.Dropdown(
@@ -3403,21 +3606,46 @@ Specify license and any restrictions.
             ft.Row([
                 ft.Container(
                     content=ft.Column([
-                        section_title("Merge Datasets", ICONS.TABLE_VIEW),
+                        section_title(
+                            "Merge Datasets",
+                            ICONS.TABLE_VIEW,
+                            "Combine datasets and unify columns into input/output schema.",
+                            on_help_click=_mk_help_handler("Combine datasets and unify columns into input/output schema."),
+                        ),
                         ft.Text("Combine multiple datasets (Hugging Face or local JSON). Map columns to a unified input/output schema and merge.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
                         ft.Divider(),
-                        section_title("Operation", ICONS.SHUFFLE),
+                        section_title(
+                            "Operation",
+                            ICONS.SHUFFLE,
+                            "Choose how to merge rows (e.g., concatenate).",
+                            on_help_click=_mk_help_handler("Choose how to merge rows (e.g., concatenate)."),
+                        ),
                         ft.Row([merge_op], wrap=True),
                         ft.Divider(),
-                        section_title("Datasets", ICONS.TABLE_VIEW),
+                        section_title(
+                            "Datasets",
+                            ICONS.TABLE_VIEW,
+                            "Add datasets from HF or local JSON and map columns.",
+                            on_help_click=_mk_help_handler("Add datasets from HF or local JSON and map columns."),
+                        ),
                         ft.Row([add_row_btn, clear_btn], spacing=8),
                         rows_host,
                         ft.Divider(),
-                        section_title("Output", ICONS.SAVE_ALT),
+                        section_title(
+                            "Output",
+                            ICONS.SAVE_ALT,
+                            "Set output format and save directory.",
+                            on_help_click=_mk_help_handler("Set output format and save directory."),
+                        ),
                         ft.Row([merge_output_format, merge_save_dir], wrap=True),
                         merge_actions,
                         ft.Divider(),
-                        section_title("Preview", ICONS.PREVIEW),
+                        section_title(
+                            "Preview",
+                            ICONS.PREVIEW,
+                            "Shows a sample of the merged result.",
+                            on_help_click=_mk_help_handler("Shows a sample of the merged result."),
+                        ),
                         ft.Container(ft.Stack([merge_preview_host, merge_preview_placeholder], expand=True),
                                      height=220,
                                      width=1000,
@@ -3426,7 +3654,12 @@ Specify license and any restrictions.
                                      padding=6,
                         ),
                         ft.Divider(),
-                        section_title("Status", ICONS.TASK),
+                        section_title(
+                            "Status",
+                            ICONS.TASK,
+                            "Merge timeline and diagnostics.",
+                            on_help_click=_mk_help_handler("Merge timeline and diagnostics."),
+                        ),
                         ft.Container(
                             ft.Stack([merge_timeline, merge_timeline_placeholder], expand=True),
                             height=200,
@@ -3443,11 +3676,15 @@ Specify license and any restrictions.
         padding=16,
     )
 
+
     # ---------- TRAINING TAB (Mock UI) ----------
     # Dataset source
     train_source = ft.Dropdown(
         label="Dataset source",
-        options=[ft.dropdown.Option("Hugging Face"), ft.dropdown.Option("JSON file")],
+        options=[
+            ft.dropdown.Option("Hugging Face"),
+            ft.dropdown.Option("JSON file"),
+        ],
         value="Hugging Face",
         width=180,
     )
@@ -3679,15 +3916,30 @@ Specify license and any restrictions.
             ft.Row([
                 ft.Container(
                     content=ft.Column([
-                        section_title("Dataset", ICONS.TABLE_VIEW),
+                        section_title(
+                            "Dataset",
+                            ICONS.TABLE_VIEW,
+                            "Select the dataset used for mock training.",
+                            on_help_click=_mk_help_handler("Select the dataset used for mock training."),
+                        ),
                         ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
                         ft.Divider(),
-                        section_title("Training Params", ICONS.SETTINGS),
+                        section_title(
+                            "Training Params",
+                            ICONS.SETTINGS,
+                            "Basic hyperparameters and LoRA toggle. Not executed for real.",
+                            on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle. Not executed for real."),
+                        ),
                         ft.Row([skill_level], wrap=True),
                         ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
                         advanced_params_section,
                         ft.Divider(),
-                        section_title("Progress & Logs", ICONS.TASK_ALT),
+                        section_title(
+                            "Progress & Logs",
+                            ICONS.TASK_ALT,
+                            "Mocked progress bar and log output.",
+                            on_help_click=_mk_help_handler("Mocked progress bar and log output."),
+                        ),
                         ft.Row([train_progress, train_prog_label], spacing=12),
                         ft.Container(
                             ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
@@ -3712,7 +3964,12 @@ Specify license and any restrictions.
             ft.Row([
                 ft.Container(
                     content=ft.Column([
-                        section_title("Proxy Settings", ICONS.SETTINGS),
+                        section_title(
+                            "Proxy Settings",
+                            ICONS.SETTINGS,
+                            "Override network proxy for requests. Use system env or custom URL.",
+                            on_help_click=_mk_help_handler("Override network proxy for requests. Use system env or custom URL."),
+                        ),
                         ft.Text(
                             "Configure how network requests route. When enabled, UI settings override environment variables and defaults.",
                             size=12,
@@ -3727,7 +3984,27 @@ Specify license and any restrictions.
                             color=WITH_OPACITY(0.6, BORDER_BASE),
                         ),
                         ft.Divider(),
-                        section_title("Ollama Connection", getattr(ICONS, "HUB", ICONS.CLOUD)),
+                        section_title(
+                            "Hugging Face Access",
+                            getattr(ICONS, "HUB", ICONS.CLOUD),
+                            "Save and test your Hugging Face API token. If saved, it's used globally.",
+                            on_help_click=_mk_help_handler("Save and test your Hugging Face API token. If saved, it's used globally."),
+                        ),
+                        ft.Text(
+                            "Saved token (if set) is used for Hugging Face Hub operations and dataset downloads.",
+                            size=12,
+                            color=WITH_OPACITY(0.7, BORDER_BASE),
+                        ),
+                        ft.Row([hf_token_tf], wrap=True),
+                        ft.Row([hf_test_btn, hf_save_btn, hf_remove_btn], spacing=10, wrap=True),
+                        hf_status,
+                        ft.Divider(),
+                        section_title(
+                            "Ollama Connection",
+                            getattr(ICONS, "HUB", ICONS.CLOUD),
+                            "Configure connection to Ollama server; only stored here.",
+                            on_help_click=_mk_help_handler("Configure connection to Ollama server; only stored here."),
+                        ),
                         ft.Text(
                             "Connect to a local or remote Ollama server. This is only configuration; other tabs won't use it yet.",
                             size=12,
@@ -3747,13 +4024,15 @@ Specify license and any restrictions.
     )
 
     # ---- Mocked Dataset Analysis tab (defined inside main) ----
-    def kpi_tile(title: str, value: str, subtitle: str = "", icon=None):
+    def kpi_tile(title: str, value, subtitle: str = "", icon=None):
+        # Accept either a string or a Flet control for value, so we can update it dynamically later.
+        val_ctrl = value if isinstance(value, ft.Control) else ft.Text(str(value), size=18, weight=ft.FontWeight.W_600)
         return ft.Container(
             content=ft.Row([
                 ft.Icon(icon or getattr(ICONS, "INSIGHTS", ICONS.SEARCH), size=20, color=ACCENT_COLOR),
                 ft.Column([
                     ft.Text(title, size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
-                    ft.Text(value, size=18, weight=ft.FontWeight.W_600),
+                    val_ctrl,
                     ft.Text(subtitle, size=11, color=WITH_OPACITY(0.6, BORDER_BASE)) if subtitle else ft.Container(),
                 ], spacing=2),
             ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -3764,75 +4043,102 @@ Specify license and any restrictions.
         )
 
     analysis_overview_note = ft.Text(
-        "Mocked analysis — not connected yet. This will show dataset insights like sentiment, lengths, imbalance, duplicates, etc.",
+        "Click Analyze to compute dataset insights: totals, lengths, duplicates, sentiment, class balance, and samples.",
         size=12,
         color=WITH_OPACITY(0.7, BORDER_BASE),
     )
 
+    # Sentiment controls (dynamic)
+    sent_pos_label = ft.Text("Positive", width=90)
+    sent_pos_bar = ft.ProgressBar(value=0.0, width=240)
+    sent_pos_pct = ft.Text("0%", width=50, text_align=ft.TextAlign.END)
+    sent_neu_label = ft.Text("Neutral", width=90)
+    sent_neu_bar = ft.ProgressBar(value=0.0, width=240)
+    sent_neu_pct = ft.Text("0%", width=50, text_align=ft.TextAlign.END)
+    sent_neg_label = ft.Text("Negative", width=90)
+    sent_neg_bar = ft.ProgressBar(value=0.0, width=240)
+    sent_neg_pct = ft.Text("0%", width=50, text_align=ft.TextAlign.END)
     sentiment_row = ft.Column([
-        ft.Row([
-            ft.Text("Positive", width=90),
-            ft.ProgressBar(value=0.62, width=240),
-            ft.Text("62%", width=50, text_align=ft.TextAlign.END),
-        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.Row([
-            ft.Text("Neutral", width=90),
-            ft.ProgressBar(value=0.21, width=240),
-            ft.Text("21%", width=50, text_align=ft.TextAlign.END),
-        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.Row([
-            ft.Text("Negative", width=90),
-            ft.ProgressBar(value=0.17, width=240),
-            ft.Text("17%", width=50, text_align=ft.TextAlign.END),
-        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Row([sent_pos_label, sent_pos_bar, sent_pos_pct], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Row([sent_neu_label, sent_neu_bar, sent_neu_pct], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Row([sent_neg_label, sent_neg_bar, sent_neg_pct], vertical_alignment=ft.CrossAxisAlignment.CENTER),
     ], spacing=6)
 
+    # Class balance proxy (dynamic) — we use input length buckets: Short/Medium/Long
+    class_a_label = ft.Text("Short", width=90)
+    class_a_bar = ft.ProgressBar(value=0.0, width=240)
+    class_a_pct = ft.Text("0%", width=50, text_align=ft.TextAlign.END)
+    class_b_label = ft.Text("Medium", width=90)
+    class_b_bar = ft.ProgressBar(value=0.0, width=240)
+    class_b_pct = ft.Text("0%", width=50, text_align=ft.TextAlign.END)
+    class_c_label = ft.Text("Long", width=90)
+    class_c_bar = ft.ProgressBar(value=0.0, width=240)
+    class_c_pct = ft.Text("0%", width=50, text_align=ft.TextAlign.END)
     class_balance_row = ft.Column([
-        ft.Row([
-            ft.Text("Class A", width=90),
-            ft.ProgressBar(value=0.45, width=240),
-            ft.Text("45%", width=50, text_align=ft.TextAlign.END),
-        ]),
-        ft.Row([
-            ft.Text("Class B", width=90),
-            ft.ProgressBar(value=0.35, width=240),
-            ft.Text("35%", width=50, text_align=ft.TextAlign.END),
-        ]),
-        ft.Row([
-            ft.Text("Class C", width=90),
-            ft.ProgressBar(value=0.20, width=240),
-            ft.Text("20%", width=50, text_align=ft.TextAlign.END),
-        ]),
+        ft.Row([class_a_label, class_a_bar, class_a_pct]),
+        ft.Row([class_b_label, class_b_bar, class_b_pct]),
+        ft.Row([class_c_label, class_c_bar, class_c_pct]),
     ], spacing=6)
 
-    # Grid table view for detailed samples (mock)
+    # Wrap Sentiment and Class Balance into sections to toggle visibility later
+    sentiment_section = ft.Container(
+        sentiment_row,
+        padding=8,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        visible=False,
+    )
+    class_balance_section = ft.Container(
+        class_balance_row,
+        padding=8,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        visible=False,
+    )
+
+    # Grid table view for detailed samples (dynamic)
+    SAMPLE_INPUT_W = 420
+    SAMPLE_OUTPUT_W = 420
+    SAMPLE_LEN_W = 70
     samples_grid = ft.DataTable(
+        column_spacing=12,
+        data_row_min_height=40,
+        heading_row_height=40,
         columns=[
-            ft.DataColumn(ft.Text("Input")),
-            ft.DataColumn(ft.Text("Output")),
-            ft.DataColumn(ft.Text("In len")),
-            ft.DataColumn(ft.Text("Out len")),
+            ft.DataColumn(ft.Container(width=SAMPLE_INPUT_W, content=ft.Text("Input"))),
+            ft.DataColumn(ft.Container(width=SAMPLE_OUTPUT_W, content=ft.Text("Output"))),
+            ft.DataColumn(ft.Container(width=SAMPLE_LEN_W, content=ft.Text("In len", text_align=ft.TextAlign.END))),
+            ft.DataColumn(ft.Container(width=SAMPLE_LEN_W, content=ft.Text("Out len", text_align=ft.TextAlign.END))),
         ],
-        rows=[
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text("Lorem ipsum dolor sit amet…", no_wrap=False)),
-                ft.DataCell(ft.Text("Consectetur adipiscing elit…", no_wrap=False)),
-                ft.DataCell(ft.Text("27")),
-                ft.DataCell(ft.Text("21")),
-            ]),
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text("Sed do eiusmod tempor incididunt…", no_wrap=False)),
-                ft.DataCell(ft.Text("Ut labore et dolore magna aliqua…", no_wrap=False)),
-                ft.DataCell(ft.Text("32")),
-                ft.DataCell(ft.Text("28")),
-            ]),
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text("Duis aute irure dolor in reprehenderit…", no_wrap=False)),
-                ft.DataCell(ft.Text("Excepteur sint occaecat cupidatat non proident…", no_wrap=False)),
-                ft.DataCell(ft.Text("36")),
-                ft.DataCell(ft.Text("42")),
-            ]),
+        rows=[],
+    )
+
+    # Extra metrics table (for optional modules)
+    extra_metrics_table = ft.DataTable(
+        column_spacing=12,
+        data_row_min_height=32,
+        heading_row_height=36,
+        columns=[
+            ft.DataColumn(ft.Container(width=220, content=ft.Text("Metric"))),
+            ft.DataColumn(ft.Container(width=560, content=ft.Text("Value"))),
         ],
+        rows=[],
+    )
+    extra_metrics_section = ft.Container(
+        extra_metrics_table,
+        padding=8,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        visible=False,
+    )
+
+    # Samples section wrapper (hidden until results are available)
+    samples_section = ft.Container(
+        samples_grid,
+        padding=8,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        visible=False,
     )
 
     # Dataset selector controls for Analysis (HF or JSON)
@@ -3864,37 +4170,32 @@ Specify license and any restrictions.
     )
     analysis_sample_size_tf = ft.TextField(label="Sample size", value="5000", width=140)
 
-    # Analysis module toggles (UI only, mocked)
-    cb_basic_stats = ft.Checkbox(label="Basic Stats", value=True)
-    cb_duplicates = ft.Checkbox(label="Duplicates & Similarity")
-    cb_coverage_overlap = ft.Checkbox(label="Coverage Overlap")
-    cb_data_leakage = ft.Checkbox(label="Data Leakage Check")
-    cb_conversation_depth = ft.Checkbox(label="Conversation Depth")
-    cb_speaker_balance = ft.Checkbox(label="Speaker Balance")
-    cb_question_statement = ft.Checkbox(label="Question vs Statement")
-    cb_readability = ft.Checkbox(label="Readability")
-    cb_ner = ft.Checkbox(label="NER")
-    cb_toxicity = ft.Checkbox(label="Toxicity / Safety")
-    cb_politeness = ft.Checkbox(label="Politeness / Formality")
-    cb_dialogue_acts = ft.Checkbox(label="Dialogue Acts")
-    cb_topics = ft.Checkbox(label="Topics / Clustering")
-    cb_alignment = ft.Checkbox(label="Alignment (Similarity/NLI)")
+    # Analysis module toggles
+    cb_basic_stats = ft.Checkbox(label="Basic Stats", value=True, tooltip="Record count and average input/output lengths.")
+    cb_duplicates = ft.Checkbox(label="Duplicates & Similarity", tooltip="Approximate duplicate/similarity detection via hashing heuristics.")
+    cb_sentiment = ft.Checkbox(label="Sentiment", value=True, tooltip="Heuristic sentiment distribution over sampled records.")
+    cb_class_balance = ft.Checkbox(label="Class balance", value=True, tooltip="Distribution of labels/classes if present.")
+    cb_coverage_overlap = ft.Checkbox(label="Coverage Overlap", tooltip="Overlap of input and output tokens (higher may indicate copying).")
+    cb_data_leakage = ft.Checkbox(label="Data Leakage Check", tooltip="Flags potential target text appearing in inputs.")
+    cb_conversation_depth = ft.Checkbox(label="Conversation Depth", tooltip="Estimated turns/exchanges in dialogue-like data.")
+    cb_speaker_balance = ft.Checkbox(label="Speaker Balance", tooltip="Balance of speakers/roles when such tags exist.")
+    cb_question_statement = ft.Checkbox(label="Question vs Statement", tooltip="Ratio of questions to statements in inputs.")
+    cb_readability = ft.Checkbox(label="Readability", tooltip="Simple readability proxy (length, punctuation).")
+    cb_ner = ft.Checkbox(label="NER", tooltip="Counts of proper nouns/capitalized tokens as NER proxy.")
+    cb_toxicity = ft.Checkbox(label="Toxicity / Safety", tooltip="Flags profanity or unsafe terms (heuristic).")
+    cb_politeness = ft.Checkbox(label="Politeness / Formality", tooltip="Presence of polite markers (please, thanks, etc.).")
+    cb_dialogue_acts = ft.Checkbox(label="Dialogue Acts", tooltip="Heuristic dialogue acts (question/command/statement).")
+    cb_topics = ft.Checkbox(label="Topics / Clustering", tooltip="Top keywords proxy for topics.")
+    cb_alignment = ft.Checkbox(label="Alignment (Similarity/NLI)", tooltip="Rough input/output semantic alignment proxy.")
     # Select-all toggle for analysis modules
     select_all_modules_cb = ft.Checkbox(label="Select all", value=False)
 
-    # Placeholder analyze button; enabled only when dataset is selected
+    # Analyze button; enabled only when dataset is selected
     analyze_btn = ft.ElevatedButton(
-        "Run mock analysis",
+        "Analyze dataset",
         icon=getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
         disabled=True,
-        on_click=lambda e: (
-            setattr(page, "snack_bar", ft.SnackBar(ft.Text(
-                f"Mock analysis executed for "
-                f"{'HF: ' + (analysis_hf_repo.value or '') + ' [' + (analysis_hf_split.value or 'train') + ']' if (analysis_source_dd.value or 'Hugging Face') == 'Hugging Face' else 'JSON: ' + (analysis_json_path.value or '')}"
-            ))),
-            setattr(page.snack_bar, "open", True),
-            page.update()
-        ),
+        on_click=lambda e: page.run_task(on_analyze),
     )
     # Ensure there's always a snackbar to open (handle older Flet without attribute)
     if not getattr(page, "snack_bar", None):
@@ -3948,6 +4249,8 @@ Specify license and any restrictions.
         return [
             cb_basic_stats,
             cb_duplicates,
+            cb_sentiment,
+            cb_class_balance,
             cb_coverage_overlap,
             cb_data_leakage,
             cb_conversation_depth,
@@ -3989,24 +4292,669 @@ Specify license and any restrictions.
     except Exception:
         pass
 
+    # --- Analysis backend state & handler ---
+    analysis_state = {"running": False}
+    analysis_busy_ring = ft.ProgressRing(value=None, visible=False, width=18, height=18)
+
+    # KPI dynamic value controls
+    kpi_total_value = ft.Text("—", size=18, weight=ft.FontWeight.W_600)
+    kpi_avg_in_value = ft.Text("—", size=18, weight=ft.FontWeight.W_600)
+    kpi_avg_out_value = ft.Text("—", size=18, weight=ft.FontWeight.W_600)
+    kpi_dupe_value = ft.Text("—", size=18, weight=ft.FontWeight.W_600)
+
+    async def on_analyze(_=None):
+        if analysis_state.get("running"):
+            return
+        analysis_state["running"] = True
+        try:
+            analyze_btn.disabled = True
+            analysis_busy_ring.visible = True
+            # Hide results while computing a fresh run
+            overview_block.visible = False
+            sentiment_block.visible = False
+            class_balance_block.visible = False
+            extra_metrics_block.visible = False
+            samples_block.visible = False
+            samples_section.visible = False
+            div_overview.visible = False
+            div_sentiment.visible = False
+            div_class.visible = False
+            div_extra.visible = False
+            div_samples.visible = False
+            await safe_update(page)
+
+            src = (analysis_source_dd.value or "Hugging Face")
+            repo = (analysis_hf_repo.value or "").strip()
+            split = (analysis_hf_split.value or "train").strip()
+            cfg = (analysis_hf_config.value or "").strip() or None
+            jpath = (analysis_json_path.value or "").strip()
+            try:
+                sample_size = int(float((analysis_sample_size_tf.value or "5000").strip()))
+                sample_size = max(1, min(250000, sample_size))
+            except Exception:
+                sample_size = 5000
+
+            # Load examples as list[{input, output}]
+            examples: list[dict] = []
+            total_records = 0
+
+            if src == "Hugging Face":
+                if load_dataset is None:
+                    raise RuntimeError("datasets library not available — cannot load from Hub")
+
+                async def _load_hf(repo_id: str, sp: str, name: Optional[str]):
+                    def do_load():
+                        return load_dataset(repo_id, split=sp, name=name)
+                    try:
+                        return await asyncio.to_thread(do_load)
+                    except Exception as e:
+                        msg = str(e).lower()
+                        if (get_dataset_config_names is not None) and ("config name is missing" in msg or "config name is required" in msg):
+                            try:
+                                cfgs = await asyncio.to_thread(lambda: get_dataset_config_names(repo_id))
+                            except Exception:
+                                cfgs = []
+                            pick = None
+                            for pref in ("main", "default", "socratic"):
+                                if pref in cfgs:
+                                    pick = pref
+                                    break
+                            if not pick and cfgs:
+                                pick = cfgs[0]
+                            if pick:
+                                return await asyncio.to_thread(lambda: load_dataset(repo_id, split=sp, name=pick))
+                        raise
+
+                ds = await _load_hf(repo, split, cfg)
+                try:
+                    names = list(getattr(ds, "column_names", []) or [])
+                except Exception:
+                    names = []
+                inn, outn = _guess_cols(names)
+                if not inn or not outn:
+                    # If already in expected schema, allow it
+                    if "input" in names and "output" in names:
+                        inn, outn = "input", "output"
+                    else:
+                        raise RuntimeError(f"Could not resolve input/output columns for {repo} (have: {', '.join(names)})")
+
+                # Prepare two-column view
+                def mapper(batch):
+                    srcs = batch.get(inn, [])
+                    tgts = batch.get(outn, [])
+                    return {
+                        "input": ["" if v is None else str(v).strip() for v in srcs],
+                        "output": ["" if v is None else str(v).strip() for v in tgts],
+                    }
+
+                try:
+                    mapped = await asyncio.to_thread(
+                        lambda: ds.map(mapper, batched=True, remove_columns=list(getattr(ds, "column_names", []) or []))
+                    )
+                except Exception:
+                    # Fallback: iterate to python list
+                    tmp = []
+                    for r in ds:
+                        tmp.append({
+                            "input": "" if r.get(inn) is None else str(r.get(inn)).strip(),
+                            "output": "" if r.get(outn) is None else str(r.get(outn)).strip(),
+                        })
+                    from_list = await asyncio.to_thread(lambda: Dataset.from_list(tmp) if Dataset is not None else None)
+                    mapped = from_list if from_list is not None else tmp  # may be a list if datasets missing
+
+                # Select sample
+                try:
+                    total_records = len(mapped)
+                except Exception:
+                    total_records = 0
+                if hasattr(mapped, "select"):
+                    k = min(sample_size, total_records)
+                    idxs = list(range(total_records)) if k >= total_records else random.sample(range(total_records), k)
+                    batch = await asyncio.to_thread(lambda: mapped.select(idxs))
+                    examples = [{"input": (r.get("input", "") or ""), "output": (r.get("output", "") or "")} for r in batch]
+                else:
+                    # mapped is already a python list
+                    total_records = len(mapped)
+                    if total_records > sample_size:
+                        idxs = random.sample(range(total_records), sample_size)
+                        examples = [mapped[i] for i in idxs]
+                    else:
+                        examples = list(mapped)
+
+            else:
+                # JSON file
+                if not jpath:
+                    raise RuntimeError("Provide a JSON path")
+                try:
+                    records = await asyncio.to_thread(sd.load_records, jpath)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to read JSON: {e}")
+                try:
+                    ex0 = await asyncio.to_thread(sd.normalize_records, records, 1)
+                except Exception:
+                    ex0 = []
+                    for r in records or []:
+                        if isinstance(r, dict):
+                            a = str((r.get("input") or "")).strip()
+                            b = str((r.get("output") or "")).strip()
+                            if a and b:
+                                ex0.append({"input": a, "output": b})
+                total_records = len(ex0)
+                if total_records > sample_size:
+                    idxs = random.sample(range(total_records), sample_size)
+                    examples = [ex0[i] for i in idxs]
+                else:
+                    examples = ex0
+
+            used_n = len(examples)
+            if used_n == 0:
+                raise RuntimeError("No examples found to analyze")
+
+            # Compute metrics (gated by module toggles where applicable)
+            do_basic = bool(getattr(cb_basic_stats, "value", True))
+            do_dupe = bool(getattr(cb_duplicates, "value", False))
+            do_sent = bool(getattr(cb_sentiment, "value", True))
+            do_cls = bool(getattr(cb_class_balance, "value", True))
+            do_cov = bool(getattr(cb_coverage_overlap, "value", False))
+            do_leak = bool(getattr(cb_data_leakage, "value", False))
+            do_depth = bool(getattr(cb_conversation_depth, "value", False))
+            do_speaker = bool(getattr(cb_speaker_balance, "value", False))
+            do_qstmt = bool(getattr(cb_question_statement, "value", False))
+            do_read = bool(getattr(cb_readability, "value", False))
+            do_ner = bool(getattr(cb_ner, "value", False))
+            do_toxic = bool(getattr(cb_toxicity, "value", False))
+            do_polite = bool(getattr(cb_politeness, "value", False))
+            do_dacts = bool(getattr(cb_dialogue_acts, "value", False))
+            do_topics = bool(getattr(cb_topics, "value", False))
+            do_align = bool(getattr(cb_alignment, "value", False))
+
+            in_lens = [len(str(x.get("input", ""))) for x in examples]
+            out_lens = [len(str(x.get("output", ""))) for x in examples]
+
+            avg_in = avg_out = 0.0
+            if do_basic:
+                avg_in = sum(in_lens) / max(1, used_n)
+                avg_out = sum(out_lens) / max(1, used_n)
+
+            dup_pct = None
+            if do_dupe:
+                unique_pairs = len({(str(x.get("input", "")), str(x.get("output", ""))) for x in examples})
+                dup_pct = 100.0 * (1.0 - (unique_pairs / max(1, used_n)))
+
+            # Sentiment proxy via tiny lexicon (gated)
+            POS = {"good", "great", "love", "awesome", "nice", "excellent", "happy", "lol", "thanks", "cool"}
+            NEG = {"bad", "hate", "terrible", "awful", "angry", "sad", "stupid", "dumb", "wtf", "idiot", "trash"}
+            pos = neu = neg = 0
+            if do_sent:
+                for ex in examples:
+                    txt = f"{ex.get('input','')} {ex.get('output','')}".lower()
+                    score = sum(1 for w in POS if w in txt) - sum(1 for w in NEG if w in txt)
+                    if score > 0:
+                        pos += 1
+                    elif score < 0:
+                        neg += 1
+                    else:
+                        neu += 1
+                pos_p = pos / used_n
+                neu_p = neu / used_n
+                neg_p = neg / used_n
+            else:
+                pos_p = neu_p = neg_p = 0.0
+
+            # Length buckets (Short/Medium/Long) for input (gated)
+            if do_cls:
+                short = sum(1 for L in in_lens if L <= 128)
+                medium = sum(1 for L in in_lens if 129 <= L <= 512)
+                long = used_n - short - medium
+                a_p = short / used_n
+                b_p = medium / used_n
+                c_p = long / used_n
+            else:
+                a_p = b_p = c_p = 0.0
+
+            # Update UI controls
+            kpi_total_value.value = f"{used_n:,}" if do_basic else "—"
+            kpi_avg_in_value.value = (f"{avg_in:.0f} chars" if do_basic else "—")
+            kpi_avg_out_value.value = (f"{avg_out:.0f} chars" if do_basic else "—")
+            kpi_dupe_value.value = (f"{dup_pct:.1f}%" if (do_dupe and dup_pct is not None) else "—")
+
+            # Sentiment section
+            sentiment_section.visible = do_sent
+            sent_pos_bar.value = pos_p
+            sent_pos_pct.value = f"{int(pos_p * 100)}%"
+            sent_neu_bar.value = neu_p
+            sent_neu_pct.value = f"{int(neu_p * 100)}%"
+            sent_neg_bar.value = neg_p
+            sent_neg_pct.value = f"{int(neg_p * 100)}%"
+
+            # Class balance section
+            class_balance_section.visible = do_cls
+            class_a_label.value = "Short"
+            class_a_bar.value = a_p
+            class_a_pct.value = f"{int(a_p * 100)}%"
+            class_b_label.value = "Medium"
+            class_b_bar.value = b_p
+            class_b_pct.value = f"{int(b_p * 100)}%"
+            class_c_label.value = "Long"
+            class_c_bar.value = c_p
+            class_c_pct.value = f"{int(c_p * 100)}%"
+
+            # Compute Extra metrics based on selected modules
+            extra_rows: list[ft.DataRow] = []
+
+            def _tokens(s: str) -> list[str]:
+                return re.findall(r"[A-Za-z0-9']+", s.lower())
+
+            def _token_set(s: str) -> set[str]:
+                return set(_tokens(s))
+
+            def _jaccard(a: set[str], b: set[str]) -> float:
+                if not a and not b:
+                    return 1.0
+                inter = len(a & b)
+                union = len(a | b)
+                return inter / union if union else 0.0
+
+            if any([do_cov, do_leak, do_depth, do_speaker, do_qstmt, do_read, do_ner, do_toxic, do_polite, do_dacts, do_topics, do_align]):
+                # Precompute tokens
+                in_tokens = [_token_set(str(ex.get("input", ""))) for ex in examples]
+                out_tokens = [_token_set(str(ex.get("output", ""))) for ex in examples]
+
+                if do_cov:
+                    cover_vals = []
+                    for ti, to in zip(in_tokens, out_tokens):
+                        cover = (len(ti & to) / max(1, len(to))) if to else 0.0
+                        cover_vals.append(cover)
+                    cover_avg = sum(cover_vals) / len(cover_vals)
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Coverage overlap")),
+                        ft.DataCell(ft.Text(f"{cover_avg*100:.1f}%")),
+                    ]))
+
+                if do_align:
+                    jac_vals = []
+                    for ti, to in zip(in_tokens, out_tokens):
+                        jac_vals.append(_jaccard(ti, to))
+                    jac_avg = sum(jac_vals) / len(jac_vals)
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Alignment (Jaccard)")),
+                        ft.DataCell(ft.Text(f"{jac_avg*100:.1f}%")),
+                    ]))
+
+                if do_leak:
+                    leak = 0
+                    for ex in examples:
+                        a = str(ex.get("input", "")).lower()
+                        b = str(ex.get("output", "")).lower()
+                        if (a and b) and (a in b or b in a):
+                            leak += 1
+                    leak_p = leak / used_n
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Data leakage risk")),
+                        ft.DataCell(ft.Text(f"{leak_p*100:.1f}%")),
+                    ]))
+
+                if do_depth:
+                    def _turns(text: str) -> int:
+                        tl = text.lower()
+                        m = len(re.findall(r"\b(user|assistant|system)\s*:", tl))
+                        if m:
+                            return m
+                        lines = [ln for ln in text.splitlines() if ln.strip()]
+                        return max(1, len(lines))
+                    turns = [max(_turns(str(ex.get("input",""))), 1) for ex in examples]
+                    avg_turns = sum(turns) / len(turns)
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Avg turns (approx)")),
+                        ft.DataCell(ft.Text(f"{avg_turns:.1f}")),
+                    ]))
+
+                if do_speaker:
+                    shares = []
+                    for ex in examples:
+                        a = str(ex.get("input", ""))
+                        b = str(ex.get("output", ""))
+                        tot = len(a) + len(b)
+                        shares.append((len(a) / tot) if tot else 0.0)
+                    share_avg = sum(shares) / len(shares)
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Speaker balance (input share)")),
+                        ft.DataCell(ft.Text(f"{share_avg*100:.1f}%")),
+                    ]))
+
+                if do_qstmt:
+                    q = 0
+                    for ex in examples:
+                        a = str(ex.get("input", ""))
+                        if a.strip().endswith("?"):
+                            q += 1
+                    q_p = q / used_n
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Questions (inputs)")),
+                        ft.DataCell(ft.Text(f"{q_p*100:.1f}%")),
+                    ]))
+
+                if do_read:
+                    vowels = set("aeiouy")
+                    def _syllables(word: str) -> int:
+                        w = word.lower()
+                        groups = re.findall(r"[aeiouy]+", w)
+                        return max(1, len(groups))
+                    def _readability(text: str) -> float:
+                        toks = _tokens(text)
+                        words = max(1, len(toks))
+                        sentences = max(1, len(re.findall(r"[.!?]", text)))
+                        syll = sum(_syllables(t) for t in toks)
+                        # Flesch Reading Ease (approx)
+                        return 206.835 - 1.015*(words/sentences) - 84.6*(syll/words)
+                    scores = [_readability(str(ex.get("input",""))) for ex in examples]
+                    score_avg = sum(scores)/len(scores)
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Readability (Flesch approx)")),
+                        ft.DataCell(ft.Text(f"{score_avg:.1f}")),
+                    ]))
+
+                if do_ner:
+                    def _capwords(text: str) -> int:
+                        # Count capitalized words not at sentence start (rough proxy)
+                        toks = re.findall(r"\b[A-Z][a-z]+\b", text)
+                        return len(toks)
+                    ents = [_capwords(str(ex.get("input",""))) for ex in examples]
+                    ents_avg = sum(ents)/len(ents)
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("NER (capwords avg)")),
+                        ft.DataCell(ft.Text(f"{ents_avg:.2f}")),
+                    ]))
+
+                if do_toxic:
+                    tox = 0
+                    for ex in examples:
+                        txt = f"{ex.get('input','')} {ex.get('output','')}".lower()
+                        if any(w in txt for w in NEG):
+                            tox += 1
+                    tox_p = tox / used_n
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Toxicity flagged")),
+                        ft.DataCell(ft.Text(f"{tox_p*100:.1f}%")),
+                    ]))
+
+                if do_polite:
+                    POLITE = {"please", "thank", "thanks", "kindly", "sir", "madam", "regards"}
+                    pol = 0
+                    for ex in examples:
+                        txt = f"{ex.get('input','')} {ex.get('output','')}".lower()
+                        if any(w in txt for w in POLITE):
+                            pol += 1
+                    pol_p = pol / used_n
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Politeness flagged")),
+                        ft.DataCell(ft.Text(f"{pol_p*100:.1f}%")),
+                    ]))
+
+                if do_dacts:
+                    q = c = s = 0
+                    for ex in examples:
+                        a = str(ex.get("input", "")).strip()
+                        al = a.lower()
+                        if a.endswith("?"):
+                            q += 1
+                        elif al.startswith(("please ", "do ", "go ", "make ", "provide ", "give ", "show ")):
+                            c += 1
+                        else:
+                            s += 1
+                    q_p = q/used_n
+                    c_p = c/used_n
+                    s_p = s/used_n
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Dialogue acts (Q/C/S)")),
+                        ft.DataCell(ft.Text(f"{int(q_p*100)}/{int(c_p*100)}/{int(s_p*100)}%")),
+                    ]))
+
+                if do_topics:
+                    STOP = {"the","a","an","and","or","to","is","are","was","were","of","for","in","on","at","it","this","that","i","you","he","she","they","we","with"}
+                    freq = Counter()
+                    for ex in examples:
+                        freq.update([t for t in _tokens(str(ex.get("input",""))) if t not in STOP and len(t) > 2])
+                    top = ", ".join([w for w,_ in freq.most_common(5)]) or "(none)"
+                    extra_rows.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("Top keywords")),
+                        ft.DataCell(ft.Text(top)),
+                    ]))
+
+            extra_metrics_table.rows = extra_rows
+            extra_metrics_section.visible = len(extra_rows) > 0
+
+            # Reveal result blocks now that real values are computed
+            kpi_total_tile.visible = do_basic
+            kpi_avg_in_tile.visible = do_basic
+            kpi_avg_out_tile.visible = do_basic
+            kpi_dupe_tile.visible = do_dupe
+            overview_block.visible = (do_basic or do_dupe)
+            sentiment_block.visible = do_sent
+            class_balance_block.visible = do_cls
+            extra_metrics_block.visible = len(extra_rows) > 0
+            samples_section.visible = True
+            samples_block.visible = True
+            # Toggle dividers to match block visibility
+            div_overview.visible = overview_block.visible
+            div_sentiment.visible = sentiment_block.visible
+            div_class.visible = class_balance_block.visible
+            div_extra.visible = extra_metrics_block.visible
+            div_samples.visible = samples_block.visible
+
+            # Samples grid (up to 10)
+            try:
+                show_n = min(10, used_n)
+                rows = []
+                for i in range(show_n):
+                    ex = examples[i]
+                    a = str(ex.get("input", ""))
+                    b = str(ex.get("output", ""))
+                    # Scrollable text cells with fixed width for neat column layout
+                    a_cell = ft.Container(
+                        width=SAMPLE_INPUT_W,
+                        content=ft.Row([ft.Text(a, no_wrap=True, selectable=True)], scroll=ft.ScrollMode.AUTO),
+                    )
+                    b_cell = ft.Container(
+                        width=SAMPLE_OUTPUT_W,
+                        content=ft.Row([ft.Text(b, no_wrap=True, selectable=True)], scroll=ft.ScrollMode.AUTO),
+                    )
+                    inlen_cell = ft.Container(width=SAMPLE_LEN_W, content=ft.Text(str(len(a)), text_align=ft.TextAlign.END))
+                    outlen_cell = ft.Container(width=SAMPLE_LEN_W, content=ft.Text(str(len(b)), text_align=ft.TextAlign.END))
+                    rows.append(ft.DataRow(cells=[
+                        ft.DataCell(a_cell),
+                        ft.DataCell(b_cell),
+                        ft.DataCell(inlen_cell),
+                        ft.DataCell(outlen_cell),
+                    ]))
+                samples_grid.rows = rows
+            except Exception:
+                pass
+
+            try:
+                modules_used = []
+                if do_basic:
+                    modules_used.append("Basic Stats")
+                if do_dupe:
+                    modules_used.append("Duplicates")
+                if do_sent:
+                    modules_used.append("Sentiment")
+                if do_cls:
+                    modules_used.append("Class balance")
+                if do_cov:
+                    modules_used.append("Coverage Overlap")
+                if do_leak:
+                    modules_used.append("Data Leakage Check")
+                if do_depth:
+                    modules_used.append("Conversation Depth")
+                if do_speaker:
+                    modules_used.append("Speaker Balance")
+                if do_qstmt:
+                    modules_used.append("Question vs Statement")
+                if do_read:
+                    modules_used.append("Readability")
+                if do_ner:
+                    modules_used.append("NER")
+                if do_toxic:
+                    modules_used.append("Toxicity / Safety")
+                if do_polite:
+                    modules_used.append("Politeness / Formality")
+                if do_dacts:
+                    modules_used.append("Dialogue Acts")
+                if do_topics:
+                    modules_used.append("Topics / Clustering")
+                if do_align:
+                    modules_used.append("Alignment (Similarity/NLI)")
+                mod_txt = " | Modules: " + ", ".join(modules_used) if modules_used else ""
+                analysis_overview_note.value = (
+                    f"Analyzed {used_n:,} records" + (f" (sampled from {total_records:,})" if total_records > used_n else "") + mod_txt
+                )
+            except Exception:
+                pass
+
+            await safe_update(page)
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Analysis failed: {e}"))
+            page.snack_bar.open = True
+            await safe_update(page)
+        finally:
+            analysis_busy_ring.visible = False
+            analyze_btn.disabled = False
+            analysis_state["running"] = False
+            await safe_update(page)
+
     # Helper: build a table layout for module checkboxes (3 columns)
     def _build_modules_table():
         mods = _all_analysis_modules()
         columns = [ft.DataColumn(ft.Text("")), ft.DataColumn(ft.Text("")), ft.DataColumn(ft.Text(""))]
         rows: list[ft.DataRow] = []
+        def _cell_with_help(ctrl):
+            try:
+                tip = getattr(ctrl, "tooltip", None)
+            except Exception:
+                tip = None
+            # Try to add a small clickable info icon next to control
+            try:
+                _info_icon_name = getattr(
+                    ICONS,
+                    "INFO_OUTLINE",
+                    getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", getattr(ICONS, "HELP", None))),
+                )
+                def _on_help_click(e, text=tip):
+                    try:
+                        dlg = ft.AlertDialog(title=ft.Text("About module"), content=ft.Text(text or ""))
+                        page.dialog = dlg
+                        dlg.open = True
+                        page.update()
+                    except Exception:
+                        try:
+                            page.snack_bar = ft.SnackBar(ft.Text(text or ""))
+                            page.snack_bar.open = True
+                            page.update()
+                        except Exception:
+                            pass
+                help_btn = None
+                try:
+                    help_btn = ft.IconButton(icon=_info_icon_name, icon_color=WITH_OPACITY(0.6, BORDER_BASE), tooltip=tip or "Module help", on_click=_on_help_click)
+                except Exception:
+                    try:
+                        help_btn = ft.Icon(_info_icon_name, size=16, color=WITH_OPACITY(0.6, BORDER_BASE))
+                        help_btn = ft.Tooltip(message=tip or "Module help", content=help_btn)
+                    except Exception:
+                        help_btn = None
+                if help_btn is not None:
+                    return ft.Row([ctrl, help_btn], spacing=4, alignment=ft.MainAxisAlignment.START)
+            except Exception:
+                pass
+            # Fallback: return control as-is
+            return ctrl
         for i in range(0, len(mods), 3):
-            c1 = ft.DataCell(mods[i])
-            c2 = ft.DataCell(mods[i + 1]) if i + 1 < len(mods) else ft.DataCell(ft.Container())
-            c3 = ft.DataCell(mods[i + 2]) if i + 2 < len(mods) else ft.DataCell(ft.Container())
+            c1 = ft.DataCell(_cell_with_help(mods[i]))
+            c2 = ft.DataCell(_cell_with_help(mods[i + 1])) if i + 1 < len(mods) else ft.DataCell(ft.Container())
+            c3 = ft.DataCell(_cell_with_help(mods[i + 2])) if i + 2 < len(mods) else ft.DataCell(ft.Container())
             rows.append(ft.DataRow(cells=[c1, c2, c3]))
         return ft.DataTable(columns=columns, rows=rows)
+
+    # Blocks for results sections: hidden until real results are computed
+    kpi_total_tile = kpi_tile("Total records", kpi_total_value, icon=getattr(ICONS, "TABLE_VIEW", getattr(ICONS, "LIST", ICONS.SEARCH)))
+    kpi_avg_in_tile = kpi_tile("Avg input length", kpi_avg_in_value, icon=getattr(ICONS, "TEXT_FIELDS", getattr(ICONS, "TEXT_FIELDS_OUTLINED", ICONS.SEARCH)))
+    kpi_avg_out_tile = kpi_tile("Avg output length", kpi_avg_out_value, icon=getattr(ICONS, "TEXT_FIELDS", getattr(ICONS, "TEXT_FIELDS_OUTLINED", ICONS.SEARCH)))
+    kpi_dupe_tile = kpi_tile("Duplicates", kpi_dupe_value, icon=getattr(ICONS, "CONTENT_COPY", getattr(ICONS, "COPY_ALL", ICONS.SEARCH)))
+    overview_row = ft.Row([
+        kpi_total_tile,
+        kpi_avg_in_tile,
+        kpi_avg_out_tile,
+        kpi_dupe_tile,
+    ], wrap=True, spacing=12)
+    overview_block = ft.Column([
+        section_title(
+            "Overview",
+            getattr(ICONS, "DASHBOARD", getattr(ICONS, "INSIGHTS", ICONS.SEARCH)),
+            "Key KPIs such as total records, average input/output lengths, and duplicate rate (if enabled).",
+            on_help_click=_mk_help_handler("Key KPIs such as total records, average input/output lengths, and duplicate rate (if enabled)."),
+        ),
+        overview_row,
+    ], spacing=6, visible=False)
+
+    sentiment_block = ft.Column([
+        section_title(
+            "Sentiment",
+            getattr(ICONS, "EMOJI_EMOTIONS", getattr(ICONS, "INSERT_EMOTICON", ICONS.SEARCH)),
+            "Heuristic sentiment distribution computed over sampled records.",
+            on_help_click=_mk_help_handler("Heuristic sentiment distribution computed over sampled records."),
+        ),
+        sentiment_section,
+    ], spacing=6, visible=False)
+
+    class_balance_block = ft.Column([
+        section_title(
+            "Class balance",
+            getattr(ICONS, "DONUT_SMALL", getattr(ICONS, "PIE_CHART", ICONS.SEARCH)),
+            "Distribution of labels/classes if present in your dataset.",
+            on_help_click=_mk_help_handler("Distribution of labels/classes if present in your dataset."),
+        ),
+        class_balance_section,
+    ], spacing=6, visible=False)
+
+    extra_metrics_block = ft.Column([
+        section_title(
+            "Extra metrics",
+            getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
+            "Lightweight proxies: coverage overlap, leakage check, depth, speaker balance, Q vs statement, readability, NER proxy, toxicity, politeness, dialogue acts, topics, alignment.",
+            on_help_click=_mk_help_handler("Lightweight proxies: coverage overlap, leakage check, depth, speaker balance, Q vs statement, readability, NER proxy, toxicity, politeness, dialogue acts, topics, alignment."),
+        ),
+        extra_metrics_section,
+    ], spacing=6, visible=False)
+
+    samples_block = ft.Column([
+        section_title(
+            "Samples",
+            getattr(ICONS, "LIST", getattr(ICONS, "LIST_ALT", ICONS.SEARCH)),
+            "Random sample rows for quick spot checks (input/output and lengths).",
+            on_help_click=_mk_help_handler("Random sample rows for quick spot checks (input/output and lengths)."),
+        ),
+        samples_section,
+    ], spacing=6, visible=False)
+
+    # Named dividers for each results block (hidden until analysis produces output)
+    div_overview = ft.Divider(visible=False)
+    div_sentiment = ft.Divider(visible=False)
+    div_class = ft.Divider(visible=False)
+    div_extra = ft.Divider(visible=False)
+    div_samples = ft.Divider(visible=False)
 
     analysis_tab = ft.Container(
         content=ft.Column([
             ft.Row([
-                section_title("Dataset Analysis", getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH))),
+                section_title(
+                    "Dataset Analysis",
+                    getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
+                    "Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results.",
+                    on_help_click=_mk_help_handler("Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results."),
+                ),
                 ft.Container(expand=1),
                 analyze_btn,
+                analysis_busy_ring,
             ], alignment=ft.MainAxisAlignment.START),
 
             # Dataset chooser row
@@ -4019,12 +4967,22 @@ Specify license and any restrictions.
             ], wrap=True, spacing=10),
             analysis_dataset_hint,
             ft.Divider(),
-            section_title("Analysis modules (mock)", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
+            section_title(
+                "Analysis modules",
+                getattr(ICONS, "TUNE", ICONS.SETTINGS),
+                "Choose which checks to run. Only enabled modules are computed and displayed.",
+                on_help_click=_mk_help_handler("Choose which checks to run. Only enabled modules are computed and displayed."),
+            ),
             ft.Row([select_all_modules_cb], wrap=True),
             ft.Container(_build_modules_table(), padding=4, border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)), border_radius=8),
 
             ft.Divider(),
-            section_title("Runtime settings (mock)", getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS))),
+            section_title(
+                "Runtime settings",
+                getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
+                "Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed.",
+                on_help_click=_mk_help_handler("Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed."),
+            ),
             ft.Row([
                 analysis_backend_dd,
                 analysis_hf_token_tf,
@@ -4032,27 +4990,20 @@ Specify license and any restrictions.
             ], wrap=True, spacing=10),
 
             analysis_overview_note,
-            ft.Divider(),
+            div_overview,
+            overview_block,
 
-            section_title("Overview", getattr(ICONS, "DASHBOARD", getattr(ICONS, "INSIGHTS", ICONS.SEARCH))),
-            ft.Row([
-                kpi_tile("Total records", "12,345", "mock"),
-                kpi_tile("Avg input length", "187 chars", "mock", icon=getattr(ICONS, "TEXT_FIELDS", getattr(ICONS, "TEXT_FIELDS_OUTLINED", ICONS.SEARCH))),
-                kpi_tile("Avg output length", "74 chars", "mock", icon=getattr(ICONS, "TEXT_FIELDS", getattr(ICONS, "TEXT_FIELDS_OUTLINED", ICONS.SEARCH))),
-                kpi_tile("Duplicates", "1.4%", "mock", icon=getattr(ICONS, "CONTENT_COPY", getattr(ICONS, "COPY_ALL", ICONS.SEARCH))),
-            ], wrap=True, spacing=12),
+            div_sentiment,
+            sentiment_block,
 
-            ft.Divider(),
-            section_title("Sentiment (mock)", getattr(ICONS, "EMOJI_EMOTIONS", getattr(ICONS, "INSERT_EMOTICON", ICONS.SEARCH))),
-            ft.Container(sentiment_row, padding=8, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), border_radius=8),
+            div_class,
+            class_balance_block,
 
-            ft.Divider(),
-            section_title("Class balance (mock)", getattr(ICONS, "DONUT_SMALL", getattr(ICONS, "PIE_CHART", ICONS.SEARCH))),
-            ft.Container(class_balance_row, padding=8, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), border_radius=8),
+            div_extra,
+            extra_metrics_block,
 
-            ft.Divider(),
-            section_title("Samples (mock)", getattr(ICONS, "LIST", getattr(ICONS, "LIST_ALT", ICONS.SEARCH))),
-            ft.Container(samples_grid, padding=8, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), border_radius=8),
+            div_samples,
+            samples_block,
         ], scroll=ft.ScrollMode.AUTO, spacing=12),
         padding=16,
     )

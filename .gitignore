@@ -1,3 +1,6 @@
 venv
 .venv
 __pycache__
+hf_dataset
+hf_config.json
+ollama_config.json
