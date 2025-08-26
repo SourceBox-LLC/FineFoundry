@@ -3746,12 +3746,324 @@ Specify license and any restrictions.
         padding=16,
     )
 
+    # ---- Mocked Dataset Analysis tab (defined inside main) ----
+    def kpi_tile(title: str, value: str, subtitle: str = "", icon=None):
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(icon or getattr(ICONS, "INSIGHTS", ICONS.SEARCH), size=20, color=ACCENT_COLOR),
+                ft.Column([
+                    ft.Text(title, size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+                    ft.Text(value, size=18, weight=ft.FontWeight.W_600),
+                    ft.Text(subtitle, size=11, color=WITH_OPACITY(0.6, BORDER_BASE)) if subtitle else ft.Container(),
+                ], spacing=2),
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            width=230,
+            padding=12,
+            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+            border_radius=8,
+        )
+
+    analysis_overview_note = ft.Text(
+        "Mocked analysis — not connected yet. This will show dataset insights like sentiment, lengths, imbalance, duplicates, etc.",
+        size=12,
+        color=WITH_OPACITY(0.7, BORDER_BASE),
+    )
+
+    sentiment_row = ft.Column([
+        ft.Row([
+            ft.Text("Positive", width=90),
+            ft.ProgressBar(value=0.62, width=240),
+            ft.Text("62%", width=50, text_align=ft.TextAlign.END),
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Row([
+            ft.Text("Neutral", width=90),
+            ft.ProgressBar(value=0.21, width=240),
+            ft.Text("21%", width=50, text_align=ft.TextAlign.END),
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Row([
+            ft.Text("Negative", width=90),
+            ft.ProgressBar(value=0.17, width=240),
+            ft.Text("17%", width=50, text_align=ft.TextAlign.END),
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    ], spacing=6)
+
+    class_balance_row = ft.Column([
+        ft.Row([
+            ft.Text("Class A", width=90),
+            ft.ProgressBar(value=0.45, width=240),
+            ft.Text("45%", width=50, text_align=ft.TextAlign.END),
+        ]),
+        ft.Row([
+            ft.Text("Class B", width=90),
+            ft.ProgressBar(value=0.35, width=240),
+            ft.Text("35%", width=50, text_align=ft.TextAlign.END),
+        ]),
+        ft.Row([
+            ft.Text("Class C", width=90),
+            ft.ProgressBar(value=0.20, width=240),
+            ft.Text("20%", width=50, text_align=ft.TextAlign.END),
+        ]),
+    ], spacing=6)
+
+    # Grid table view for detailed samples (mock)
+    samples_grid = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text("Input")),
+            ft.DataColumn(ft.Text("Output")),
+            ft.DataColumn(ft.Text("In len")),
+            ft.DataColumn(ft.Text("Out len")),
+        ],
+        rows=[
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text("Lorem ipsum dolor sit amet…", no_wrap=False)),
+                ft.DataCell(ft.Text("Consectetur adipiscing elit…", no_wrap=False)),
+                ft.DataCell(ft.Text("27")),
+                ft.DataCell(ft.Text("21")),
+            ]),
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text("Sed do eiusmod tempor incididunt…", no_wrap=False)),
+                ft.DataCell(ft.Text("Ut labore et dolore magna aliqua…", no_wrap=False)),
+                ft.DataCell(ft.Text("32")),
+                ft.DataCell(ft.Text("28")),
+            ]),
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text("Duis aute irure dolor in reprehenderit…", no_wrap=False)),
+                ft.DataCell(ft.Text("Excepteur sint occaecat cupidatat non proident…", no_wrap=False)),
+                ft.DataCell(ft.Text("36")),
+                ft.DataCell(ft.Text("42")),
+            ]),
+        ],
+    )
+
+    # Dataset selector controls for Analysis (HF or JSON)
+    analysis_source_dd = ft.Dropdown(
+        label="Dataset source",
+        options=[ft.dropdown.Option("Hugging Face"), ft.dropdown.Option("JSON file")],
+        value="Hugging Face",
+        width=180,
+    )
+    analysis_hf_repo = ft.TextField(label="Dataset repo (e.g., username/dataset)", width=360, visible=True)
+    analysis_hf_split = ft.TextField(label="Split", value="train", width=120, visible=True)
+    analysis_hf_config = ft.TextField(label="Config (optional)", width=180, visible=True)
+    analysis_json_path = ft.TextField(label="JSON path", width=360, visible=False)
+
+    analysis_dataset_hint = ft.Text("Select a dataset to analyze.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
+    # Analysis runtime settings (UI only, mocked)
+    analysis_backend_dd = ft.Dropdown(
+        label="Backend",
+        options=[ft.dropdown.Option("HF Inference API"), ft.dropdown.Option("Local (Transformers)")],
+        value="HF Inference API",
+        width=220,
+    )
+    analysis_hf_token_tf = ft.TextField(
+        label="HF token (optional)",
+        width=360,
+        password=True,
+        can_reveal_password=True,
+        visible=True,
+    )
+    analysis_sample_size_tf = ft.TextField(label="Sample size", value="5000", width=140)
+
+    # Analysis module toggles (UI only, mocked)
+    cb_basic_stats = ft.Checkbox(label="Basic Stats", value=True)
+    cb_duplicates = ft.Checkbox(label="Duplicates & Similarity")
+    cb_coverage_overlap = ft.Checkbox(label="Coverage Overlap")
+    cb_data_leakage = ft.Checkbox(label="Data Leakage Check")
+    cb_conversation_depth = ft.Checkbox(label="Conversation Depth")
+    cb_speaker_balance = ft.Checkbox(label="Speaker Balance")
+    cb_question_statement = ft.Checkbox(label="Question vs Statement")
+    cb_readability = ft.Checkbox(label="Readability")
+    cb_ner = ft.Checkbox(label="NER")
+    cb_toxicity = ft.Checkbox(label="Toxicity / Safety")
+    cb_politeness = ft.Checkbox(label="Politeness / Formality")
+    cb_dialogue_acts = ft.Checkbox(label="Dialogue Acts")
+    cb_topics = ft.Checkbox(label="Topics / Clustering")
+    cb_alignment = ft.Checkbox(label="Alignment (Similarity/NLI)")
+    # Select-all toggle for analysis modules
+    select_all_modules_cb = ft.Checkbox(label="Select all", value=False)
+
+    # Placeholder analyze button; enabled only when dataset is selected
+    analyze_btn = ft.ElevatedButton(
+        "Run mock analysis",
+        icon=getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
+        disabled=True,
+        on_click=lambda e: (
+            setattr(page, "snack_bar", ft.SnackBar(ft.Text(
+                f"Mock analysis executed for "
+                f"{'HF: ' + (analysis_hf_repo.value or '') + ' [' + (analysis_hf_split.value or 'train') + ']' if (analysis_source_dd.value or 'Hugging Face') == 'Hugging Face' else 'JSON: ' + (analysis_json_path.value or '')}"
+            ))),
+            setattr(page.snack_bar, "open", True),
+            page.update()
+        ),
+    )
+    # Ensure there's always a snackbar to open (handle older Flet without attribute)
+    if not getattr(page, "snack_bar", None):
+        page.snack_bar = ft.SnackBar(ft.Text("Mock analysis executed."))
+
+    def _validate_analysis_dataset(_=None):
+        try:
+            src = (analysis_source_dd.value or "Hugging Face")
+        except Exception:
+            src = "Hugging Face"
+        repo = (analysis_hf_repo.value or "").strip()
+        jpath = (analysis_json_path.value or "").strip()
+        if src == "Hugging Face":
+            valid = bool(repo)
+            desc = f"Selected: HF {repo} [{(analysis_hf_split.value or 'train').strip()}]"
+        else:
+            valid = bool(jpath)
+            desc = f"Selected: JSON {jpath}" if jpath else "Select a JSON file path"
+        analyze_btn.disabled = not valid
+        analysis_dataset_hint.value = desc if valid else "Select a dataset to analyze."
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def _update_analysis_source(_=None):
+        is_hf = (getattr(analysis_source_dd, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
+        analysis_hf_repo.visible = is_hf
+        analysis_hf_split.visible = is_hf
+        analysis_hf_config.visible = is_hf
+        analysis_json_path.visible = not is_hf
+        _validate_analysis_dataset()
+
+    def _update_analysis_backend(_=None):
+        use_api = (getattr(analysis_backend_dd, "value", "HF Inference API") or "HF Inference API") == "HF Inference API"
+        analysis_hf_token_tf.visible = use_api
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    # Wire up events
+    analysis_source_dd.on_change = _update_analysis_source
+    analysis_hf_repo.on_change = _validate_analysis_dataset
+    analysis_hf_split.on_change = _validate_analysis_dataset
+    analysis_json_path.on_change = _validate_analysis_dataset
+    analysis_backend_dd.on_change = _update_analysis_backend
+
+    # Helpers for analysis modules selection
+    def _all_analysis_modules():
+        return [
+            cb_basic_stats,
+            cb_duplicates,
+            cb_coverage_overlap,
+            cb_data_leakage,
+            cb_conversation_depth,
+            cb_speaker_balance,
+            cb_question_statement,
+            cb_readability,
+            cb_ner,
+            cb_toxicity,
+            cb_politeness,
+            cb_dialogue_acts,
+            cb_topics,
+            cb_alignment,
+        ]
+
+    def _sync_select_all_modules():
+        try:
+            select_all_modules_cb.value = all(bool(getattr(m, "value", False)) for m in _all_analysis_modules())
+            page.update()
+        except Exception:
+            pass
+
+    def _on_select_all_modules_change(_):
+        try:
+            val = bool(getattr(select_all_modules_cb, "value", False))
+            for m in _all_analysis_modules():
+                m.value = val
+            page.update()
+        except Exception:
+            pass
+
+    def _on_module_cb_change(_):
+        _sync_select_all_modules()
+
+    # Attach module checkbox events
+    try:
+        select_all_modules_cb.on_change = _on_select_all_modules_change
+        for _m in _all_analysis_modules():
+            _m.on_change = _on_module_cb_change
+    except Exception:
+        pass
+
+    # Helper: build a table layout for module checkboxes (3 columns)
+    def _build_modules_table():
+        mods = _all_analysis_modules()
+        columns = [ft.DataColumn(ft.Text("")), ft.DataColumn(ft.Text("")), ft.DataColumn(ft.Text(""))]
+        rows: list[ft.DataRow] = []
+        for i in range(0, len(mods), 3):
+            c1 = ft.DataCell(mods[i])
+            c2 = ft.DataCell(mods[i + 1]) if i + 1 < len(mods) else ft.DataCell(ft.Container())
+            c3 = ft.DataCell(mods[i + 2]) if i + 2 < len(mods) else ft.DataCell(ft.Container())
+            rows.append(ft.DataRow(cells=[c1, c2, c3]))
+        return ft.DataTable(columns=columns, rows=rows)
+
+    analysis_tab = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                section_title("Dataset Analysis", getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH))),
+                ft.Container(expand=1),
+                analyze_btn,
+            ], alignment=ft.MainAxisAlignment.START),
+
+            # Dataset chooser row
+            ft.Row([
+                analysis_source_dd,
+                analysis_hf_repo,
+                analysis_hf_split,
+                analysis_hf_config,
+                analysis_json_path,
+            ], wrap=True, spacing=10),
+            analysis_dataset_hint,
+            ft.Divider(),
+            section_title("Analysis modules (mock)", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
+            ft.Row([select_all_modules_cb], wrap=True),
+            ft.Container(_build_modules_table(), padding=4, border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)), border_radius=8),
+
+            ft.Divider(),
+            section_title("Runtime settings (mock)", getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS))),
+            ft.Row([
+                analysis_backend_dd,
+                analysis_hf_token_tf,
+                analysis_sample_size_tf,
+            ], wrap=True, spacing=10),
+
+            analysis_overview_note,
+            ft.Divider(),
+
+            section_title("Overview", getattr(ICONS, "DASHBOARD", getattr(ICONS, "INSIGHTS", ICONS.SEARCH))),
+            ft.Row([
+                kpi_tile("Total records", "12,345", "mock"),
+                kpi_tile("Avg input length", "187 chars", "mock", icon=getattr(ICONS, "TEXT_FIELDS", getattr(ICONS, "TEXT_FIELDS_OUTLINED", ICONS.SEARCH))),
+                kpi_tile("Avg output length", "74 chars", "mock", icon=getattr(ICONS, "TEXT_FIELDS", getattr(ICONS, "TEXT_FIELDS_OUTLINED", ICONS.SEARCH))),
+                kpi_tile("Duplicates", "1.4%", "mock", icon=getattr(ICONS, "CONTENT_COPY", getattr(ICONS, "COPY_ALL", ICONS.SEARCH))),
+            ], wrap=True, spacing=12),
+
+            ft.Divider(),
+            section_title("Sentiment (mock)", getattr(ICONS, "EMOJI_EMOTIONS", getattr(ICONS, "INSERT_EMOTICON", ICONS.SEARCH))),
+            ft.Container(sentiment_row, padding=8, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), border_radius=8),
+
+            ft.Divider(),
+            section_title("Class balance (mock)", getattr(ICONS, "DONUT_SMALL", getattr(ICONS, "PIE_CHART", ICONS.SEARCH))),
+            ft.Container(class_balance_row, padding=8, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), border_radius=8),
+
+            ft.Divider(),
+            section_title("Samples (mock)", getattr(ICONS, "LIST", getattr(ICONS, "LIST_ALT", ICONS.SEARCH))),
+            ft.Container(samples_grid, padding=8, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), border_radius=8),
+        ], scroll=ft.ScrollMode.AUTO, spacing=12),
+        padding=16,
+    )
+
     tabs = ft.Tabs(
         tabs=[
             ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
             ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab),
             ft.Tab(text="Training", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), content=training_tab),
             ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
+            ft.Tab(text="Dataset Analysis", icon=getattr(ICONS, "INSIGHTS", ICONS.ANALYTICS), content=analysis_tab),
             ft.Tab(text="Settings", icon=ICONS.SETTINGS, content=settings_tab),
         ],
         expand=1,
@@ -3766,6 +4078,21 @@ Specify license and any restrictions.
         pass
     try:
         _update_skill_controls()
+    except Exception:
+        pass
+    try:
+        _update_analysis_source()
+    except Exception:
+        pass
+
+    try:
+        _update_analysis_backend()
+    except Exception:
+        pass
+
+    # Initialize select-all state based on defaults
+    try:
+        _sync_select_all_modules()
     except Exception:
         pass
 
