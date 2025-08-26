@@ -4,3 +4,5 @@ __pycache__
 hf_dataset
 hf_config.json
 ollama_config.json
+.env
+runpod tests/
