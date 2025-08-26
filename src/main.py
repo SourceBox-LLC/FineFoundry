@@ -1303,6 +1303,102 @@ def main(page: ft.Page):
     hf_save_btn = ft.OutlinedButton("Save", icon=ICONS.SAVE, on_click=on_save_hf)
     hf_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_hf)
 
+    # ---------- SETTINGS (Runpod) CONTROLS ----------
+    RUNPOD_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "runpod_config.json")
+
+    def _load_runpod_config() -> dict:
+        try:
+            with open(RUNPOD_CFG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f) or {}
+        except Exception:
+            cfg = {}
+        return {"api_key": (cfg.get("api_key") or "")}
+
+    def _save_runpod_config(cfg: dict):
+        try:
+            with open(RUNPOD_CFG_PATH, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _apply_runpod_env_from_cfg(cfg: dict):
+        key = (cfg.get("api_key") or "").strip()
+        if key:
+            os.environ["RUNPOD_API_KEY"] = key
+        else:
+            try:
+                if os.environ.get("RUNPOD_API_KEY"):
+                    del os.environ["RUNPOD_API_KEY"]
+            except Exception:
+                pass
+
+    _runpod_cfg = _load_runpod_config()
+    _apply_runpod_env_from_cfg(_runpod_cfg)
+
+    runpod_key_tf = ft.TextField(label="Runpod API key", password=True, can_reveal_password=True, width=420)
+    runpod_status = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
+
+    async def on_test_runpod():
+        key = (runpod_key_tf.value or "").strip() or (_runpod_cfg.get("api_key") or "").strip()
+        if not key:
+            runpod_status.value = "No key provided or saved"
+            await safe_update(page)
+            return
+        runpod_status.value = "Testing key…"
+        await safe_update(page)
+        # Try a couple of public endpoints that typically require auth; report status.
+        urls = [
+            "https://api.runpod.ai/v2/endpoints",
+            "https://api.runpod.io/v2/endpoints",
+        ]
+        last_err = None
+        for u in urls:
+            try:
+                def do_req():
+                    return httpx.get(u, headers={"Authorization": f"Bearer {key}"}, timeout=6)
+                resp = await asyncio.to_thread(do_req)
+                if resp.status_code == 200:
+                    runpod_status.value = "Valid ✓ — endpoints accessible"
+                    await safe_update(page)
+                    return
+                elif resp.status_code in (401, 403):
+                    runpod_status.value = f"Invalid or unauthorized ({resp.status_code})"
+                    await safe_update(page)
+                    return
+                else:
+                    last_err = f"HTTP {resp.status_code}"
+            except Exception as e:
+                last_err = str(e)
+        runpod_status.value = f"Could not verify key via public endpoints ({last_err or 'unknown error'})"
+        await safe_update(page)
+
+    def on_save_runpod(_):
+        key = (runpod_key_tf.value or "").strip()
+        if not key:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Enter a key to save"))
+                page.snack_bar.open = True
+            except Exception:
+                pass
+            return
+        _runpod_cfg["api_key"] = key
+        _save_runpod_config(_runpod_cfg)
+        _apply_runpod_env_from_cfg(_runpod_cfg)
+        runpod_status.value = "Saved"
+        page.update()
+
+    def on_remove_runpod(_):
+        _runpod_cfg["api_key"] = ""
+        _save_runpod_config(_runpod_cfg)
+        _apply_runpod_env_from_cfg(_runpod_cfg)
+        runpod_key_tf.value = ""
+        runpod_status.value = "Removed"
+        page.update()
+
+    runpod_test_btn = ft.ElevatedButton("Test key", icon=ICONS.CHECK_CIRCLE, on_click=lambda e: page.run_task(on_test_runpod))
+    runpod_save_btn = ft.OutlinedButton("Save", icon=ICONS.SAVE, on_click=on_save_runpod)
+    runpod_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_runpod)
+
     # ---------- SETTINGS (Ollama) CONTROLS ----------
     # Simple persistence path (project root)
     OLLAMA_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ollama_config.json")
@@ -3998,6 +4094,21 @@ Specify license and any restrictions.
                         ft.Row([hf_token_tf], wrap=True),
                         ft.Row([hf_test_btn, hf_save_btn, hf_remove_btn], spacing=10, wrap=True),
                         hf_status,
+                        ft.Divider(),
+                        section_title(
+                            "Runpod API Access",
+                            getattr(ICONS, "VPN_KEY", getattr(ICONS, "KEY", ICONS.SETTINGS)),
+                            "Save and test your Runpod API key. Not used elsewhere yet.",
+                            on_help_click=_mk_help_handler("Save and test your Runpod API key. Not used elsewhere yet."),
+                        ),
+                        ft.Text(
+                            "Stored locally and applied to RUNPOD_API_KEY environment variable when saved.",
+                            size=12,
+                            color=WITH_OPACITY(0.7, BORDER_BASE),
+                        ),
+                        ft.Row([runpod_key_tf], wrap=True),
+                        ft.Row([runpod_test_btn, runpod_save_btn, runpod_remove_btn], spacing=10, wrap=True),
+                        runpod_status,
                         ft.Divider(),
                         section_title(
                             "Ollama Connection",
