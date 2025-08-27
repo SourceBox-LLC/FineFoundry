@@ -56,18 +56,39 @@ def _shquote(v) -> str:
 def build_cmd(hp: Dict[str, Any]) -> List[str]:
     """Return dockerStartCmd list suitable for Runpod template/pod.
     Example: ["bash", "-lc", "python -u /workspace/train.py --epochs 1 --lr 2e-4 ..."]
+    Uses flag names exactly as keys (underscores preserved) to match train.py.
+    Robustness: try several common locations for train.py and emit a helpful
+    message if not found, including a hint about volume mount overlays.
     """
-    parts = ["python -u /workspace/train.py"]
+    # Build flags string
+    flags: List[str] = []
     for k, v in (hp or {}).items():
-        flag = "--" + str(k).replace("_", "-")
+        flag = "--" + str(k)
         if isinstance(v, bool):
             if v:
-                parts.append(flag)
+                flags.append(flag)
         elif v is None:
             continue
         else:
-            parts.append(f"{flag} {_shquote(v)}")
-    return ["bash", "-lc", " ".join(parts)]
+            flags.append(f"{flag} {_shquote(v)}")
+    flags_str = " ".join(flags)
+
+    # Shell script: pick the first existing train.py path
+    script = (
+        "set -euo pipefail; "
+        "P=; "
+        "for CAND in /workspace/train.py /app/train.py /opt/train.py /usr/local/src/train.py /root/train.py; do "
+        "  if [ -f \"$CAND\" ]; then P=\"$CAND\"; break; fi; "
+        "done; "
+        "if [ -z \"$P\" ]; then "
+        "  echo 'ERROR: train.py not found in expected locations.' >&2; "
+        "  echo 'Hint: If you mounted your network volume at /workspace, it may hide train.py baked into the image.' >&2; "
+        "  echo 'Try setting the template Mount path to /data (or another path) and re-run.' >&2; "
+        "  ls -la /workspace || true; ls -la /data || true; ls -la / || true; exit 1; "
+        "fi; "
+        "python -u \"$P\" " + flags_str
+    )
+    return ["bash", "-lc", script]
 
 
 # ---------- Volume / DC helpers ----------
@@ -129,6 +150,67 @@ def discover_best_gpu(api_key: str, dc_id: str, prefer_spot: bool, gpu_count: in
     raise RuntimeError(f"No GPUs available in DC {dc_id} right now.")
 
 
+# ---------- Cheapest GPU discovery ----------
+def discover_cheapest_gpu(api_key: str, dc_id: str, gpu_count: int) -> Tuple[str, bool]:
+    """Return (gpu_type_id, is_spot) for the cheapest available GPU.
+    Prefers spot (interruptible) if available and cheaper, otherwise falls back to secure.
+    Raises if none available.
+    """
+    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")['gpuTypes']
+
+    q = (
+        "\n"  # noqa: W291
+        "  query ($id:String!, $dc:String!, $secure:Boolean!, $count:Int!) {\n"
+        "    gpuTypes(input:{id:$id}) {\n"
+        "      id displayName memoryInGb\n"
+        "      lowestPrice(input:{dataCenterId:$dc, secureCloud:$secure, gpuCount:$count}) {\n"
+        "        stockStatus\n"
+        "        maxUnreservedGpuCount\n"
+        "        availableGpuCounts\n"
+        "        uninterruptablePrice\n"
+        "        minimumBidPrice\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+    )
+
+    candidates: List[Dict[str, Any]] = []
+
+    def probe(secure: bool):
+        for t in types:
+            row = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": secure, "count": int(gpu_count)})["gpuTypes"][0]
+            lp = row.get("lowestPrice")
+            if not lp:
+                continue
+            maxu = lp.get("maxUnreservedGpuCount") or 0
+            stock = (lp.get("stockStatus") or "").lower()
+            if maxu >= int(gpu_count) and stock in {"high", "medium", "low"}:
+                # Price selection depends on secure vs spot
+                price = None
+                try:
+                    price = float(lp.get("minimumBidPrice")) if not secure else float(lp.get("uninterruptablePrice"))
+                except Exception:
+                    # If price missing, skip this candidate
+                    continue
+                candidates.append({
+                    "id": row["id"],
+                    "mem": row.get("memoryInGb") or 0,
+                    "spot": (not secure),
+                    "price": price,
+                })
+
+    # Probe spot first (usually cheapest), then secure
+    probe(False)  # secure=False => spot
+    probe(True)   # secure=True  => secure
+
+    if not candidates:
+        raise RuntimeError(f"No GPUs available in DC {dc_id} right now.")
+
+    # Sort by price asc, then by memory desc as a tie-breaker
+    candidates.sort(key=lambda c: (c["price"], -float(c["mem"])))
+    pick = candidates[0]
+    return (pick["id"], pick["spot"])  # gpu_type_id, is_spot
+
 # ---------- Pod operations ----------
 
 def create_pod(
@@ -159,7 +241,7 @@ def create_pod(
         "interruptible": bool(chosen_spot),
         "computeType": "GPU",
         "cloudType": "COMMUNITY" if chosen_spot else "SECURE",
-        "networkVolumeId": volume_id,  # mounts at /workspace
+        "networkVolumeId": volume_id,  # mounts at template's volumeMountPath (default /data)
         "dataCenterIds": [dc],
         "dockerStartCmd": build_cmd(hp),
     }
@@ -193,22 +275,32 @@ def get_pod_logs(api_key: str, pod_id: str, limit: int = 200) -> List[str]:
     for path in paths:
         try:
             r = _req("GET", path, api_key, params={"limit": int(limit)})
-            data = r.json()
-            # Format 1: {"logs": "...\n..."}
-            if isinstance(data, dict) and "logs" in data:
-                s = data.get("logs") or ""
-                return [ln for ln in str(s).splitlines() if str(ln).strip()]
-            # Format 2: {"events": [{"message": "..."}, ...]}
-            if isinstance(data, dict) and isinstance(data.get("events"), list):
-                lines: List[str] = []
-                for ev in data["events"]:
-                    if not isinstance(ev, dict):
-                        continue
-                    msg = ev.get("message") or ev.get("log") or ev.get("status") or ""
-                    if str(msg).strip():
-                        lines.append(str(msg))
-                if lines:
-                    return lines
+            # Prefer JSON, but fall back to plain text if needed
+            data = None
+            try:
+                data = r.json()
+            except Exception:
+                text = r.text or ""
+                if text.strip():
+                    return [ln for ln in text.splitlines() if ln.strip()]
+                data = None
+
+            if isinstance(data, dict):
+                # Format 1: {"logs": "...\n..."}
+                if "logs" in data:
+                    s = data.get("logs") or ""
+                    return [ln for ln in str(s).splitlines() if str(ln).strip()]
+                # Format 2: {"events": [{"message": "..."}, ...]}
+                if isinstance(data.get("events"), list):
+                    lines: List[str] = []
+                    for ev in data["events"]:
+                        if not isinstance(ev, dict):
+                            continue
+                        msg = ev.get("message") or ev.get("log") or ev.get("status") or ""
+                        if str(msg).strip():
+                            lines.append(str(msg))
+                    if lines:
+                        return lines
         except Exception:
             # Try next path
             continue
@@ -220,3 +312,13 @@ TERMINAL_STATES = {"FAILED", "DELETED", "KILLED", "TERMINATED", "EXITED"}
 
 def state_of(pod: Dict[str, Any]) -> str:
     return pod.get("desiredStatus") or pod.get("status") or pod.get("state") or "UNKNOWN"
+
+
+# ---------- Pod patch (restart container with new args) ----------
+def patch_pod_docker_start_cmd(api_key: str, pod_id: str, docker_start_cmd: List[str]) -> Dict[str, Any]:
+    """PATCH a running Pod to update dockerStartCmd. Runpod restarts the container with new args.
+
+    Example docker_start_cmd: ["bash", "-lc", "python -u /workspace/train.py --epochs 2 ..."]
+    """
+    body = {"dockerStartCmd": list(docker_start_cmd or [])}
+    return _req("PATCH", f"/pods/{pod_id}", api_key, data=json.dumps(body)).json()

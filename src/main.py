@@ -3829,6 +3829,14 @@ Specify license and any restrictions.
         value="Beginner",
         width=160,
     )
+    beginner_mode_dd = ft.Dropdown(
+        label="Beginner mode",
+        options=[ft.dropdown.Option("Fastest"), ft.dropdown.Option("Cheapest")],
+        value="Fastest",
+        width=160,
+        visible=True,
+        tooltip="For Beginner: Fastest uses best GPU with aggressive params; Cheapest uses lowest-cost GPU with conservative params.",
+    )
     base_model = ft.Dropdown(
         label="Base model",
         options=[
@@ -3854,7 +3862,75 @@ Specify license and any restrictions.
     grad_acc_tf = ft.TextField(label="Grad accum steps", value="4", width=180)
     max_steps_tf = ft.TextField(label="Max steps", value="200", width=180)
     use_lora_cb = ft.Checkbox(label="Use LoRA", value=True)
-    out_dir_tf = ft.TextField(label="Output dir", value="outputs/runpod_run", width=260)
+    out_dir_tf = ft.TextField(label="Output dir", value="/data/outputs/runpod_run", width=260)
+    # New HP toggles/fields
+    packing_cb = ft.Checkbox(label="Packing", value=True, tooltip="Pack multiple samples into a sequence for higher utilization (if trainer supports).")
+    auto_resume_cb = ft.Checkbox(label="Auto-resume", value=True, tooltip="Resume from latest checkpoint if container restarts.")
+    push_cb = ft.Checkbox(
+        label="Push to HF Hub",
+        value=False,
+        tooltip="When enabled, the trainer will attempt to push the final model/adapters to the Hugging Face Hub. Requires a valid HF token with write access.",
+    )
+    hf_repo_id_tf = ft.TextField(
+        label="HF repo id (for push)",
+        value="",
+        width=280,
+        hint_text="username/model-name",
+        tooltip="Model repository on Hugging Face to push to (e.g., username/my-lora-model). You must own the repo or have write access and be authenticated.",
+    )
+    resume_from_tf = ft.TextField(
+        label="Resume from (path)",
+        value="",
+        width=320,
+        hint_text="/data/outputs/runpod_run/checkpoint-500",
+        tooltip="Optional explicit checkpoint directory to resume from, inside the mounted volume (e.g., /data/outputs/runpod_run/checkpoint-500).",
+    )
+
+    # Info icons next to toggles/fields
+    _info_icon = getattr(ICONS, "INFO_OUTLINE", getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", None)))
+
+    packing_info = ft.IconButton(
+        icon=_info_icon,
+        tooltip="Packing combines multiple short samples into a fixed-length sequence to better utilize tokens (only if the training script supports it).",
+        on_click=_mk_help_handler(
+            "Packing: When enabled, the trainer may pack several shorter samples into a fixed-length training sequence to improve GPU utilization and throughput.\n\nWhen to use: If your training script supports packing and you have many short samples. If unsupported, leave it off."
+        ),
+    )
+    auto_resume_info = ft.IconButton(
+        icon=_info_icon,
+        tooltip="Try to continue from the latest checkpoint in Output dir if the container restarts.",
+        on_click=_mk_help_handler(
+            "Auto-resume: On container restarts, the trainer looks for the latest checkpoint in your Output dir and continues training from it.\n\nRequirements: Keep Output dir on the persistent Runpod Network Volume and reuse the same Output dir for the same run."
+        ),
+    )
+    push_info = ft.IconButton(
+        icon=_info_icon,
+        tooltip="Push final model/adapters to the Hugging Face Hub at the end of training.",
+        on_click=_mk_help_handler(
+            "Push to HF Hub: If enabled, the trainer will attempt to upload the resulting model (or LoRA adapters) to a Hugging Face model repository.\n\nProvide: • A valid HF token with write scope (Settings → Hugging Face Access) • The repo id as username/model-name.\nNote: Create the repo on the Hub first to ensure permissions."
+        ),
+    )
+    hf_repo_info = ft.IconButton(
+        icon=_info_icon,
+        tooltip="Hugging Face model repo id, e.g., username/my-lora-model.",
+        on_click=_mk_help_handler(
+            "HF repo id (for push): The target model repository on Hugging Face to push your trained weights/adapters to.\n\nFormat: username/model-name (e.g., sbussiso/my-lora-phi3). You must own the repo or have collaborator write access. Authenticate via Settings → Hugging Face Access or HF_TOKEN env."
+        ),
+    )
+    resume_info = ft.IconButton(
+        icon=_info_icon,
+        tooltip="Explicit checkpoint path inside /data, e.g., /data/outputs/runpod_run/checkpoint-500",
+        on_click=_mk_help_handler(
+            "Resume from (path): Force the trainer to resume from a specific checkpoint directory.\n\nExample: /data/outputs/runpod_run/checkpoint-500 or /data/outputs/runpod_run/last. Must exist on the mounted volume. Leave blank to let Auto-resume find the latest checkpoint automatically (if supported)."
+        ),
+    )
+
+    # Group each control with its info icon
+    packing_row = ft.Row([packing_cb, packing_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    auto_resume_row = ft.Row([auto_resume_cb, auto_resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    push_row = ft.Row([push_cb, push_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    hf_repo_row = ft.Row([hf_repo_id_tf, hf_repo_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    resume_from_row = ft.Row([resume_from_tf, resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     # Advanced parameters (Expert mode)
     warmup_steps_tf = ft.TextField(label="Warmup steps", value="10", width=140)
@@ -3905,6 +3981,81 @@ Specify license and any restrictions.
     train_timeline = ft.ListView([], spacing=4, auto_scroll=True, expand=True)
     train_timeline_placeholder = make_empty_placeholder("No training logs yet", getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE))
 
+    def _update_progress_from_logs(new_lines: List[str]) -> None:
+        """Parse progress from recent log lines and update the progress bar and label.
+        Supported patterns:
+        - Percent like "12%"
+        - Step/total like "Step 100/1000", "global_step 1234/5000", "Step 10 of 100"
+        - Epoch progress like "Epoch 1/3" or "Epoch [1/3]"
+        If no numeric progress found, show the most recent log line (truncated).
+        """
+        try:
+            last_val = float(train_state.get("progress") or 0.0)
+        except Exception:
+            last_val = 0.0
+
+        if not new_lines:
+            return
+
+        pct_found: Optional[int] = None
+        for line in reversed(list(new_lines)):
+            s = str(line)
+            # 1) Percentage patterns
+            m = re.search(r"(\d{1,3})\s?%", s)
+            if m:
+                try:
+                    pct = int(m.group(1))
+                    if 0 <= pct <= 100:
+                        pct_found = pct
+                        break
+                except Exception:
+                    pass
+
+            # 2) Step/total patterns (Step 100/1000, global_step 12/500, Iteration 5 of 20)
+            m = re.search(r"(?:global[_ ]?step|steps?|iter(?:ation)?|it(?:er)?)\s*[:=]?\s*(\d+)\s*(?:/|of)\s*(\d+)", s, re.IGNORECASE)
+            if m:
+                try:
+                    cur = int(m.group(1)); tot = int(m.group(2))
+                    if tot > 0:
+                        pct_found = max(0, min(100, int(cur * 100 / tot)))
+                        break
+                except Exception:
+                    pass
+
+            # 3) Epoch progress patterns (Epoch 1/3, Epoch [1/3])
+            m = re.search(r"epoch\s*[:#]?\s*(\d+)\s*/\s*(\d+)", s, re.IGNORECASE)
+            if not m:
+                m = re.search(r"epoch\s*\[\s*(\d+)\s*/\s*(\d+)\s*\]", s, re.IGNORECASE)
+            if m:
+                try:
+                    cur = int(m.group(1)); tot = int(m.group(2))
+                    if tot > 0:
+                        # Use (cur-1)/tot as coarse progress into epochs
+                        pct_found = max(0, min(100, int(((cur - 1) / tot) * 100)))
+                        break
+                except Exception:
+                    pass
+
+        try:
+            if pct_found is not None:
+                v = max(last_val, min(1.0, pct_found / 100.0))
+                train_progress.value = v
+                train_prog_label.value = f"Progress: {int(v * 100)}%"
+                try:
+                    train_state["progress"] = v
+                except Exception:
+                    pass
+            else:
+                # No numeric progress found; show latest line text
+                latest = str(new_lines[-1]) if new_lines else ""
+                if latest:
+                    max_len = 120
+                    disp = latest if len(latest) <= max_len else (latest[: max_len - 1] + "…")
+                    train_prog_label.value = disp
+        except Exception:
+            # Never let UI updates crash the loop
+            pass
+
     def update_train_placeholders():
         try:
             has_logs = len(getattr(train_timeline, "controls", []) or []) > 0
@@ -3929,14 +4080,26 @@ Specify license and any restrictions.
             advanced_params_section.visible = (not is_beginner)
         except Exception:
             pass
-        # Set beginner defaults
+        # Beginner target control visibility
+        try:
+            beginner_mode_dd.visible = is_beginner
+        except Exception:
+            pass
+        # Set beginner defaults (depend on beginner mode)
         if is_beginner:
             try:
+                mode = (beginner_mode_dd.value or "Fastest").lower()
                 epochs_tf.value = epochs_tf.value or "1"
-                lr_tf.value = "2e-5"
-                batch_tf.value = "2"
-                grad_acc_tf.value = "4"
-                max_steps_tf.value = "200"
+                if mode == "fastest":
+                    lr_tf.value = "2e-4"
+                    batch_tf.value = "4"
+                    grad_acc_tf.value = "1"
+                    max_steps_tf.value = max_steps_tf.value or "200"
+                else:
+                    lr_tf.value = "2e-5"
+                    batch_tf.value = "2"
+                    grad_acc_tf.value = "4"
+                    max_steps_tf.value = "200"
             except Exception:
                 pass
         try:
@@ -3945,7 +4108,56 @@ Specify license and any restrictions.
             pass
 
     skill_level.on_change = _update_skill_controls
+    beginner_mode_dd.on_change = _update_skill_controls
     train_source.on_change = _update_train_source
+    # Initialize skill-level dependent visibility once
+    try:
+        _update_skill_controls()
+    except Exception:
+        pass
+
+    def _build_hp() -> dict:
+        """Build train.py flags. Uses underscore keys matching script flags.
+        Only emits a safe whitelist of flags.
+        """
+        src = train_source.value or "Hugging Face"
+        repo = (train_hf_repo.value or "").strip()
+        split = (train_hf_split.value or "train").strip()
+        cfg = (train_hf_config.value or "").strip()
+        jpath = (train_json_path.value or "").strip()
+        model = (base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
+        out_dir = (out_dir_tf.value or "/data/outputs/runpod_run").strip()
+        # Core hparams
+        hp: dict = {
+            "base_model": model,
+            "epochs": (epochs_tf.value or "3").strip(),
+            "lr": (lr_tf.value or "2e-4").strip(),
+            "bsz": (batch_tf.value or "2").strip(),
+            "grad_accum": (grad_acc_tf.value or "4").strip(),
+            "max_steps": (max_steps_tf.value or "200").strip(),
+            "use_lora": bool(getattr(use_lora_cb, "value", False)),
+            "output_dir": out_dir,
+        }
+        # Dataset flags
+        if (src == "Hugging Face") and repo:
+            hp["hf_dataset_id"] = repo
+            hp["hf_dataset_split"] = split
+        elif jpath:
+            hp["json_path"] = jpath
+        # Add optional toggles
+        if bool(getattr(packing_cb, "value", False)):
+            hp["packing"] = True
+        if bool(getattr(auto_resume_cb, "value", False)):
+            hp["auto_resume"] = True
+        if bool(getattr(push_cb, "value", False)):
+            hp["push"] = True
+        _hf_repo_id = (hf_repo_id_tf.value or "").strip()
+        if _hf_repo_id:
+            hp["hf_repo_id"] = _hf_repo_id
+        _resume_from = (resume_from_tf.value or "").strip()
+        if _resume_from:
+            hp["resume_from"] = _resume_from
+        return hp
 
     async def on_start_training():
         if train_state.get("running"):
@@ -3960,6 +4172,7 @@ Specify license and any restrictions.
         if not tpl_id or not vol_id:
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure not ready. Click Ensure Infrastructure first.")]))
             train_state["running"] = False
+            # (removed: was incorrectly enabling restart/open before pod exists)
             update_train_placeholders(); await safe_update(page)
             return
         saved_key = ((train_state.get("api_key") or (_runpod_cfg.get("api_key") if isinstance(_runpod_cfg, dict) else "") or "").strip())
@@ -3985,58 +4198,70 @@ Specify license and any restrictions.
             pass
         # Reset log de-duplication buffer for this session
         train_state["log_seen"] = set()
+        # Initialize progress display
+        try:
+            train_progress.value = 0.0
+            train_prog_label.value = "Starting..."
+            train_state["progress"] = 0.0
+        except Exception:
+            pass
         await safe_update(page)
 
-        # Read inputs
+        # Build flags for train.py
+        hp = _build_hp()
+
+        # Beginner mode presets: choose GPU & adjust params
+        level = (skill_level.value or "Beginner").lower()
+        is_beginner = (level == "beginner")
+        beginner_mode = (beginner_mode_dd.value or "Fastest").lower() if is_beginner else ""
+
+        chosen_gpu_type_id = "AUTO"
+        chosen_interruptible = False
+
+        if is_beginner:
+            if beginner_mode == "fastest":
+                # Aggressive for speed: rely on best GPU (secure), larger per-device batch, minimal GA
+                try:
+                    hp["epochs"] = (epochs_tf.value or "1").strip() or "1"
+                    hp["lr"] = "2e-4"
+                    hp["bsz"] = "4"
+                    hp["grad_accum"] = "1"
+                    hp["max_steps"] = (max_steps_tf.value or "200").strip() or "200"
+                except Exception:
+                    pass
+                # Keep AUTO + secure (non-interruptible)
+                chosen_gpu_type_id = "AUTO"
+                chosen_interruptible = False
+            elif beginner_mode == "cheapest":
+                # Conservative defaults already set; pick the lowest-cost GPU (spot preferred)
+                dc_id = (((infra.get("volume") or {}).get("dc") or "").strip()) or "US-NC-1"
+                try:
+                    cheapest_gpu, is_spot = await asyncio.to_thread(rp_pod.discover_cheapest_gpu, api_key, dc_id, 1)
+                    chosen_gpu_type_id = cheapest_gpu
+                    chosen_interruptible = bool(is_spot)
+                except Exception as e:
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text(f"Cheapest GPU discovery failed, using AUTO: {e}")]))
+
+        # Logs
+        # Log dataset choice
         src = train_source.value or "Hugging Face"
         repo = (train_hf_repo.value or "").strip()
         split = (train_hf_split.value or "train").strip()
         jpath = (train_json_path.value or "").strip()
         model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        epochs_s = (epochs_tf.value or "3").strip()
-        lr_s = (lr_tf.value or "2e-4").strip()
-        bsz_s = (batch_tf.value or "2").strip()
-        acc_s = (grad_acc_tf.value or "4").strip()
-        max_steps_s = (max_steps_tf.value or "200").strip()
-        out_dir = (out_dir_tf.value or "outputs/runpod_run").strip()
-
-        # Advanced
-        hp = {
-            "base_model": model,
-            "epochs": epochs_s,
-            "learning_rate": lr_s,
-            "batch_size": bsz_s,
-            "gradient_accumulation_steps": acc_s,
-            "max_steps": max_steps_s,
-            "use_lora": bool(getattr(use_lora_cb, "value", False)),
-            "output_dir": out_dir,
-            # dataset
-            "dataset_source": src.lower().replace(" ", "_"),
-            "dataset_repo": repo,
-            "dataset_split": split,
-            "json_path": jpath,
-            # advanced opts
-            "warmup_steps": (warmup_steps_tf.value or "").strip() or None,
-            "weight_decay": (weight_decay_tf.value or "").strip() or None,
-            "lr_scheduler_type": (lr_sched_dd.value or "").strip() or None,
-            "optim": (optim_dd.value or "").strip() or None,
-            "logging_steps": (logging_steps_tf.value or "").strip() or None,
-            "logging_first_step": bool(getattr(logging_first_step_cb, "value", False)),
-            "disable_tqdm": bool(getattr(disable_tqdm_cb, "value", False)),
-            "seed": (seed_tf.value or "").strip() or None,
-            "save_strategy": (save_strategy_dd.value or "").strip() or None,
-            "save_total_limit": (save_total_limit_tf.value or "").strip() or None,
-            "pin_memory": bool(getattr(pin_memory_cb, "value", False)),
-            "report_to": (report_to_dd.value or "").strip() or None,
-            "fp16": bool(getattr(fp16_cb, "value", True)),
-            "bf16": bool(getattr(bf16_cb, "value", False)),
-        }
-
-        # Logs
         ds_desc = f"HF: {repo} [{split}]" if (src == "Hugging Face") else (f"JSON: {jpath}" if jpath else "JSON: (unset)")
         train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Creating Runpod pod and starting training…")]))
         train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={epochs_s} • LR={lr_s} • BSZ={bsz_s} • GA={acc_s} • LoRA={'on' if use_lora_cb.value else 'off'}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={hp.get('epochs')} • LR={hp.get('lr')} • BSZ={hp.get('bsz')} • GA={hp.get('grad_accum')}")]))
+        if is_beginner:
+            try:
+                if beginner_mode == "fastest":
+                    bm_text = "Beginner: Fastest — using best GPU (secure) with aggressive params"
+                else:
+                    bm_text = f"Beginner: Cheapest — selecting lowest-cost GPU ({'spot' if chosen_interruptible else 'secure'}) with conservative params"
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(bm_text)]))
+            except Exception:
+                pass
         update_train_placeholders(); await safe_update(page)
 
         # Create pod
@@ -4048,14 +4273,60 @@ Specify license and any restrictions.
                     volume_id=vol_id,
                     pod_name=f"ds-train-{int(time.time())}",
                     hp=hp,
-                    gpu_type_id="AUTO",
+                    gpu_type_id=chosen_gpu_type_id,
                     gpu_count=1,
-                    interruptible=False
+                    interruptible=chosen_interruptible
                 )
             pod = await asyncio.to_thread(_mk_pod)
             pod_id = pod.get("id") or pod.get("podId") or pod.get("pod_id")
             train_state["pod_id"] = pod_id
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod created: {pod_id}")]))
+            # Enable actions now that a pod exists
+            try:
+                restart_container_btn.disabled = False
+                open_runpod_btn.disabled = False
+                open_web_terminal_btn.disabled = False
+                copy_ssh_btn.disabled = False
+            except Exception:
+                pass
+            # Log exact GPU type selected
+            try:
+                gpu_id = None
+                # Try fields from create response
+                gpu_id = pod.get("gpuTypeId") or pod.get("gpu_type_id")
+                if not gpu_id:
+                    gids = pod.get("gpuTypeIds") or pod.get("gpu_type_ids")
+                    if isinstance(gids, list) and gids:
+                        gpu_id = gids[0]
+                # Fallback: fetch pod details
+                if not gpu_id and pod_id:
+                    try:
+                        info = await asyncio.to_thread(rp_pod.get_pod, api_key, pod_id)
+                    except Exception:
+                        info = None
+                    if isinstance(info, dict):
+                        gpu_id = info.get("gpuTypeId") or info.get("gpu_type_id")
+                        if not gpu_id:
+                            gids2 = info.get("gpuTypeIds") or info.get("gpu_type_ids")
+                            if isinstance(gids2, list) and gids2:
+                                gpu_id = gids2[0]
+                # Determine spot/secure
+                is_spot = None
+                cloud_type = (pod.get("cloudType") or pod.get("cloud_type") or "").upper()
+                if cloud_type:
+                    is_spot = (cloud_type == "COMMUNITY")
+                else:
+                    val = pod.get("interruptible")
+                    if val is None:
+                        val = pod.get("isInterruptible") or pod.get("spot")
+                    is_spot = bool(val) if val is not None else bool(chosen_interruptible)
+                # Fallback display if still unknown
+                if not gpu_id:
+                    gpu_id = chosen_gpu_type_id if chosen_gpu_type_id != "AUTO" else "(auto-best)"
+                txt = f"GPU type selected: {gpu_id} • {'spot' if is_spot else 'secure'}"
+                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, 'MEMORY', getattr(ICONS, 'COMPUTER', ICONS.SETTINGS)), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(txt)]))
+            except Exception:
+                pass
             update_train_placeholders(); await safe_update(page)
         except Exception as e:
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Pod create failed: {e}")]))
@@ -4080,6 +4351,23 @@ Specify license and any restrictions.
                     train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TASK_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod state: {state}")]))
                     last_state = state
                 if state in rp_pod.TERMINAL_STATES:
+                    # Set progress to 100% on terminal states and optionally auto-terminate
+                    try:
+                        train_progress.value = 1.0
+                        train_prog_label.value = "Progress: 100%"
+                        train_state["progress"] = 1.0
+                    except Exception:
+                        pass
+                    try:
+                        await safe_update(page)
+                    except Exception:
+                        pass
+                    if bool(getattr(auto_terminate_cb, "value", False)):
+                        try:
+                            await asyncio.to_thread(rp_pod.delete_pod, api_key, train_state.get("pod_id"))
+                            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text("Auto-terminate enabled — pod deleted after training finished")]))
+                        except Exception as ex:
+                            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to auto-delete pod: {ex}")]))
                     break
                 # Live log streaming: fetch recent logs and append only new lines
                 try:
@@ -4108,6 +4396,10 @@ Specify license and any restrictions.
                             train_timeline.controls[:] = train_timeline.controls[-900:]
                     except Exception:
                         pass
+                    try:
+                        _update_progress_from_logs(new_lines)
+                    except Exception:
+                        pass
                 await safe_update(page)
                 await asyncio.sleep(3.0)
 
@@ -4122,9 +4414,102 @@ Specify license and any restrictions.
                 start_train_btn.disabled = False
                 stop_train_btn.disabled = True
                 refresh_train_btn.disabled = False
+                restart_container_btn.disabled = True
+                open_runpod_btn.disabled = True
+                open_web_terminal_btn.disabled = True
+                copy_ssh_btn.disabled = True
             except Exception:
                 pass
             await safe_update(page)
+
+    async def on_restart_container():
+        try:
+            pod_id = (train_state.get("pod_id") or "").strip()
+            if not pod_id:
+                return
+            api_key = (train_state.get("api_key") or "").strip() or (os.environ.get("RUNPOD_API_KEY") or "").strip()
+            if not api_key:
+                return
+            hp = _build_hp()
+            cmd = rp_pod.build_cmd(hp)
+            await asyncio.to_thread(rp_pod.patch_pod_docker_start_cmd, api_key, pod_id, cmd)
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.RESTART_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Container restarting with new hyper-params…")]))
+            update_train_placeholders(); await safe_update(page)
+        except Exception as e:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Restart failed: {e}")]))
+            update_train_placeholders(); await safe_update(page)
+
+    def on_open_runpod(_):
+        try:
+            pod_id = (train_state.get("pod_id") or "").strip()
+            if not pod_id:
+                return
+            url = f"https://www.runpod.io/console/pods/{pod_id}"
+            try:
+                page.launch_url(url)
+            except Exception:
+                # Fallback: log the URL
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
+                update_train_placeholders(); page.update()
+        except Exception:
+            pass
+
+    def on_open_web_terminal(_):
+        """Open the Runpod console for this pod; from there click Connect → Open Web Terminal."""
+        try:
+            pod_id = (train_state.get("pod_id") or "").strip()
+            if not pod_id:
+                return
+            url = f"https://console.runpod.io/pods/{pod_id}"
+            try:
+                page.launch_url(url)
+            except Exception:
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
+                update_train_placeholders(); page.update()
+        except Exception:
+            pass
+
+    async def on_copy_ssh_command(_):
+        """Copy an SSH command for this pod to clipboard.
+        Prefers public IP + port 22 mapping if available; otherwise falls back to proxy ssh.runpod.io.
+        """
+        pod_id = (train_state.get("pod_id") or "").strip()
+        if not pod_id:
+            return
+        api_key = (train_state.get("api_key") or os.environ.get("RUNPOD_API_KEY") or "").strip()
+        cmd = None
+        try:
+            info = await asyncio.to_thread(rp_pod.get_pod, api_key, pod_id)
+            port_map = info.get("portMappings") or {}
+            public_ip = info.get("publicIp") or ""
+            ssh_port = None
+            if isinstance(port_map, dict):
+                ssh_port = port_map.get("22")
+            if public_ip and ssh_port:
+                cmd = f"ssh root@{public_ip} -p {ssh_port} -i ~/.ssh/id_ed25519"
+        except Exception:
+            cmd = None
+        if cmd:
+            try:
+                page.set_clipboard(cmd)
+                page.snack_bar = ft.SnackBar(ft.Text("SSH command copied to clipboard"))
+                page.snack_bar.open = True
+                await safe_update(page)
+                return
+            except Exception:
+                # Fallback: print into timeline
+                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "CONTENT_COPY", ICONS.LINK), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(cmd)]))
+                update_train_placeholders(); await safe_update(page)
+                return
+        # If we couldn't compute a direct SSH command, open the console SSH tab for accurate proxy command
+        url = f"https://console.runpod.io/pods/{pod_id}"
+        try:
+            page.launch_url(url)
+        except Exception:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
+        page.snack_bar = ft.SnackBar(ft.Text("Open the pod → Connect → SSH tab to copy the proxy command."))
+        page.snack_bar.open = True
+        await safe_update(page)
 
     def on_stop_training(_):
         if not train_state.get("running"):
@@ -4195,9 +4580,15 @@ Specify license and any restrictions.
     rp_image_tf = ft.TextField(label="Image name", value="docker.io/sbussiso/unsloth-trainer:latest", width=360)
     rp_container_disk_tf = ft.TextField(label="Container disk (GB)", value="30", width=200)
     rp_volume_in_gb_tf = ft.TextField(label="Pod volume (GB)", value="0", width=180, tooltip="Optional pod-local disk, not the network volume")
-    rp_mount_path_tf = ft.TextField(label="Mount path", value="/workspace", width=220)
+    rp_mount_path_tf = ft.TextField(
+        label="Mount path",
+        value="/data",
+        width=220,
+        tooltip="Avoid mounting at /workspace to prevent hiding train.py inside the image. /data is recommended.")
     rp_category_tf = ft.TextField(label="Category", value="NVIDIA", width=160)
     rp_public_cb = ft.Checkbox(label="Public template", value=False)
+    rp_tb_cb = ft.Checkbox(label="Expose TensorBoard (6006)", value=False)
+    rp_ssh_cb = ft.Checkbox(label="Expose SSH (22/tcp)", value=False, tooltip="Adds 22/tcp to template ports; requires SSH server in the container.")
 
     # Info icon for "Public template": clarifies visibility and considerations
     rp_public_info = ft.IconButton(
@@ -4241,9 +4632,11 @@ Specify license and any restrictions.
         image = (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest").strip()
         container_disk_s = (rp_container_disk_tf.value or "30").strip()
         vol_in_gb_s = (rp_volume_in_gb_tf.value or "0").strip()
-        mount_path = (rp_mount_path_tf.value or "/workspace").strip()
+        mount_path = (rp_mount_path_tf.value or "/data").strip()
         category = (rp_category_tf.value or "NVIDIA").strip()
         is_public = bool(getattr(rp_public_cb, "value", False))
+        tb_expose = bool(getattr(rp_tb_cb, "value", False))
+        ssh_expose = bool(getattr(rp_ssh_cb, "value", False))
 
         # Coerce numbers safely
         try:
@@ -4273,6 +4666,38 @@ Specify license and any restrictions.
 
         # Call infra helper
         try:
+            # Build env vars for the template (inject HF token if available)
+            hf_tok = ""
+            try:
+                hf_tok = (((_hf_cfg.get("token") or "") if isinstance(_hf_cfg, dict) else "").strip())
+            except Exception:
+                hf_tok = ""
+            if not hf_tok:
+                try:
+                    hf_tok = (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
+                except Exception:
+                    hf_tok = ""
+            if (not hf_tok) and (HfFolder is not None):
+                try:
+                    hf_tok = getattr(HfFolder, "get_token", lambda: "")() or ""
+                except Exception:
+                    pass
+
+            tpl_env = {"PYTHONUNBUFFERED": "1"}
+            if hf_tok:
+                tpl_env["HF_TOKEN"] = hf_tok
+                tpl_env["HUGGINGFACE_HUB_TOKEN"] = hf_tok
+                # Warn if template is public (exposes env vars)
+                if is_public:
+                    try:
+                        train_timeline.controls.append(ft.Row([
+                            ft.Icon(ICONS.WARNING, color=COLORS.ORANGE),
+                            ft.Text("Template is Public — environment variables (including HF token) may be visible to others."),
+                        ]))
+                        update_train_placeholders(); await safe_update(page)
+                    except Exception:
+                        pass
+
             def do_call():
                 return rp_infra.ensure_infrastructure(
                     api_key=key,
@@ -4287,6 +4712,8 @@ Specify license and any restrictions.
                     volume_mount_path=mount_path,
                     category=category,
                     is_public=is_public,
+                    env_vars=tpl_env,
+                    ports=( ["6006/http"] if tb_expose else [] ) + ( ["22/tcp"] if ssh_expose else [] ),
                 )
             result = await asyncio.to_thread(do_call)
             vol = result.get("volume", {})
@@ -4390,10 +4817,42 @@ Specify license and any restrictions.
         on_click=on_refresh_training,
         disabled=True,
     )
+    restart_container_btn = ft.OutlinedButton(
+        "Restart Container",
+        icon=getattr(ICONS, "RESTART_ALT", getattr(ICONS, "REFRESH", ICONS.SETTINGS)),
+        on_click=lambda e: page.run_task(on_restart_container),
+        disabled=True,
+    )
+    auto_terminate_cb = ft.Checkbox(label="Auto-terminate on finish", value=True, tooltip="Delete pod automatically when training reaches a terminal state.")
+    open_runpod_btn = ft.TextButton(
+        "Open in Runpod",
+        icon=getattr(ICONS, "OPEN_IN_NEW", getattr(ICONS, "LINK", ICONS.SETTINGS)),
+        on_click=on_open_runpod,
+        disabled=True,
+    )
+    open_web_terminal_btn = ft.TextButton(
+        "Open Web Terminal",
+        icon=getattr(ICONS, "TERMINAL", getattr(ICONS, "CODE", ICONS.OPEN_IN_NEW)),
+        on_click=on_open_web_terminal,
+        disabled=True,
+        tooltip="Opens the pod page; then click Connect → Open Web Terminal",
+    )
+    copy_ssh_btn = ft.TextButton(
+        "Copy SSH Command",
+        icon=getattr(ICONS, "CONTENT_COPY", getattr(ICONS, "COPY", ICONS.LINK)),
+        on_click=lambda e: page.run_task(on_copy_ssh_command),
+        disabled=True,
+        tooltip="Copies an SSH command for this pod to your clipboard.",
+    )
     train_actions = ft.Row([
         start_train_btn,
         stop_train_btn,
         refresh_train_btn,
+        restart_container_btn,
+        open_runpod_btn,
+        open_web_terminal_btn,
+        copy_ssh_btn,
+        auto_terminate_cb,
     ], spacing=10)
 
     # Sections hidden until infrastructure is ensured successfully
@@ -4419,8 +4878,9 @@ Specify license and any restrictions.
                 "Basic hyperparameters and LoRA toggle for training.",
                 on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
             ),
-            ft.Row([skill_level], wrap=True),
+            ft.Row([skill_level, beginner_mode_dd], wrap=True),
             ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
+            ft.Row([packing_row, auto_resume_row, push_row, hf_repo_row, resume_from_row], wrap=True),
             advanced_params_section,
             ft.Divider(),
         ], spacing=0),
@@ -4442,7 +4902,7 @@ Specify license and any restrictions.
                         ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
                         ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
                         ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
-                        ft.Row([rp_category_tf, rp_public_row], wrap=True),
+                        ft.Row([rp_category_tf, rp_public_row, rp_tb_cb, rp_ssh_cb], wrap=True),
                         ft.Row([rp_temp_key_tf], wrap=True),
                         rp_infra_actions,
                         ft.Divider(),

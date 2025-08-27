@@ -115,9 +115,45 @@ def create_template(
         body["containerRegistryAuthId"] = container_registry_auth
     if int(volume_in_gb) > 0:
         body["volumeInGb"] = int(volume_in_gb)
-        if volume_mount_path:
-            body["volumeMountPath"] = volume_mount_path
+    # Always set mount path if provided so network volumes mount there too
+    if volume_mount_path:
+        body["volumeMountPath"] = volume_mount_path
     return _req("POST", "/templates", api_key=api_key, data=json.dumps(body)).json()
+
+
+def patch_template(
+    *,
+    template_id: str,
+    env_vars: Optional[Dict[str, str]] = None,
+    ports: Optional[List[str]] = None,
+    readme: Optional[str] = None,
+    docker_entrypoint: Optional[List[str]] = None,
+    docker_start_cmd: Optional[List[str]] = None,
+    volume_in_gb: Optional[int] = None,
+    volume_mount_path: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Patch an existing template. Only provided fields are updated.
+    Primarily used to update environment variables idempotently when the template already exists.
+    """
+    body: Dict[str, Any] = {}
+    if env_vars is not None:
+        body["env"] = env_vars
+    if ports is not None:
+        body["ports"] = ports
+    if readme is not None:
+        body["readme"] = readme
+    if docker_entrypoint is not None:
+        body["dockerEntrypoint"] = docker_entrypoint
+    if docker_start_cmd is not None:
+        body["dockerStartCmd"] = docker_start_cmd
+    if volume_in_gb is not None:
+        body["volumeInGb"] = int(volume_in_gb)
+    if volume_mount_path is not None:
+        body["volumeMountPath"] = volume_mount_path
+    if not body:
+        return _req("GET", f"/templates/{template_id}", api_key=api_key).json()
+    return _req("PATCH", f"/templates/{template_id}", api_key=api_key, data=json.dumps(body)).json()
 
 
 def ensure_template(
@@ -173,7 +209,7 @@ def ensure_infrastructure(
     image_name: str = "docker.io/sbussiso/unsloth-trainer:latest",
     container_disk_gb: int = 30,
     volume_in_gb: int = 0,
-    volume_mount_path: str = "/workspace",
+    volume_mount_path: str = "/data",
     category: str = "NVIDIA",
     is_public: bool = False,
     container_registry_auth: Optional[str] = None,
@@ -209,6 +245,57 @@ def ensure_infrastructure(
             api_key=api_key,
         )
         tpl = tres["template"]
+        # If template existed, patch fields that differ (env, ports, readme, docker, volume mount)
+        try:
+            if tres.get("action") == "exists":
+                tpl_id = tpl.get("id")
+                # Prepare desired fields
+                desired_env = env_vars or {"PYTHONUNBUFFERED": "1"}
+                desired_ports = ports or []
+                desired_readme = readme
+                desired_entry = docker_entrypoint or []
+                desired_start = docker_start_cmd or []
+                desired_vol_gb = int(volume_in_gb)
+                desired_mount = volume_mount_path
+
+                # Read existing fields
+                existing_env = dict(tpl.get("env") or {})
+                existing_ports = list(tpl.get("ports") or [])
+                existing_readme = tpl.get("readme") or ""
+                existing_entry = list(tpl.get("dockerEntrypoint") or [])
+                existing_start = list(tpl.get("dockerStartCmd") or [])
+                existing_vol_gb = int(tpl.get("volumeInGb") or 0)
+                existing_mount = tpl.get("volumeMountPath")
+
+                # Merge env: keep existing, override with desired
+                merged_env = dict(existing_env)
+                for k, v in (desired_env or {}).items():
+                    merged_env[str(k)] = str(v)
+
+                need_patch = False
+                patch_args: Dict[str, Any] = {}
+                if merged_env != existing_env:
+                    patch_args["env_vars"] = merged_env; need_patch = True
+                if desired_ports != existing_ports:
+                    patch_args["ports"] = desired_ports; need_patch = True
+                if desired_readme != existing_readme:
+                    patch_args["readme"] = desired_readme; need_patch = True
+                if desired_entry != existing_entry:
+                    patch_args["docker_entrypoint"] = desired_entry; need_patch = True
+                if desired_start != existing_start:
+                    patch_args["docker_start_cmd"] = desired_start; need_patch = True
+                if desired_vol_gb != existing_vol_gb:
+                    patch_args["volume_in_gb"] = desired_vol_gb; need_patch = True
+                if desired_mount != existing_mount:
+                    patch_args["volume_mount_path"] = desired_mount; need_patch = True
+
+                if need_patch:
+                    patched = patch_template(template_id=tpl_id, api_key=api_key, **patch_args)
+                    tpl = patched or tpl
+                    tres = {**tres, "template": tpl, "action": "updated"}
+        except Exception:
+            # Non-fatal; continue with original template info
+            pass
         return {
             "volume": {"action": vres["action"], "id": vol.get("id"), "name": vol.get("name"), "dc": vol.get("dataCenterId"), "size": vol.get("size")},
             "template": {"action": tres["action"], "id": tpl.get("id"), "name": tpl.get("name"), "image": tpl.get("imageName")},

@@ -6,3 +6,4 @@ hf_config.json
 ollama_config.json
 .env
 runpod tests/
+runpod_config.json
