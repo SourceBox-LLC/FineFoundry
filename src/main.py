@@ -3990,6 +3990,12 @@ Specify license and any restrictions.
         "Load Config",
         icon=getattr(ICONS, "FILE_OPEN", getattr(ICONS, "FOLDER_OPEN", ICONS.UPLOAD)),
     )
+    config_edit_btn = ft.TextButton(
+        "Edit",
+        icon=getattr(ICONS, "EDIT", getattr(ICONS, "MODE_EDIT", ICONS.SETTINGS)),
+        tooltip="Edit selected config file",
+        disabled=True,
+    )
     config_rename_btn = ft.TextButton(
         "Rename",
         icon=getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)),
@@ -4005,7 +4011,7 @@ Specify license and any restrictions.
     config_summary_txt = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
     # Container for file controls (visibility toggled by mode)
     config_files_row = ft.Row(
-        [config_files_dd, config_refresh_btn, load_config_btn, config_rename_btn, config_delete_btn],
+        [config_files_dd, config_refresh_btn, load_config_btn, config_edit_btn, config_rename_btn, config_delete_btn],
         wrap=True,
     )
 
@@ -4029,6 +4035,7 @@ Specify license and any restrictions.
     def _update_config_buttons_enabled(_=None):
         try:
             has_sel = bool((config_files_dd.value or "").strip())
+            config_edit_btn.disabled = not has_sel
             config_rename_btn.disabled = not has_sel
             config_delete_btn.disabled = not has_sel
         except Exception:
@@ -4239,6 +4246,142 @@ Specify license and any restrictions.
                     await safe_update(page)
                 except Exception:
                     pass
+
+    async def on_edit_config():
+        name = (config_files_dd.value or "").strip()
+        if not name:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Select a config to edit."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        d = _saved_configs_dir()
+        path = os.path.join(d, name)
+        raw_text = ""
+        conf = None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw_text = f.read()
+        except Exception:
+            raw_text = ""
+        if not raw_text:
+            conf = _read_json_file(path) or {}
+            try:
+                raw_text = json.dumps(conf, indent=2, ensure_ascii=False)
+            except Exception:
+                raw_text = "{}"
+
+        editor_tf = ft.TextField(
+            label=f"Editing: {name}",
+            value=raw_text,
+            multiline=True,
+            max_lines=24,
+            width=900,
+            tooltip="Edit JSON configuration. Use Save to validate and write changes.",
+        )
+        status_txt = ft.Text("", size=12, color=WITH_OPACITY(0.8, BORDER_BASE))
+
+        async def _validate_only(_=None):
+            try:
+                data = json.loads(editor_tf.value or "{}")
+            except Exception as ex:
+                status_txt.value = f"JSON error: {ex}"
+                try:
+                    status_txt.color = COLORS.RED
+                except Exception:
+                    pass
+                await safe_update(page)
+                return
+            ok, msg = _validate_config(data)
+            if ok:
+                status_txt.value = f"Valid ✓ {msg or ''}"
+                try:
+                    status_txt.color = getattr(COLORS, "GREEN", COLORS.SECONDARY)
+                except Exception:
+                    pass
+            else:
+                status_txt.value = f"Invalid: {msg}"
+                try:
+                    status_txt.color = COLORS.RED
+                except Exception:
+                    pass
+            await safe_update(page)
+
+        async def _save_edits(_=None):
+            try:
+                data = json.loads(editor_tf.value or "{}")
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(ft.Text(f"JSON error: {ex}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+                return
+            ok, msg = _validate_config(data)
+            if not ok:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Invalid config: {msg}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+                return
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(data, indent=2, ensure_ascii=False))
+                    f.write("\n")
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Save failed: {ex}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+                return
+            # Refresh list and update loaded config/UI if applicable
+            try:
+                _refresh_config_list()
+            except Exception:
+                pass
+            try:
+                if (train_state.get("loaded_config_name") or "") == name:
+                    train_state["loaded_config"] = data
+                    _apply_config_to_ui(data)
+            except Exception:
+                pass
+            page.snack_bar = ft.SnackBar(ft.Text(f"Saved: {name}"))
+            page.snack_bar.open = True
+            try:
+                edit_dlg.open = False
+                await safe_update(page)
+            except Exception:
+                pass
+
+        edit_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "EDIT", getattr(ICONS, "MODE_EDIT", ICONS.SETTINGS)), color=ACCENT_COLOR),
+                ft.Text("Edit configuration"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Column([
+                ft.Text("Update the JSON below, then click Save. Use Validate to check without saving."),
+                editor_tf,
+                status_txt,
+            ], tight=True, spacing=8),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(edit_dlg, "open", False), page.update())),
+                ft.OutlinedButton("Validate", icon=getattr(ICONS, "CHECK_CIRCLE", ICONS.CHECK), on_click=lambda e: page.run_task(_validate_only)),
+                ft.ElevatedButton("Save", icon=getattr(ICONS, "SAVE", ICONS.CHECK), on_click=lambda e: page.run_task(_save_edits)),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
+        # Open dialog using the resilient pattern
+        opened = False
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(edit_dlg)
+                opened = True
+        except Exception:
+            opened = False
+        if not opened:
+            page.dialog = edit_dlg
+            edit_dlg.open = True
+        await safe_update(page)
 
     async def on_delete_config():
         name = (config_files_dd.value or "").strip()
@@ -5807,6 +5950,7 @@ Specify license and any restrictions.
     config_files_dd.on_change = _update_config_buttons_enabled
     config_refresh_btn.on_click = _refresh_config_list
     load_config_btn.on_click = lambda e: page.run_task(on_load_config)
+    config_edit_btn.on_click = lambda e: page.run_task(on_edit_config)
     config_rename_btn.on_click = lambda e: page.run_task(on_rename_config)
     config_delete_btn.on_click = lambda e: page.run_task(on_delete_config)
     _refresh_config_list()
