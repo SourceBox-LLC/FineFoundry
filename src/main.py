@@ -14,6 +14,7 @@ from urllib.error import URLError, HTTPError
 import flet as ft
 import httpx
 import fourchan_scraper as sc
+import requests
 try:
     import save_dataset as sd
 except Exception:
@@ -3975,6 +3976,330 @@ Specify license and any restrictions.
         ft.Row([fp16_cb, bf16_cb], wrap=True),
     ], spacing=8)
 
+    # Configuration mode controls
+    config_mode_dd = ft.Dropdown(
+        label="Mode",
+        options=[ft.dropdown.Option("Normal"), ft.dropdown.Option("Configuration")],
+        value="Normal",
+        width=180,
+        tooltip="Configuration mode: load a saved config and run with minimal inputs.",
+    )
+    config_files_dd = ft.Dropdown(label="Saved config", options=[], width=420)
+    config_refresh_btn = ft.TextButton("Refresh", icon=REFRESH_ICON)
+    load_config_btn = ft.ElevatedButton(
+        "Load Config",
+        icon=getattr(ICONS, "FILE_OPEN", getattr(ICONS, "FOLDER_OPEN", ICONS.UPLOAD)),
+    )
+    config_rename_btn = ft.TextButton(
+        "Rename",
+        icon=getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)),
+        tooltip="Rename selected config file",
+        disabled=True,
+    )
+    config_delete_btn = ft.TextButton(
+        "Delete",
+        icon=getattr(ICONS, "DELETE", getattr(ICONS, "DELETE_FOREVER", ICONS.CLOSE)),
+        tooltip="Delete selected config file",
+        disabled=True,
+    )
+    config_summary_txt = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
+    # Container for file controls (visibility toggled by mode)
+    config_files_row = ft.Row(
+        [config_files_dd, config_refresh_btn, load_config_btn, config_rename_btn, config_delete_btn],
+        wrap=True,
+    )
+
+    def _saved_configs_dir() -> str:
+        root = os.path.dirname(os.path.dirname(__file__))
+        d = os.path.join(root, "saved_configs")
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception:
+            pass
+        return d
+
+    def _list_saved_configs() -> List[str]:
+        d = _saved_configs_dir()
+        try:
+            files = [f for f in os.listdir(d) if f.lower().endswith(".json")]
+        except Exception:
+            files = []
+        return sorted(files)
+
+    def _update_config_buttons_enabled(_=None):
+        try:
+            has_sel = bool((config_files_dd.value or "").strip())
+            config_rename_btn.disabled = not has_sel
+            config_delete_btn.disabled = not has_sel
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def _refresh_config_list(_=None):
+        try:
+            files = _list_saved_configs()
+            config_files_dd.options = [ft.dropdown.Option(f) for f in files]
+            if files and not config_files_dd.value:
+                config_files_dd.value = files[0]
+            if not files:
+                config_files_dd.value = None
+        except Exception:
+            pass
+        _update_config_buttons_enabled()
+
+    def _read_json_file(path: str) -> Optional[dict]:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _validate_config(conf: dict) -> Tuple[bool, str]:
+        """Lightweight schema validation for saved training configs.
+        Returns (ok, message). On ok=False, message explains the issue.
+        """
+        if not isinstance(conf, dict):
+            return False, "Config is not a JSON object."
+        hp = conf.get("hp")
+        if not isinstance(hp, dict):
+            return False, "Missing or invalid 'hp' section."
+        # Minimal required fields for a viable training run
+        required = ["base_model", "epochs", "lr", "bsz", "grad_accum", "max_steps", "output_dir"]
+        missing = [k for k in required if not str(hp.get(k) or "").strip()]
+        if missing:
+            return False, f"Missing required hp fields: {', '.join(missing)}"
+        # Dataset hint (optional but helpful)
+        if not (hp.get("hf_dataset_id") or hp.get("json_path")):
+            return True, "Note: no dataset specified (hf_dataset_id/json_path)."
+        return True, "OK"
+
+    def _apply_config_to_ui(conf: dict) -> None:
+        if not isinstance(conf, dict):
+            return
+        hp = conf.get("hp") or {}
+        try:
+            base_model.value = hp.get("base_model", base_model.value)
+            epochs_tf.value = str(hp.get("epochs", epochs_tf.value))
+            lr_tf.value = str(hp.get("lr", lr_tf.value))
+            batch_tf.value = str(hp.get("bsz", batch_tf.value))
+            grad_acc_tf.value = str(hp.get("grad_accum", grad_acc_tf.value))
+            max_steps_tf.value = str(hp.get("max_steps", max_steps_tf.value))
+            use_lora_cb.value = bool(hp.get("use_lora", use_lora_cb.value))
+            out_dir_tf.value = hp.get("output_dir", out_dir_tf.value)
+            # dataset
+            if "hf_dataset_id" in hp:
+                train_source.value = "Hugging Face"
+                train_hf_repo.value = hp.get("hf_dataset_id", "")
+                train_hf_split.value = hp.get("hf_dataset_split", "train")
+                train_hf_config.value = hp.get("hf_dataset_config", train_hf_config.value)
+            elif "json_path" in hp:
+                train_source.value = "JSON file"
+                train_json_path.value = hp.get("json_path", "")
+            # toggles
+            packing_cb.value = bool(hp.get("packing", packing_cb.value))
+            auto_resume_cb.value = bool(hp.get("auto_resume", auto_resume_cb.value))
+            push_cb.value = bool(hp.get("push", push_cb.value))
+            hf_repo_id_tf.value = hp.get("hf_repo_id", hf_repo_id_tf.value or "")
+            resume_from_tf.value = hp.get("resume_from", resume_from_tf.value or "")
+        except Exception:
+            pass
+        # infra UI
+        iu = conf.get("infra_ui") or {}
+        try:
+            rp_dc_tf.value = iu.get("dc", rp_dc_tf.value)
+            rp_vol_name_tf.value = iu.get("vol_name", rp_vol_name_tf.value)
+            rp_vol_size_tf.value = str(iu.get("vol_size", rp_vol_size_tf.value))
+            rp_resize_cb.value = bool(iu.get("resize_if_smaller", rp_resize_cb.value))
+            rp_tpl_name_tf.value = iu.get("tpl_name", rp_tpl_name_tf.value)
+            rp_image_tf.value = iu.get("image", rp_image_tf.value)
+            rp_container_disk_tf.value = str(iu.get("container_disk", rp_container_disk_tf.value))
+            rp_volume_in_gb_tf.value = str(iu.get("pod_volume_gb", rp_volume_in_gb_tf.value))
+            rp_mount_path_tf.value = iu.get("mount_path", rp_mount_path_tf.value)
+            rp_category_tf.value = iu.get("category", rp_category_tf.value)
+            rp_public_cb.value = bool(iu.get("public", rp_public_cb.value))
+            rp_tb_cb.value = bool(iu.get("tensorboard", rp_tb_cb.value))
+            rp_ssh_cb.value = bool(iu.get("ssh", rp_ssh_cb.value))
+        except Exception:
+            pass
+        # summary
+        try:
+            m = hp.get("base_model", "")
+            ds = hp.get("hf_dataset_id") or hp.get("json_path") or ""
+            config_summary_txt.value = f"Model: {m} • Dataset: {ds}"
+        except Exception:
+            pass
+        try:
+            _update_train_source()
+            page.update()
+        except Exception:
+            pass
+
+    async def on_load_config():
+        name = (config_files_dd.value or "").strip()
+        if not name:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Select a config to load."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        path = os.path.join(_saved_configs_dir(), name)
+        conf = _read_json_file(path)
+        if not isinstance(conf, dict):
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Failed to load config: invalid JSON or unreadable file."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        ok, msg = _validate_config(conf)
+        if not ok:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Invalid config: {msg}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        # Persist and apply
+        train_state["loaded_config"] = conf
+        try:
+            train_state["loaded_config_name"] = name
+        except Exception:
+            pass
+        _apply_config_to_ui(conf)
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Loaded config: {name}"))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception:
+            pass
+
+    async def on_rename_config():
+        name = (config_files_dd.value or "").strip()
+        if not name:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Select a config to rename."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        new_tf = ft.TextField(label="New name", value=name, width=420)
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)), color=ACCENT_COLOR),
+                ft.Text("Rename configuration"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Column([ft.Text("Choose a new filename (JSON extension optional)."), new_tf], tight=True, spacing=6),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
+                ft.ElevatedButton("Rename", icon=getattr(ICONS, "CHECK", ICONS.SAVE), on_click=lambda e: page.run_task(_do_rename)),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        await safe_update(page)
+
+        async def _do_rename(_=None):
+            try:
+                new_name = (new_tf.value or name).strip()
+                if not new_name:
+                    return
+                if not new_name.lower().endswith('.json'):
+                    new_name = f"{new_name}.json"
+                d = _saved_configs_dir()
+                src = os.path.join(d, name)
+                dst = os.path.join(d, new_name)
+                if os.path.exists(dst):
+                    page.snack_bar = ft.SnackBar(ft.Text("A config with that name already exists."))
+                    page.snack_bar.open = True
+                    await safe_update(page)
+                    return
+                os.rename(src, dst)
+                _refresh_config_list()
+                try:
+                    config_files_dd.value = new_name
+                except Exception:
+                    pass
+                page.snack_bar = ft.SnackBar(ft.Text(f"Renamed to: {new_name}"))
+                page.snack_bar.open = True
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Rename failed: {ex}"))
+                page.snack_bar.open = True
+            finally:
+                try:
+                    dlg.open = False
+                    await safe_update(page)
+                except Exception:
+                    pass
+
+    async def on_delete_config():
+        name = (config_files_dd.value or "").strip()
+        if not name:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Select a config to delete."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        confirm_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "DELETE", getattr(ICONS, "DELETE_FOREVER", ICONS.CLOSE)), color=COLORS.RED),
+                ft.Text("Delete configuration?"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Text(f"This will permanently delete '{name}'."),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(confirm_dlg, "open", False), page.update())),
+                ft.ElevatedButton("Delete", icon=getattr(ICONS, "CHECK", ICONS.DELETE), on_click=lambda e: page.run_task(_do_delete)),
+            ],
+        )
+        # Open confirm dialog using same pattern as dataset previews
+        opened = False
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(confirm_dlg)
+                opened = True
+        except Exception:
+            opened = False
+        if not opened:
+            page.dialog = confirm_dlg
+            confirm_dlg.open = True
+        await safe_update(page)
+
+        async def _do_delete(_=None):
+            try:
+                d = _saved_configs_dir()
+                path = os.path.join(d, name)
+                os.remove(path)
+                _refresh_config_list()
+                try:
+                    if (train_state.get("loaded_config_name") or "") == name:
+                        train_state["loaded_config_name"] = ""
+                        train_state["loaded_config"] = {}
+                        config_summary_txt.value = ""
+                except Exception:
+                    pass
+                page.snack_bar = ft.SnackBar(ft.Text(f"Deleted: {name}"))
+                page.snack_bar.open = True
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Delete failed: {ex}"))
+                page.snack_bar.open = True
+            finally:
+                try:
+                    confirm_dlg.open = False
+                    await safe_update(page)
+                except Exception:
+                    pass
+
     # Progress & logs
     train_progress = ft.ProgressBar(value=0.0, width=400)
     train_prog_label = ft.Text("Progress: 0%")
@@ -4064,7 +4389,7 @@ Specify license and any restrictions.
             pass
 
     cancel_train = {"cancelled": False}
-    train_state = {"running": False, "pod_id": None, "infra": None, "api_key": ""}
+    train_state = {"running": False, "pod_id": None, "infra": None, "api_key": "", "loaded_config": None}
 
     def _update_skill_controls(_=None):
         level = (skill_level.value or "Beginner").lower()
@@ -4207,8 +4532,21 @@ Specify license and any restrictions.
             pass
         await safe_update(page)
 
-        # Build flags for train.py
-        hp = _build_hp()
+        # Build flags for train.py (honor Configuration mode if a config is loaded)
+        using_loaded_hp = False
+        hp = None
+        try:
+            mode_val = (config_mode_dd.value or "Normal").lower()
+            if mode_val.startswith("config"):
+                cfg = train_state.get("loaded_config") or {}
+                cfg_hp = cfg.get("hp") if isinstance(cfg, dict) else None
+                if isinstance(cfg_hp, dict) and cfg_hp:
+                    hp = dict(cfg_hp)
+                    using_loaded_hp = True
+        except Exception:
+            pass
+        if not isinstance(hp, dict) or not hp:
+            hp = _build_hp()
 
         # Beginner mode presets: choose GPU & adjust params
         level = (skill_level.value or "Beginner").lower()
@@ -4218,7 +4556,7 @@ Specify license and any restrictions.
         chosen_gpu_type_id = "AUTO"
         chosen_interruptible = False
 
-        if is_beginner:
+        if is_beginner and (not using_loaded_hp):
             if beginner_mode == "fastest":
                 # Aggressive for speed: rely on best GPU (secure), larger per-device batch, minimal GA
                 try:
@@ -4280,8 +4618,13 @@ Specify license and any restrictions.
             pod = await asyncio.to_thread(_mk_pod)
             pod_id = pod.get("id") or pod.get("podId") or pod.get("pod_id")
             train_state["pod_id"] = pod_id
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod created: {pod_id}")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=ACCENT_COLOR), ft.Text(f"Pod created: {pod_id}")]))
             # Enable actions now that a pod exists
+            # Refresh teardown UI to expose Pod checkbox
+            try:
+                await _refresh_teardown_ui()
+            except Exception:
+                pass
             try:
                 restart_container_btn.disabled = False
                 open_runpod_btn.disabled = False
@@ -4289,6 +4632,100 @@ Specify license and any restrictions.
                 copy_ssh_btn.disabled = False
             except Exception:
                 pass
+            # Offer to save setup immediately after successful start (always)
+            try:
+                def _collect_infra_ui_state() -> dict:
+                    return {
+                        "dc": (rp_dc_tf.value or "US-NC-1"),
+                        "vol_name": (rp_vol_name_tf.value or "unsloth-volume"),
+                        "vol_size": int(float(rp_vol_size_tf.value or "50")),
+                        "resize_if_smaller": bool(getattr(rp_resize_cb, "value", True)),
+                        "tpl_name": (rp_tpl_name_tf.value or "unsloth-trainer-template"),
+                        "image": (rp_image_tf.value or ""),
+                        "container_disk": int(float(rp_container_disk_tf.value or "30")),
+                        "pod_volume_gb": int(float(rp_volume_in_gb_tf.value or "0")),
+                        "mount_path": (rp_mount_path_tf.value or "/data"),
+                        "category": (rp_category_tf.value or "NVIDIA"),
+                        "public": bool(getattr(rp_public_cb, "value", False)),
+                        "tensorboard": bool(getattr(rp_tb_cb, "value", False)),
+                        "ssh": bool(getattr(rp_ssh_cb, "value", False)),
+                    }
+                payload = {
+                    "version": 1,
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "hp": hp,
+                    "infra_ui": _collect_infra_ui_state(),
+                    "infra_ids": train_state.get("infra") or {},
+                    "meta": {
+                        "skill_level": skill_level.value,
+                        "beginner_mode": beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else "",
+                    },
+                }
+                default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(hp.get('base_model','model')).replace('/', '_')}.json"
+                name_tf = ft.TextField(label="Save as", value=default_name, width=420)
+
+                def _do_save(_=None):
+                    name = (name_tf.value or default_name).strip()
+                    d = _saved_configs_dir()
+                    path = os.path.join(d, name if name.endswith('.json') else f"{name}.json")
+                    try:
+                        with open(path, "w", encoding="utf-8") as f:
+                            json.dump(payload, f, indent=2)
+                        page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
+                        page.snack_bar.open = True
+                        _refresh_config_list()
+                    except Exception as ex:
+                        page.snack_bar = ft.SnackBar(ft.Text(f"Failed to save config: {ex}"))
+                        page.snack_bar.open = True
+                    try:
+                        dlg.open = False
+                        page.update()
+                    except Exception:
+                        pass
+
+                dlg = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Row([
+                        ft.Icon(getattr(ICONS, "SAVE_ALT", ICONS.SAVE), color=ACCENT_COLOR),
+                        ft.Text("Save this training setup?"),
+                    ], alignment=ft.MainAxisAlignment.START),
+                    content=ft.Column([
+                        ft.Text("You can reuse this configuration later via Training → Configuration mode."),
+                        name_tf,
+                    ], tight=True, spacing=6),
+                    actions=[
+                        ft.TextButton("Skip", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
+                        ft.ElevatedButton("Save", icon=getattr(ICONS, "SAVE", ICONS.CHECK), on_click=_do_save),
+                    ],
+                )
+                try:
+                    dlg.on_dismiss = lambda e: page.update()
+                except Exception:
+                    pass
+                # Open dialog using same pattern as dataset previews
+                opened = False
+                try:
+                    if hasattr(page, "open") and callable(getattr(page, "open")):
+                        page.open(dlg)
+                        opened = True
+                except Exception:
+                    opened = False
+                if not opened:
+                    page.dialog = dlg
+                    dlg.open = True
+                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SAVE", ICONS.SAVE_ALT), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Opened Save Configuration dialog")]))
+                update_train_placeholders(); await safe_update(page)
+                # Yield once to ensure modal renders before entering the polling loop
+                try:
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    pass
+            except Exception as ex:
+                try:
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Save dialog error: {ex}")]))
+                    update_train_placeholders(); await safe_update(page)
+                except Exception:
+                    pass
             # Log exact GPU type selected
             try:
                 gpu_id = None
@@ -4430,7 +4867,19 @@ Specify license and any restrictions.
             api_key = (train_state.get("api_key") or "").strip() or (os.environ.get("RUNPOD_API_KEY") or "").strip()
             if not api_key:
                 return
-            hp = _build_hp()
+            # Honor Configuration mode if a config is loaded
+            hp = None
+            try:
+                mode_val = (config_mode_dd.value or "Normal").lower()
+                if mode_val.startswith("config"):
+                    cfg = train_state.get("loaded_config") or {}
+                    cfg_hp = cfg.get("hp") if isinstance(cfg, dict) else None
+                    if isinstance(cfg_hp, dict) and cfg_hp:
+                        hp = dict(cfg_hp)
+            except Exception:
+                pass
+            if not isinstance(hp, dict) or not hp:
+                hp = _build_hp()
             cmd = rp_pod.build_cmd(hp)
             await asyncio.to_thread(rp_pod.patch_pod_docker_start_cmd, api_key, pod_id, cmd)
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.RESTART_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Container restarting with new hyper-params…")]))
@@ -4726,7 +5175,11 @@ Specify license and any restrictions.
                 pass
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Template {tpl.get('action')} — id={tpl.get('id')} image={tpl.get('image')}")]))
-
+            # Refresh teardown UI to show new infra immediately
+            try:
+                await _refresh_teardown_ui()
+            except Exception:
+                pass
             # Beautiful success message (snack + dialog)
             try:
                 success_title = "Runpod infrastructure ready!"
@@ -4766,6 +5219,8 @@ Specify license and any restrictions.
                     start_train_btn.disabled = False
                     stop_train_btn.disabled = False
                     refresh_train_btn.disabled = False
+                    # Respect Configuration mode visibility
+                    _update_mode_visibility()
                 except Exception:
                     pass
                 await safe_update(page)
@@ -4797,6 +5252,53 @@ Specify license and any restrictions.
         ft.ElevatedButton("Ensure Infrastructure", icon=getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)), on_click=on_click_ensure_infra),
         rp_infra_busy,
     ], spacing=10)
+
+    # Compact infra action for Configuration mode (button only)
+    rp_infra_compact_row = ft.Row([
+        ft.OutlinedButton(
+            "Ensure Infrastructure",
+            icon=getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)),
+            on_click=on_click_ensure_infra,
+        ),
+    ], spacing=10)
+
+    # Configuration section wrapper to place in Training tab
+    config_section = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Configuration",
+                getattr(ICONS, "SETTINGS_SUGGEST", ICONS.SETTINGS),
+                "Save or load training configs to streamline repeated runs.",
+                on_help_click=_mk_help_handler("Save or load training configs to streamline repeated runs."),
+            ),
+            ft.Row([config_mode_dd], wrap=True),
+            config_files_row,
+            config_summary_txt,
+            rp_infra_compact_row,
+            ft.Divider(),
+        ], spacing=8),
+        visible=True,
+    )
+
+    # Group all Runpod infrastructure controls to toggle as one section
+    rp_infra_panel = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Runpod Infrastructure",
+                getattr(ICONS, "CLOUD", ICONS.SETTINGS),
+                "Create or update the required Runpod Network Volume and Template before training.",
+                on_help_click=_mk_help_handler("Create or update the required Runpod Network Volume and Template before training."),
+            ),
+            ft.Text("Defaults are provided; change any value to customize. Key precedence: Settings > Training temp field > environment.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+            ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
+            ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
+            ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
+            ft.Row([rp_category_tf, rp_public_row, rp_tb_cb, rp_ssh_cb], wrap=True),
+            ft.Row([rp_temp_key_tf], wrap=True),
+            rp_infra_actions,
+        ], spacing=12),
+        visible=True,
+    )
 
     # Training action buttons are disabled until infra is ready
     start_train_btn = ft.ElevatedButton(
@@ -4855,6 +5357,396 @@ Specify license and any restrictions.
         auto_terminate_cb,
     ], spacing=10)
 
+    # ---------- Teardown Section (Volume/Template/Pod) ----------
+    td_title = section_title(
+        "Teardown",
+        getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)),
+        "Select infrastructure items to delete. Teardown All removes all related items.",
+        on_help_click=_mk_help_handler("Delete Runpod Template and/or Network Volume. If a pod exists, you can delete it too."),
+    )
+    td_template_cb = ft.Checkbox(label="Template: (none)", value=False, visible=False)
+    td_volume_cb = ft.Checkbox(label="Volume: (none)", value=False, visible=False)
+    td_pod_cb = ft.Checkbox(label="Pod: (none)", value=False, visible=False)
+    td_busy = ft.ProgressRing(visible=False)
+
+    async def _refresh_teardown_ui(_=None):
+        try:
+            infra = train_state.get("infra") or {}
+        except Exception:
+            infra = {}
+        tpl = infra.get("template") or {}
+        vol = infra.get("volume") or {}
+        tpl_id = (str(tpl.get("id") or "").strip())
+        vol_id = (str(vol.get("id") or "").strip())
+        pod_id = str(train_state.get("pod_id") or "").strip()
+
+        # Reconcile pod presence with Runpod (handles external deletions)
+        try:
+            key = (((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip()) or (rp_temp_key_tf.value or "").strip() or (os.environ.get("RUNPOD_API_KEY") or "").strip()
+        except Exception:
+            key = (os.environ.get("RUNPOD_API_KEY") or "").strip()
+        if pod_id and key:
+            try:
+                await asyncio.to_thread(rp_pod.get_pod, key, pod_id)
+            except Exception as ex:
+                status = None
+                try:
+                    status = getattr(getattr(ex, "response", None), "status_code", None)
+                except Exception:
+                    status = None
+                if status == 404:
+                    # Pod no longer exists; clear and inform timeline
+                    try:
+                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Reconciled: Pod {pod_id} is already deleted on Runpod.")]))
+                    except Exception:
+                        pass
+                    try:
+                        train_state["pod_id"] = None
+                    except Exception:
+                        pass
+                    pod_id = ""
+
+        # Template checkbox
+        try:
+            if tpl_id:
+                name = tpl.get("name") or tpl_id
+                img = tpl.get("image") or ""
+                td_template_cb.label = f"Template: {name} (id={tpl_id}){f' • {img}' if img else ''}"
+                td_template_cb.visible = True
+            else:
+                td_template_cb.visible = False
+                td_template_cb.value = False
+        except Exception:
+            pass
+
+        # Volume checkbox
+        try:
+            if vol_id:
+                vname = vol.get("name") or vol_id
+                vsize = vol.get("size") or "?"
+                vdc = vol.get("dc") or vol.get("dataCenterId") or ""
+                td_volume_cb.label = f"Volume: {vname} ({vsize}GB){f' • DC {vdc}' if vdc else ''} (id={vol_id})"
+                td_volume_cb.visible = True
+            else:
+                td_volume_cb.visible = False
+                td_volume_cb.value = False
+        except Exception:
+            pass
+
+        # Pod checkbox (optional)
+        try:
+            if pod_id:
+                td_pod_cb.label = f"Pod: {pod_id}"
+                td_pod_cb.visible = True
+            else:
+                td_pod_cb.visible = False
+                td_pod_cb.value = False
+        except Exception:
+            pass
+
+        try:
+            teardown_section.visible = bool(tpl_id or vol_id or pod_id)
+            await safe_update(page)
+        except Exception:
+            pass
+
+    async def _do_teardown(selected_all: bool = False):
+        # Resolve API key with same precedence: Settings > temp > env
+        saved_key = (((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip())
+        temp_key = (rp_temp_key_tf.value or "").strip()
+        key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
+        if not key:
+            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
+            update_train_placeholders(); await safe_update(page)
+            return
+
+        infra = train_state.get("infra") or {}
+        tpl_id = str(((infra.get("template") or {}).get("id") or "")).strip()
+        vol_id = str(((infra.get("volume") or {}).get("id") or "")).strip()
+        pod_id = str(train_state.get("pod_id") or "").strip()
+
+        # Reconcile pod existence before proceeding (avoid trying to delete a non-existent pod)
+        if pod_id:
+            try:
+                await asyncio.to_thread(rp_pod.get_pod, key, pod_id)
+            except Exception as ex:
+                status = getattr(getattr(ex, "response", None), "status_code", None)
+                if status == 404:
+                    try:
+                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already absent on Runpod: {pod_id}")]))
+                        update_train_placeholders(); await safe_update(page)
+                    except Exception:
+                        pass
+                    try:
+                        train_state["pod_id"] = None
+                    except Exception:
+                        pass
+                    pod_id = ""
+
+        sel_tpl = bool(td_template_cb.value) or (selected_all and bool(tpl_id))
+        sel_vol = bool(td_volume_cb.value) or (selected_all and bool(vol_id))
+        sel_pod = bool(td_pod_cb.value) or (selected_all and bool(pod_id))
+
+        if not (sel_tpl or sel_vol or sel_pod):
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Select at least one item to teardown."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+
+        # Busy on
+        try:
+            td_busy.visible = True
+            await safe_update(page)
+        except Exception:
+            pass
+
+        # Add timeline log to indicate start and selected targets
+        try:
+            actions = []
+            if sel_pod and pod_id:
+                actions.append(f"Pod {pod_id}")
+            if sel_tpl and tpl_id:
+                actions.append(f"Template {tpl_id}")
+            if sel_vol and vol_id:
+                actions.append(f"Volume {vol_id}")
+            if actions:
+                train_timeline.controls.append(ft.Row([
+                    ft.Icon(getattr(ICONS, "PLAY_CIRCLE", ICONS.PLAY_ARROW), color=ACCENT_COLOR),
+                    ft.Text("Starting teardown: " + ", ".join(actions))
+                ]))
+                update_train_placeholders(); await safe_update(page)
+        except Exception:
+            pass
+
+        # Perform deletions. Order: Pod → Template → Volume
+        try:
+            if sel_pod and pod_id:
+                try:
+                    # Log intent
+                    try:
+                        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "CLOUD_OFF", getattr(ICONS, "CLOUD", ICONS.CLOSE)), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Pod: {pod_id}...")]))
+                        await safe_update(page)
+                    except Exception:
+                        pass
+                    await asyncio.to_thread(rp_pod.delete_pod, key, pod_id)
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Pod deleted: {pod_id}")]))
+                    try:
+                        train_state["pod_id"] = None
+                    except Exception:
+                        pass
+                except Exception as ex:
+                    status = getattr(getattr(ex, "response", None), "status_code", None)
+                    if status == 404:
+                        # Already deleted; treat as success
+                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already deleted: {pod_id}")]))
+                        try:
+                            train_state["pod_id"] = None
+                        except Exception:
+                            pass
+                    else:
+                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete pod: {ex}")]))
+
+            if sel_tpl and tpl_id:
+                try:
+                    # Log intent
+                    try:
+                        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "DESCRIPTION", ICONS.ARTICLE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Template: {tpl_id}...")]))
+                        await safe_update(page)
+                    except Exception:
+                        pass
+                    await asyncio.to_thread(rp_infra.delete_template, tpl_id, key)
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Template deleted: {tpl_id}")]))
+                    try:
+                        if isinstance(train_state.get("infra"), dict):
+                            train_state["infra"]["template"] = {}
+                    except Exception:
+                        pass
+                except Exception as ex:
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete template: {ex}")]))
+
+            if sel_vol and vol_id:
+                try:
+                    # Log intent
+                    try:
+                        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "STORAGE", ICONS.SAVE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Volume: {vol_id}...")]))
+                        await safe_update(page)
+                    except Exception:
+                        pass
+                    await asyncio.to_thread(rp_infra.delete_volume, vol_id, key)
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Volume deleted: {vol_id}")]))
+                    try:
+                        if isinstance(train_state.get("infra"), dict):
+                            train_state["infra"]["volume"] = {}
+                    except Exception:
+                        pass
+                except Exception as ex:
+                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete volume: {ex}")]))
+
+            # If both infra items are gone, clear infra
+            try:
+                infra = train_state.get("infra") or {}
+                tpl_id2 = str(((infra.get("template") or {}).get("id") or "")).strip()
+                vol_id2 = str(((infra.get("volume") or {}).get("id") or "")).strip()
+                if not tpl_id2 and not vol_id2:
+                    train_state["infra"] = None
+            except Exception:
+                pass
+
+            # Disable training actions if infra missing
+            try:
+                has_infra = bool(train_state.get("infra"))
+                start_train_btn.disabled = not has_infra
+                stop_train_btn.disabled = not has_infra
+                refresh_train_btn.disabled = not has_infra
+                restart_container_btn.disabled = True
+                open_runpod_btn.disabled = True
+                open_web_terminal_btn.disabled = True
+                copy_ssh_btn.disabled = True
+            except Exception:
+                pass
+            # Completion log and refresh UI
+            try:
+                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "CHECK_CIRCLE", ICONS.CHECK), color=COLORS.GREEN), ft.Text("Teardown complete")]))
+            except Exception:
+                pass
+            update_train_placeholders(); await _refresh_teardown_ui(); await safe_update(page)
+        finally:
+            try:
+                td_busy.visible = False
+                await safe_update(page)
+            except Exception:
+                pass
+
+    async def on_teardown_selected(_=None):
+        # Immediate feedback (timeline + snackbar)
+        try:
+            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "WARNING_AMBER", ICONS.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown Selected clicked")]))
+            update_train_placeholders(); await safe_update(page)
+        except Exception:
+            pass
+        # Immediate feedback
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Preparing teardown confirmation..."))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception:
+            pass
+        # Build confirmation dialog text
+        items = []
+        if bool(td_pod_cb.value):
+            items.append("Pod")
+        if bool(td_template_cb.value):
+            items.append("Template")
+        if bool(td_volume_cb.value):
+            items.append("Volume")
+        if not items:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Select at least one item to teardown."))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+        msg = "This will delete: " + ", ".join(items) + "."
+
+        confirm_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)), color=COLORS.RED),
+                ft.Text("Confirm Teardown"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Text(msg),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(confirm_dlg, "open", False), page.update())),
+                ft.ElevatedButton("Delete", icon=getattr(ICONS, "CHECK", ICONS.DELETE), on_click=lambda e: (setattr(confirm_dlg, "open", False), page.run_task(_do_teardown, False))),
+            ],
+        )
+        try:
+            confirm_dlg.on_dismiss = lambda e: page.update()
+        except Exception:
+            pass
+        # Open confirm dialog using same pattern as dataset previews
+        opened = False
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(confirm_dlg)
+                opened = True
+        except Exception:
+            opened = False
+        if not opened:
+            page.dialog = confirm_dlg
+            confirm_dlg.open = True
+        await safe_update(page)
+
+    async def on_teardown_all(_=None):
+        # Immediate feedback (timeline + snackbar)
+        try:
+            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "WARNING_AMBER", ICONS.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown All clicked")]))
+            update_train_placeholders(); await safe_update(page)
+        except Exception:
+            pass
+        # Immediate feedback
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Preparing teardown confirmation..."))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception:
+            pass
+        confirm_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)), color=COLORS.RED),
+                ft.Text("Teardown All infrastructure?"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Text("This will delete the Runpod Template and Network Volume. If a pod exists, it will be deleted first."),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(confirm_dlg, "open", False), page.update())),
+                ft.ElevatedButton("Delete All", icon=getattr(ICONS, "CHECK", ICONS.DELETE), on_click=lambda e: (setattr(confirm_dlg, "open", False), page.run_task(_do_teardown, True))),
+            ],
+        )
+        try:
+            confirm_dlg.on_dismiss = lambda e: page.update()
+        except Exception:
+            pass
+        # Open confirm dialog using same pattern as dataset previews
+        opened = False
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(confirm_dlg)
+                opened = True
+        except Exception:
+            opened = False
+        if not opened:
+            page.dialog = confirm_dlg
+            confirm_dlg.open = True
+        await safe_update(page)
+
+    teardown_section = ft.Container(
+        content=ft.Column([
+            td_title,
+            ft.Text("Select items to teardown.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
+            ft.Container(
+                content=ft.Column([
+                    td_pod_cb,
+                    td_template_cb,
+                    td_volume_cb,
+                ], spacing=6),
+                padding=8,
+                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                border_radius=8,
+            ),
+            ft.Row([
+                ft.ElevatedButton("Teardown Selected", icon=getattr(ICONS, "DELETE", getattr(ICONS, "DELETE_OUTLINE", ICONS.CLOSE)), on_click=lambda e: page.run_task(on_teardown_selected)),
+                ft.OutlinedButton("Teardown All", icon=getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)), on_click=lambda e: page.run_task(on_teardown_all)),
+                td_busy,
+            ], spacing=10),
+        ], spacing=8),
+        visible=False,
+    )
+
     # Sections hidden until infrastructure is ensured successfully
     dataset_section = ft.Container(
         content=ft.Column([
@@ -4887,24 +5779,47 @@ Specify license and any restrictions.
         visible=False,
     )
 
+    # Update visibility based on mode selection
+    def _update_mode_visibility(_=None):
+        mode = (config_mode_dd.value or "Normal").lower()
+        is_cfg = mode.startswith("config")
+        try:
+            config_files_row.visible = is_cfg
+            # Keep rename/delete buttons in sync with selection when toggling mode
+            _update_config_buttons_enabled()
+            update_train_placeholders(); page.update()
+        except Exception:
+            pass
+        try:
+            dataset_section.visible = (not is_cfg)
+            train_params_section.visible = (not is_cfg)
+            rp_infra_panel.visible = (not is_cfg)
+            rp_infra_compact_row.visible = is_cfg
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    # Hook handlers and initialize config list
+    config_mode_dd.on_change = _update_mode_visibility
+    config_files_dd.on_change = _update_config_buttons_enabled
+    config_refresh_btn.on_click = _refresh_config_list
+    load_config_btn.on_click = lambda e: page.run_task(on_load_config)
+    config_rename_btn.on_click = lambda e: page.run_task(on_rename_config)
+    config_delete_btn.on_click = lambda e: page.run_task(on_delete_config)
+    _refresh_config_list()
+    # Ensure initial visibility matches the selected mode
+    _update_mode_visibility()
+
     training_tab = ft.Container(
         content=ft.Column([
             ft.Row([
                 ft.Container(
                     content=ft.Column([
-                        section_title(
-                            "Runpod Infrastructure",
-                            getattr(ICONS, "CLOUD", ICONS.SETTINGS),
-                            "Create or update the required Runpod Network Volume and Template before training.",
-                            on_help_click=_mk_help_handler("Create or update the required Runpod Network Volume and Template before training."),
-                        ),
-                        ft.Text("Defaults are provided; change any value to customize. Key precedence: Settings > Training temp field > environment.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
-                        ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
-                        ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
-                        ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
-                        ft.Row([rp_category_tf, rp_public_row, rp_tb_cb, rp_ssh_cb], wrap=True),
-                        ft.Row([rp_temp_key_tf], wrap=True),
-                        rp_infra_actions,
+                        config_section,
+                        rp_infra_panel,
                         ft.Divider(),
                         dataset_section,
                         train_params_section,
@@ -4923,6 +5838,7 @@ Specify license and any restrictions.
                             border_radius=8,
                             padding=10,
                         ),
+                        teardown_section,
                         train_actions,
                     ], spacing=12),
                     width=1000,

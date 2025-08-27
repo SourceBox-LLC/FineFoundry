@@ -49,6 +49,22 @@ def resize_volume(vol_id: str, new_size_gb: int, keep_name: Optional[str] = None
     return _req("PATCH", f"/networkvolumes/{vol_id}", api_key=api_key, data=json.dumps(body)).json()
 
 
+def delete_volume(vol_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    """Delete a Runpod Network Volume by ID.
+    Some DELETE endpoints may return no JSON body; normalize to a simple dict.
+    """
+    r = requests.delete(f"{API}/networkvolumes/{vol_id}", headers=_headers(api_key), timeout=90)
+    if r.status_code >= 400:
+        try:
+            body = r.json()
+        except Exception:
+            body = r.text
+        raise RunpodError(f"HTTP {r.status_code}: {body}")
+    try:
+        return r.json()
+    except Exception:
+        return {"deleted": True, "id": vol_id}
+
 def ensure_volume(
     *,
     volume_name: str,
@@ -155,6 +171,22 @@ def patch_template(
         return _req("GET", f"/templates/{template_id}", api_key=api_key).json()
     return _req("PATCH", f"/templates/{template_id}", api_key=api_key, data=json.dumps(body)).json()
 
+
+def delete_template(template_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    """Delete a Runpod Template by ID.
+    Some DELETE endpoints may return no JSON body; normalize to a simple dict.
+    """
+    r = requests.delete(f"{API}/templates/{template_id}", headers=_headers(api_key), timeout=90)
+    if r.status_code >= 400:
+        try:
+            body = r.json()
+        except Exception:
+            body = r.text
+        raise RunpodError(f"HTTP {r.status_code}: {body}")
+    try:
+        return r.json()
+    except Exception:
+        return {"deleted": True, "id": template_id}
 
 def ensure_template(
     *,
