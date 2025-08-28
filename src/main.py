@@ -4877,6 +4877,40 @@ Specify license and any restrictions.
                 hp["bf16"] = True
         except Exception:
             pass
+        # Map UI keys to train.py names
+        if "optimizer" in hp:
+            # train.py expects --optim
+            hp["optim"] = hp.pop("optimizer")
+        # Whitelist of flags supported by train.py (per usage message)
+        _allowed = {
+            "json_path",
+            "hf_dataset_id",
+            "hf_dataset_split",
+            "base_model",
+            "epochs",
+            "lr",
+            "bsz",
+            "grad_accum",
+            "max_seq_len",
+            "max_steps",
+            "packing",
+            "report_to",
+            "optim",
+            "eval_every_steps",
+            "save_every_steps",
+            "save_total_limit",
+            "use_lora",
+            "lora_r",
+            "lora_alpha",
+            "output_dir",
+            "resume_from",
+            "auto_resume",
+            "push",
+            "hf_repo_id",
+            "hf_private",
+        }
+        # Filter out unsupported keys to avoid argparse errors inside the image
+        hp = {k: v for k, v in hp.items() if k in _allowed}
         return hp
 
     async def on_start_training():
@@ -6771,6 +6805,42 @@ Specify license and any restrictions.
         "Logs will appear here after starting local training.",
         color=WITH_OPACITY(0.5, BORDER_BASE),
     )
+    # Buffer for saving logs
+    local_log_buffer: List[str] = []
+    # File picker + button to save logs
+    def _on_save_logs(e):
+        try:
+            path = getattr(e, "path", None)
+            if not path:
+                return
+            txt = "\n".join(local_log_buffer)
+            if not txt.endswith("\n"):
+                txt += "\n"
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(txt)
+            local_train_status.value = f"Saved logs to: {path}"
+            page.update()
+        except Exception as ex:
+            local_train_status.value = f"Failed to save logs: {ex}"
+            try:
+                page.update()
+            except Exception:
+                pass
+    local_logs_picker = ft.FilePicker(on_result=_on_save_logs)
+    try:
+        page.overlay.append(local_logs_picker)
+    except Exception:
+        pass
+    local_save_logs_btn = ft.OutlinedButton(
+        "Download logs",
+        icon=getattr(ICONS, "DOWNLOAD", getattr(ICONS, "SAVE_ALT", ICONS.SAVE)),
+        on_click=lambda e: local_logs_picker.save_file(
+            dialog_title="Save training logs",
+            file_name=f"local-train-{int(time.time())}.log",
+            allowed_extensions=["txt", "log"],
+        ),
+        disabled=True,
+    )
 
     # Keep minimal state for local process/container
     train_state.setdefault("local", {})
@@ -6820,9 +6890,18 @@ Specify license and any restrictions.
                 ft.Row([
                     ft.Icon(getattr(ICONS, "TERMINAL", ICONS.CODE), color=color or ACCENT_COLOR, size=14),
                     ft.Text(txt),
-                ], spacing=6)
+                ])
             )
-            await safe_update(page)
+            # Keep a text buffer for downloads
+            try:
+                local_log_buffer.append(txt)
+                local_save_logs_btn.disabled = False
+            except Exception:
+                pass
+            try:
+                await safe_update(page)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -6960,6 +7039,11 @@ Specify license and any restrictions.
                 local_train_timeline_placeholder.visible = True
             except Exception:
                 pass
+            try:
+                local_log_buffer.clear()
+                local_save_logs_btn.disabled = True
+            except Exception:
+                pass
             await safe_update(page)
         except Exception:
             pass
@@ -6986,6 +7070,20 @@ Specify license and any restrictions.
             if rc == 0:
                 local_train_status.value = "Training finished (container exited)."
                 local_train_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+            elif rc == 137:
+                # 137 = SIGKILL, commonly due to OOM or manual stop
+                local_train_status.value = (
+                    "Container exited with code 137. Likely out-of-memory (OOM) or killed (SIGKILL).\n"
+                    "This happens when the container runs out of memory or is manually stopped."
+                )
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                try:
+                    await _append_local_log_line(
+                        "Exit code 137 detected: OOM or manual kill (SIGKILL). Reduce memory usage or increase limits.",
+                        color=WITH_OPACITY(0.9, COLORS.RED),
+                    )
+                except Exception:
+                    pass
             else:
                 local_train_status.value = f"Container exited with code {rc}."
                 local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
@@ -7189,6 +7287,28 @@ Specify license and any restrictions.
         except Exception:
             pass
 
+    # Pod logs section (title + progress + timeline); hidden when using Local Docker
+    pod_logs_section = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Progress & Logs",
+                ICONS.TASK_ALT,
+                "Pod status updates and training logs.",
+                on_help_click=_mk_help_handler("Pod status updates and training logs."),
+            ),
+            ft.Row([train_progress, train_prog_label], spacing=12),
+            ft.Container(
+                ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
+                height=240,
+                width=1000,
+                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                border_radius=8,
+                padding=10,
+            ),
+        ], spacing=12),
+        visible=True,
+    )
+
     # Wrap the existing Training content so we can hide it for non-pod targets
     pod_content_container = ft.Container(
         content=ft.Row([
@@ -7199,21 +7319,7 @@ Specify license and any restrictions.
                     ft.Divider(),
                     dataset_section,
                     train_params_section,
-                    section_title(
-                        "Progress & Logs",
-                        ICONS.TASK_ALT,
-                        "Pod status updates and training logs.",
-                        on_help_click=_mk_help_handler("Pod status updates and training logs."),
-                    ),
-                    ft.Row([train_progress, train_prog_label], spacing=12),
-                    ft.Container(
-                        ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
-                        height=240,
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
+                    pod_logs_section,
                     teardown_section,
                     train_actions,
                 ], spacing=12),
@@ -7269,7 +7375,7 @@ Specify license and any restrictions.
                             ),
                             ft.Row([local_host_dir_tf, local_browse_btn], wrap=True, spacing=10),
                             ft.Row([local_container_name_tf, local_use_gpu_cb, local_pass_hf_token_cb], wrap=True, spacing=10),
-                            ft.Row([local_train_progress, local_train_prog_label], spacing=12),
+                            ft.Row([local_train_progress, local_train_prog_label, local_save_logs_btn], spacing=12),
                             ft.Container(
                                 ft.Stack([local_train_timeline, local_train_timeline_placeholder], expand=True),
                                 height=240,
@@ -7305,6 +7411,10 @@ Specify license and any restrictions.
             # Toggle Runpod-only panels and pod log/actions
             try:
                 rp_infra_panel.visible = is_pod
+            except Exception:
+                pass
+            try:
+                pod_logs_section.visible = is_pod
             except Exception:
                 pass
             try:
