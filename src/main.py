@@ -10,6 +10,10 @@ import re
 from collections import Counter
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
+import platform
+import subprocess
+import ctypes
+import sys
 
 import flet as ft
 import httpx
@@ -82,6 +86,35 @@ async def safe_update(page: ft.Page):
     if hasattr(page, "update_async"):
         return await page.update_async()
     return page.update()
+
+def set_terminal_title(title: str):
+    """Attempt to set the integrated terminal/tab title across platforms."""
+    try:
+        if platform.system().lower().startswith("win"):
+            # Best: Windows API
+            try:
+                if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "kernel32"):
+                    ctypes.windll.kernel32.SetConsoleTitleW(title)
+                    return
+            except Exception:
+                pass
+            # Fallback: shell 'title' command
+            try:
+                os.system(f"title {title}")
+                return
+            except Exception:
+                pass
+        # ANSI OSC sequence fallback (works in many terminals)
+        try:
+            sys.stdout.write(f"\x1b]0;{title}\x07")
+            sys.stdout.flush()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+# Set terminal title to uppercase for the current session
+set_terminal_title("PYTHON: MAIN")
 
 def WITH_OPACITY(opacity: float, color):
     """Apply opacity if supported in this Flet build; otherwise return color as-is."""
@@ -4657,10 +4690,25 @@ Specify license and any restrictions.
         # Expert GPU picker visibility
         try:
             expert_gpu_dd.visible = (not is_beginner)
-            expert_spot_cb.visible = (not is_beginner)
+            # Spot is only meaningful for Runpod target
+            tgt = (train_target_dd.value or "Runpod - Pod").lower()
+            if tgt.startswith("runpod - pod"):
+                expert_spot_cb.visible = (not is_beginner)
+                expert_spot_cb.disabled = False
+            else:
+                expert_spot_cb.value = False
+                expert_spot_cb.disabled = True
+                expert_spot_cb.visible = False
             expert_gpu_refresh_btn.visible = (not is_beginner)
             if is_beginner:
                 expert_gpu_busy.visible = False
+        except Exception:
+            pass
+        # Local-mode beginner uses simple GPU checkbox; expert uses dropdown
+        try:
+            tgt2 = (train_target_dd.value or "Runpod - Pod").lower()
+            if not tgt2.startswith("runpod - pod"):
+                local_use_gpu_cb.visible = is_beginner
         except Exception:
             pass
         suppress = bool(train_state.get("suppress_skill_defaults"))
@@ -4684,7 +4732,11 @@ Specify license and any restrictions.
         # If switching to Expert for the first time, lazily refresh GPU list
         try:
             if (not is_beginner) and (len(getattr(expert_gpu_dd, "options", []) or []) <= 1):
-                schedule_task(refresh_expert_gpus)
+                tgt = (train_target_dd.value or "Runpod - Pod").lower()
+                if tgt.startswith("runpod - pod"):
+                    schedule_task(refresh_expert_gpus)
+                else:
+                    schedule_task(refresh_local_gpus)
         except Exception:
             pass
         try:
@@ -4729,6 +4781,9 @@ Specify license and any restrictions.
             hp["hf_dataset_split"] = split
         elif jpath:
             hp["json_path"] = jpath
+        # Optional HF dataset config (subset name)
+        if (src == "Hugging Face") and cfg:
+            hp["hf_dataset_config"] = cfg
         # Add optional toggles
         if bool(getattr(packing_cb, "value", False)):
             hp["packing"] = True
@@ -4742,6 +4797,86 @@ Specify license and any restrictions.
         _resume_from = (resume_from_tf.value or "").strip()
         if _resume_from:
             hp["resume_from"] = _resume_from
+        # Advanced parameters (Expert UI)
+        try:
+            _ws = (warmup_steps_tf.value or "").strip()
+            if _ws:
+                hp["warmup_steps"] = _ws
+        except Exception:
+            pass
+        try:
+            _wd = (weight_decay_tf.value or "").strip()
+            if _wd:
+                hp["weight_decay"] = _wd
+        except Exception:
+            pass
+        try:
+            _lrs = (lr_sched_dd.value or "").strip()
+            if _lrs:
+                hp["lr_scheduler"] = _lrs
+        except Exception:
+            pass
+        try:
+            _opt = (optim_dd.value or "").strip()
+            if _opt:
+                hp["optimizer"] = _opt
+        except Exception:
+            pass
+        try:
+            _ls = (logging_steps_tf.value or "").strip()
+            if _ls:
+                hp["logging_steps"] = _ls
+        except Exception:
+            pass
+        try:
+            if bool(getattr(logging_first_step_cb, "value", False)):
+                hp["logging_first_step"] = True
+        except Exception:
+            pass
+        try:
+            if bool(getattr(disable_tqdm_cb, "value", False)):
+                hp["disable_tqdm"] = True
+        except Exception:
+            pass
+        try:
+            _seed = (seed_tf.value or "").strip()
+            if _seed:
+                hp["seed"] = _seed
+        except Exception:
+            pass
+        try:
+            _ss = (save_strategy_dd.value or "").strip()
+            if _ss:
+                hp["save_strategy"] = _ss
+        except Exception:
+            pass
+        try:
+            _stl = (save_total_limit_tf.value or "").strip()
+            if _stl:
+                hp["save_total_limit"] = _stl
+        except Exception:
+            pass
+        try:
+            if bool(getattr(pin_memory_cb, "value", False)):
+                hp["pin_memory"] = True
+        except Exception:
+            pass
+        try:
+            _rt = (report_to_dd.value or "").strip()
+            if _rt:
+                hp["report_to"] = _rt
+        except Exception:
+            pass
+        try:
+            if bool(getattr(fp16_cb, "value", False)):
+                hp["fp16"] = True
+        except Exception:
+            pass
+        try:
+            if bool(getattr(bf16_cb, "value", False)):
+                hp["bf16"] = True
+        except Exception:
+            pass
         return hp
 
     async def on_start_training():
@@ -5671,6 +5806,10 @@ Specify license and any restrictions.
                 expert_gpu_dd.value = "AUTO"
             _update_expert_spot_enabled()
             try:
+                expert_gpu_dd.tooltip = "Pick a Runpod GPU type or AUTO (best secure). Use Spot for interruptible when available."
+            except Exception:
+                pass
+            try:
                 expert_gpu_busy.visible = False
                 page.update()
             except Exception:
@@ -5683,9 +5822,62 @@ Specify license and any restrictions.
             except Exception:
                 pass
 
-    # Wire refresh button
+    # Populate Expert GPU dropdown from LOCAL system GPUs
+    async def refresh_local_gpus(_=None):
+        try:
+            try:
+                expert_gpu_busy.visible = True
+                page.update()
+            except Exception:
+                pass
+            data = gather_local_specs()
+            gpus = list(data.get("gpus") or [])
+            opts = [ft.dropdown.Option(text="AUTO (all local GPUs)", key="AUTO")]
+            for g in gpus:
+                try:
+                    idx = g.get("index")
+                    name = str(g.get("name") or f"GPU {idx}")
+                    vram = g.get("vram_gb")
+                    mem_txt = (f" {vram}GB" if isinstance(vram, (int, float)) and vram is not None else "")
+                    if idx is not None:
+                        opts.append(ft.dropdown.Option(text=f"GPU {idx}: {name}{mem_txt}", key=str(idx)))
+                except Exception:
+                    pass
+            expert_gpu_avail.clear()
+            cur = (expert_gpu_dd.value or "AUTO")
+            keys = {getattr(o, 'key', None) or o.text for o in opts}
+            expert_gpu_dd.options = opts
+            expert_gpu_dd.value = "AUTO" if cur not in keys else cur
+            try:
+                expert_spot_cb.value = False
+                expert_spot_cb.disabled = True
+                expert_spot_cb.visible = False
+                expert_gpu_dd.tooltip = "Pick a local GPU index or AUTO to allow all local GPUs."
+            except Exception:
+                pass
+            try:
+                expert_gpu_busy.visible = False
+                page.update()
+            except Exception:
+                pass
+        except Exception:
+            try:
+                expert_gpu_busy.visible = False
+            except Exception:
+                pass
+
+    # Wire refresh button (dispatch based on training target)
+    def on_click_expert_gpu_refresh(e):
+        try:
+            tgt = (train_target_dd.value or "Runpod - Pod").lower()
+            if tgt.startswith("runpod - pod"):
+                page.run_task(refresh_expert_gpus)
+            else:
+                page.run_task(refresh_local_gpus)
+        except Exception:
+            pass
     try:
-        expert_gpu_refresh_btn.on_click = lambda e: page.run_task(refresh_expert_gpus)
+        expert_gpu_refresh_btn.on_click = on_click_expert_gpu_refresh
     except Exception:
         pass
 
@@ -6244,12 +6436,11 @@ Specify license and any restrictions.
         label="Training target",
         options=[
             ft.dropdown.Option("Runpod - Pod"),
-            ft.dropdown.Option("Runpod - Serverless"),
             ft.dropdown.Option("local"),
         ],
         value="Runpod - Pod",
         width=420,
-        tooltip="Choose where training runs. 'Runpod - Pod' shows the current pod workflow; other options are placeholders.",
+        tooltip="Choose where training runs. 'Runpod - Pod' shows the current pod workflow; 'local' is a placeholder.",
     )
 
     # Hook handlers and initialize config list
@@ -6263,6 +6454,740 @@ Specify license and any restrictions.
     _refresh_config_list()
     # Ensure initial visibility matches the selected mode
     _update_mode_visibility()
+
+    # -------- LOCAL TRAINING: System Specs --------
+    def _bytes_to_gb(b: int) -> float:
+        try:
+            return round(float(b) / (1024 ** 3), 1)
+        except Exception:
+            return 0.0
+
+    def _total_ram_bytes() -> Optional[int]:
+        # Try POSIX sysconf
+        try:
+            if hasattr(os, "sysconf") and hasattr(os, "sysconf_names") and "SC_PAGE_SIZE" in os.sysconf_names and "SC_PHYS_PAGES" in os.sysconf_names:
+                page_size = os.sysconf("SC_PAGE_SIZE")
+                phys_pages = os.sysconf("SC_PHYS_PAGES")
+                if isinstance(page_size, int) and isinstance(phys_pages, int):
+                    return int(page_size) * int(phys_pages)
+        except Exception:
+            pass
+        # Try Windows via ctypes
+        try:
+            if platform.system().lower().startswith("win"):
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_uint),
+                        ("dwMemoryLoad", ctypes.c_uint),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "kernel32") and hasattr(ctypes.windll.kernel32, "GlobalMemoryStatusEx"):
+                    if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                        return int(stat.ullTotalPhys)
+        except Exception:
+            pass
+        # Optional psutil fallback if installed
+        try:
+            import psutil  # type: ignore
+            return int(getattr(psutil, "virtual_memory")().total)
+        except Exception:
+            return None
+
+    def _probe_gpus_via_torch():
+        gpus = []
+        cuda_ok = False
+        torch_ok = False
+        try:
+            import torch  # type: ignore
+            torch_ok = True
+            cuda_ok = bool(torch.cuda.is_available())
+            if cuda_ok:
+                cnt = int(torch.cuda.device_count())
+                for i in range(cnt):
+                    try:
+                        props = torch.cuda.get_device_properties(i)
+                        name = getattr(props, "name", f"GPU {i}")
+                        vram_b = int(getattr(props, "total_memory", 0))
+                        gpus.append({"index": i, "name": str(name), "vram_gb": _bytes_to_gb(vram_b)})
+                    except Exception:
+                        gpus.append({"index": i, "name": f"GPU {i}", "vram_gb": None})
+        except Exception:
+            pass
+        return torch_ok, cuda_ok, gpus
+
+    def _probe_gpus_via_nvidia_smi():
+        gpus = []
+        try:
+            if shutil.which("nvidia-smi"):
+                out = subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+                    stderr=subprocess.STDOUT,
+                    timeout=3,
+                ).decode("utf-8", errors="ignore").strip().splitlines()
+                for idx, line in enumerate(out):
+                    try:
+                        parts = [p.strip() for p in line.split(",")]
+                        name = parts[0]
+                        mem_part = parts[1] if len(parts) > 1 else ""
+                        # e.g., "8192 MiB"
+                        vram_gb = None
+                        m = re.search(r"(\d+)\s*MiB", mem_part, re.IGNORECASE)
+                        if m:
+                            vram_gb = round(int(m.group(1)) / 1024.0, 1)
+                        gpus.append({"index": idx, "name": name, "vram_gb": vram_gb})
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return gpus
+
+    def gather_local_specs() -> dict:
+        try:
+            os_name = platform.platform()
+        except Exception:
+            os_name = platform.system()
+        py_ver = platform.python_version()
+        cpu_cores = os.cpu_count() or 0
+        ram_b = _total_ram_bytes()
+        ram_gb = _bytes_to_gb(ram_b) if ram_b else None
+        try:
+            du = shutil.disk_usage(os.path.abspath(os.sep))
+            disk_free_gb = _bytes_to_gb(du.free)
+        except Exception:
+            disk_free_gb = None
+
+        torch_ok, cuda_ok, gpus = _probe_gpus_via_torch()
+        if not gpus:
+            gpus = _probe_gpus_via_nvidia_smi()
+
+        # Simple capability heuristic based on max VRAM
+        capability = "Unknown"
+        try:
+            max_vram = max([g.get("vram_gb") or 0 for g in gpus]) if gpus else 0
+        except Exception:
+            max_vram = 0
+        if not torch_ok:
+            capability = "PyTorch not installed — GPU training unsupported."
+        elif not cuda_ok:
+            capability = "CUDA not available — GPU training unavailable (CPU-only)."
+        else:
+            if max_vram >= 20:
+                capability = "OK for LoRA on 7B–13B; 7B full FT may be possible with tweaks."
+            elif max_vram >= 12:
+                capability = "Good for 7B LoRA; full FT unlikely."
+            elif max_vram >= 8:
+                capability = "7B LoRA may work with 4-bit and small batch."
+            elif max_vram > 0:
+                capability = "Likely inference-only; tiny LoRA may work."
+
+        # Compute red flags (warnings) succinctly
+        red_flags: List[str] = []
+        if not torch_ok:
+            red_flags.append("PyTorch not installed — install a CUDA-enabled torch build for GPU acceleration.")
+        if torch_ok and not cuda_ok:
+            red_flags.append("CUDA not available — install NVIDIA drivers and a CUDA-enabled torch build.")
+        if not gpus:
+            red_flags.append("No NVIDIA GPUs detected — GPU fine-tuning will not be possible.")
+        # VRAM thresholds (if known)
+        try:
+            if gpus and max_vram is not None:
+                if max_vram < 8:
+                    red_flags.append("GPU VRAM < 8 GB — local fine-tuning of most 7B models may be infeasible.")
+                elif max_vram < 12:
+                    red_flags.append("GPU VRAM < 12 GB — expect heavy quantization/checkpointing and slower runs.")
+        except Exception:
+            pass
+        # RAM threshold
+        if ram_gb is not None and ram_gb < 16:
+            red_flags.append("System RAM < 16 GB — dataset preprocessing and training may be constrained.")
+        # Disk free threshold
+        if disk_free_gb is not None and disk_free_gb < 20:
+            red_flags.append("Disk free < 20 GB — checkpoints/datasets may fail or be truncated.")
+        # Python version suggestion
+        try:
+            py_major, py_minor = int(py_ver.split(".")[0]), int(py_ver.split(".")[1])
+            if (py_major, py_minor) < (3, 10):
+                red_flags.append("Python < 3.10 detected — some ML libraries may have limited support.")
+        except Exception:
+            pass
+
+        return {
+            "os": os_name,
+            "python": py_ver,
+            "cpu_cores": cpu_cores,
+            "ram_gb": ram_gb,
+            "disk_free_gb": disk_free_gb,
+            "torch_installed": torch_ok,
+            "cuda_available": cuda_ok,
+            "gpus": gpus,
+            "capability": capability,
+            "red_flags": red_flags,
+        }
+
+    # Controls to show specs
+    local_os_txt = ft.Text("", selectable=True)
+    local_py_txt = ft.Text("")
+    local_cpu_txt = ft.Text("")
+    local_ram_txt = ft.Text("")
+    local_disk_txt = ft.Text("")
+    local_torch_txt = ft.Text("")
+    local_cuda_txt = ft.Text("")
+    local_gpus_txt = ft.Text("", selectable=True)
+    local_capability_txt = ft.Text("", weight=ft.FontWeight.W_600)
+    # Red flags UI (hidden when none)
+    local_flags_col = ft.Column([], spacing=2)
+    local_flags_box = ft.Column([
+        ft.Row([
+            ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED_400, size=18),
+            ft.Text("Potential issues", weight=ft.FontWeight.W_600, color=COLORS.RED_400),
+        ], spacing=6),
+        local_flags_col,
+    ], spacing=6, visible=False)
+
+    # Docker image pull controls (Local section)
+    # Use the same default image as the Runpod template to avoid tag mismatches.
+    DEFAULT_DOCKER_IMAGE = "docker.io/sbussiso/unsloth-trainer:latest"
+    docker_image_tf = ft.TextField(
+        label="Docker image",
+        value=DEFAULT_DOCKER_IMAGE,
+        width=600,
+        dense=True,
+        hint_text="e.g., repo/image:tag",
+    )
+    docker_status = ft.Text("")
+    docker_pull_btn = ft.ElevatedButton(
+        "Pull image",
+        icon=getattr(ICONS, "CLOUD_DOWNLOAD", getattr(ICONS, "DOWNLOAD", ICONS.CLOUD)),
+    )
+    # Bind pull action
+    docker_pull_btn.on_click = lambda e: page.run_task(on_docker_pull)
+
+    def _render_local_specs(data: dict):
+        try:
+            local_os_txt.value = f"OS: {data.get('os') or 'N/A'}"
+            local_py_txt.value = f"Python: {data.get('python') or 'N/A'}"
+            local_cpu_txt.value = f"CPU cores: {data.get('cpu_cores') or 'N/A'}"
+            rg = data.get('ram_gb')
+            local_ram_txt.value = f"RAM: {rg} GB" if rg is not None else "RAM: N/A"
+            df = data.get('disk_free_gb')
+            local_disk_txt.value = f"Disk free: {df} GB" if df is not None else "Disk free: N/A"
+            local_torch_txt.value = f"PyTorch installed: {bool(data.get('torch_installed'))}"
+            local_cuda_txt.value = f"CUDA available: {bool(data.get('cuda_available'))}"
+            gpus_list = data.get('gpus') or []
+            if gpus_list:
+                try:
+                    lines = []
+                    for g in gpus_list:
+                        nm = g.get("name") or "GPU"
+                        vr = g.get("vram_gb")
+                        lines.append(f"- {nm} — VRAM: {vr} GB" if vr is not None else f"- {nm}")
+                    local_gpus_txt.value = "\n".join(lines)
+                except Exception:
+                    local_gpus_txt.value = str(gpus_list)
+            else:
+                local_gpus_txt.value = "(none)"
+            # Red flags rendering
+            flags = list(data.get("red_flags") or [])
+            if flags:
+                local_flags_col.controls = [
+                    ft.Row([
+                        ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED_400, size=16),
+                        ft.Text(str(msg), color=COLORS.RED_400),
+                    ], spacing=6)
+                    for msg in flags
+                ]
+                local_flags_box.visible = True
+            else:
+                local_flags_col.controls = []
+                local_flags_box.visible = False
+            local_capability_txt.value = str(data.get('capability') or '')
+        except Exception:
+            pass
+
+    async def on_refresh_local_specs(e=None):
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Gathering local system specs..."))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception:
+            pass
+        data = gather_local_specs()
+        _render_local_specs(data)
+        try:
+            await safe_update(page)
+        except Exception:
+            pass
+
+    # ---------- LOCAL DOCKER: Run Training ----------
+    # Controls for local docker run
+    local_host_dir_tf = ft.TextField(
+        label="Host data directory (mounted to /data)",
+        width=600,
+        dense=True,
+        hint_text="Absolute path on your machine to mount as /data in the container",
+    )
+    # Directory picker for local host dir
+    def _on_local_dir_picked(e):
+        try:
+            # e.path is set for get_directory_path
+            sel = getattr(e, "path", None) or ""
+            if sel:
+                local_host_dir_tf.value = sel
+            page.update()
+        except Exception:
+            pass
+    local_dir_picker = ft.FilePicker(on_result=_on_local_dir_picked)
+    try:
+        page.overlay.append(local_dir_picker)
+    except Exception:
+        pass
+    local_browse_btn = ft.OutlinedButton(
+        "Browse…",
+        icon=getattr(ICONS, "FOLDER_OPEN", getattr(ICONS, "FOLDER", ICONS.SEARCH)),
+        on_click=lambda e: local_dir_picker.get_directory_path(dialog_title="Select host data directory to mount as /data"),
+    )
+    local_container_name_tf = ft.TextField(
+        label="Container name",
+        value=f"ds-local-train-{int(time.time())}",
+        width=280,
+        dense=True,
+    )
+    # Default GPU toggle based on quick capability probe when first rendered; will update on refresh
+    local_use_gpu_cb = ft.Checkbox(label="Use NVIDIA GPU (adds --gpus all)", value=False)
+    local_pass_hf_token_cb = ft.Checkbox(label="Pass HF token to container (HUGGING_FACE_HUB_TOKEN)")
+    local_train_status = ft.Text("")
+    local_train_progress = ft.ProgressBar(value=0.0, width=280)
+    local_train_prog_label = ft.Text("Idle")
+    local_train_timeline = ft.ListView(expand=True, spacing=4, auto_scroll=True)
+    local_train_timeline_placeholder = ft.Text(
+        "Logs will appear here after starting local training.",
+        color=WITH_OPACITY(0.5, BORDER_BASE),
+    )
+
+    # Keep minimal state for local process/container
+    train_state.setdefault("local", {})
+
+    def _update_local_gpu_default_from_specs():
+        try:
+            data = gather_local_specs()
+            local_use_gpu_cb.value = bool(data.get("cuda_available"))
+        except Exception:
+            pass
+
+    _update_local_gpu_default_from_specs()
+
+    async def _docker_daemon_ready() -> bool:
+        try:
+            if not shutil.which("docker"):
+                local_train_status.value = "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                await safe_update(page)
+                return False
+            info_res = await asyncio.to_thread(
+                lambda: subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=4)
+            )
+            if info_res.returncode != 0:
+                msg = (info_res.stderr or info_res.stdout or "").strip() or "Docker daemon not responding"
+                local_train_status.value = "Docker is not running. Start Docker Desktop, then retry.\n" + msg
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                await safe_update(page)
+                return False
+            return True
+        except Exception as ex:
+            local_train_status.value = f"Docker check failed: {ex}"
+            try:
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            except Exception:
+                pass
+            await safe_update(page)
+            return False
+
+    async def _append_local_log_line(txt: str, color=None):
+        try:
+            try:
+                local_train_timeline_placeholder.visible = False
+            except Exception:
+                pass
+            local_train_timeline.controls.append(
+                ft.Row([
+                    ft.Icon(getattr(ICONS, "TERMINAL", ICONS.CODE), color=color or ACCENT_COLOR, size=14),
+                    ft.Text(txt),
+                ], spacing=6)
+            )
+            await safe_update(page)
+        except Exception:
+            pass
+
+    async def _stream_local_logs(proc: subprocess.Popen):
+        try:
+            while True:
+                line = await asyncio.to_thread(proc.stdout.readline)
+                if not line:
+                    break
+                await _append_local_log_line(line.rstrip())
+        except Exception:
+            pass
+
+    async def on_start_local_training(e=None):
+        if train_state.get("local", {}).get("running"):
+            return
+        # Basic validations
+        if not await _docker_daemon_ready():
+            return
+        img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
+        host_dir = (local_host_dir_tf.value or "").strip()
+        if not host_dir:
+            local_train_status.value = "Set Host data directory to mount at /data."
+            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            await safe_update(page)
+            return
+        if not os.path.isabs(host_dir) or (not os.path.exists(host_dir)):
+            local_train_status.value = "Host data directory must be an existing absolute path."
+            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            await safe_update(page)
+            return
+        # Ensure image exists (non-blocking pull hint if missing)
+        try:
+            insp = await asyncio.to_thread(lambda: subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True))
+            if insp.returncode != 0:
+                local_train_status.value = f"Image not found locally: {img}. Pull it first in the section above."
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                await safe_update(page)
+                return
+        except Exception:
+            pass
+
+        # Build HP and dataset flags similar to pod flow
+        hp = _build_hp()
+        # Local training always uses Normal mode semantics: ensure dataset flags from UI
+        try:
+            if not (hp.get("hf_dataset_id") or hp.get("json_path")):
+                src_ui = train_source.value or "Hugging Face"
+                repo_ui = (train_hf_repo.value or "").strip()
+                split_ui = (train_hf_split.value or "train").strip()
+                jpath_ui = (train_json_path.value or "").strip()
+                if (src_ui == "Hugging Face") and repo_ui:
+                    hp["hf_dataset_id"] = repo_ui
+                    hp["hf_dataset_split"] = split_ui
+                elif jpath_ui:
+                    hp["json_path"] = jpath_ui
+            if not (hp.get("hf_dataset_id") or hp.get("json_path")):
+                local_train_status.value = "Dataset not set. Provide HF dataset or JSON path."
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                await safe_update(page)
+                return
+        except Exception:
+            pass
+
+        # Show the hyperparameters to confirm what will be passed as --flags
+        try:
+            await _append_local_log_line("HP: " + json.dumps(hp, ensure_ascii=False))
+        except Exception:
+            pass
+
+        # Build docker run command
+        cont_name = (local_container_name_tf.value or f"ds-local-train-{int(time.time())}").strip()
+        run_args: List[str] = [
+            "docker", "run", "--rm",
+            "--name", cont_name,
+            "-v", f"{host_dir}:/data",
+        ]
+        # GPU selection: Beginner uses checkbox (all or none). Expert uses dropdown (AUTO=all or specific index)
+        try:
+            is_beginner = ((skill_level.value or "Beginner").lower() == "beginner")
+            if is_beginner:
+                if bool(getattr(local_use_gpu_cb, "value", False)):
+                    run_args += ["--gpus", "all"]
+            else:
+                sel = (expert_gpu_dd.value or "AUTO")
+                if str(sel).upper() == "AUTO":
+                    run_args += ["--gpus", "all"]
+                else:
+                    # Accept a single index string (e.g., "0"). Docker supports device filtering via --gpus device=<idx>
+                    run_args += ["--gpus", f"device={sel}"]
+        except Exception:
+            # Fallback: no GPU flag
+            pass
+        # Optional HF token passthrough
+        try:
+            _hf_tok = (hf_token_tf.value or "").strip()
+            if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
+                run_args += ["-e", f"HUGGING_FACE_HUB_TOKEN={_hf_tok}"]
+        except Exception:
+            pass
+        # Environment passthrough for proxy if enabled
+        try:
+            if bool(getattr(proxy_enable_cb, "value", False)):
+                if bool(getattr(use_env_cb, "value", False)):
+                    # Use system env; nothing to set explicitly
+                    pass
+                else:
+                    _purl = (proxy_url_tf.value or "").strip()
+                    if _purl:
+                        run_args += ["-e", f"http_proxy={_purl}", "-e", f"https_proxy={_purl}"]
+        except Exception:
+            pass
+
+        # Image
+        run_args += [img]
+        # Command inside container mirrors Runpod builder
+        try:
+            inner_cmd = rp_pod.build_cmd(hp)
+        except Exception as ex:
+            local_train_status.value = f"Failed building training command: {ex}"
+            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            await safe_update(page)
+            return
+        run_args += inner_cmd
+
+        # Launch process
+        try:
+            local_train_status.value = "Starting local Docker container…"
+            local_train_status.color = None
+            local_train_progress.value = 0.1
+            local_train_prog_label.value = "Starting…"
+            # Reset logs
+            local_train_timeline.controls.clear()
+            try:
+                local_train_timeline_placeholder.visible = True
+            except Exception:
+                pass
+            await safe_update(page)
+        except Exception:
+            pass
+
+        try:
+            proc = subprocess.Popen(
+                run_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            train_state["local"] = {"running": True, "proc": proc, "container": cont_name}
+            try:
+                local_start_btn.disabled = True
+                local_stop_btn.disabled = False
+            except Exception:
+                pass
+            await safe_update(page)
+            # Stream logs while running
+            await _append_local_log_line("Command: " + " ".join(run_args), color=WITH_OPACITY(0.8, COLORS.BLUE))
+            await _stream_local_logs(proc)
+            rc = proc.wait()
+            if rc == 0:
+                local_train_status.value = "Training finished (container exited)."
+                local_train_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+            else:
+                local_train_status.value = f"Container exited with code {rc}."
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+        except Exception as ex:
+            local_train_status.value = f"Failed to start container: {ex}"
+            try:
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            except Exception:
+                pass
+        finally:
+            try:
+                train_state["local"]["running"] = False
+                local_start_btn.disabled = False
+                local_stop_btn.disabled = True
+                local_train_progress.value = 0.0
+                local_train_prog_label.value = "Idle"
+                await safe_update(page)
+            except Exception:
+                pass
+
+    async def on_stop_local_training(e=None):
+        info = train_state.get("local") or {}
+        cont = (info.get("container") or "").strip()
+        proc: Optional[subprocess.Popen] = info.get("proc")  # type: ignore
+        if not cont and not proc:
+            return
+        await _append_local_log_line("Stopping container…", color=WITH_OPACITY(0.8, COLORS.ORANGE))
+        # Try docker stop by name first
+        try:
+            if cont:
+                await asyncio.to_thread(lambda: subprocess.run(["docker", "stop", cont], capture_output=True, text=True, timeout=10))
+        except Exception:
+            pass
+        # Ensure local process terminates
+        try:
+            if proc and (proc.poll() is None):
+                proc.terminate()
+        except Exception:
+            pass
+        try:
+            train_state["local"]["running"] = False
+            local_start_btn.disabled = False
+            local_stop_btn.disabled = True
+            local_train_status.value = "Stopped."
+            local_train_status.color = getattr(COLORS, "ORANGE_400", getattr(COLORS, "ORANGE", None))
+            await safe_update(page)
+        except Exception:
+            pass
+
+    local_start_btn = ft.ElevatedButton(
+        "Start Local Training",
+        icon=getattr(ICONS, "PLAY_CIRCLE", ICONS.PLAY_ARROW),
+        on_click=lambda e: page.run_task(on_start_local_training),
+    )
+    local_stop_btn = ft.OutlinedButton(
+        "Stop",
+        icon=getattr(ICONS, "STOP_CIRCLE", ICONS.STOP),
+        disabled=True,
+        on_click=lambda e: page.run_task(on_stop_local_training),
+    )
+
+    async def on_docker_pull(e=None):
+        img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
+        try:
+            if not shutil.which("docker"):
+                docker_status.value = "Docker CLI not found. Please install Docker Desktop and ensure 'docker' is on PATH."
+                try:
+                    docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                except Exception:
+                    pass
+                await safe_update(page)
+                return
+            # Quick daemon check before pulling
+            try:
+                info_res = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=4)
+                if info_res.returncode != 0:
+                    err_txt = (info_res.stderr or info_res.stdout or "").strip()
+                    raise RuntimeError(err_txt or "Docker daemon not responding")
+            except Exception as ex_chk:
+                # Pretty error if Docker Desktop/daemon isn't running
+                nice_msg = "Docker is not running. Please start Docker Desktop, then retry."
+                docker_status.value = nice_msg
+                try:
+                    docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                except Exception:
+                    pass
+                try:
+                    page.snack_bar = ft.SnackBar(
+                        content=ft.Row([
+                            ft.Icon(getattr(ICONS, "ERROR_OUTLINE", getattr(ICONS, "ERROR", ICONS.WARNING)), color=COLORS.WHITE),
+                            ft.Text(nice_msg, color=COLORS.WHITE),
+                        ], spacing=8),
+                        bgcolor=getattr(COLORS, "RED_400", getattr(COLORS, "RED", None)),
+                    )
+                    page.snack_bar.open = True
+                    await safe_update(page)
+                except Exception:
+                    pass
+                return
+            # If daemon OK, first check if image already exists locally
+            try:
+                insp = subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True)
+                if insp.returncode == 0:
+                    tag_list = []
+                    img_id = ""
+                    created = ""
+                    try:
+                        info = json.loads(insp.stdout or "[]")
+                        if isinstance(info, list) and info:
+                            tag_list = info[0].get("RepoTags") or []
+                            img_id = str(info[0].get("Id", ""))[-12:]
+                            created = (info[0].get("Created") or "")[:19].replace("T", " ")
+                    except Exception:
+                        pass
+                    docker_status.value = f"Image already present locally: {(tag_list and ', '.join(tag_list)) or img}\nID …{img_id}  Created {created}"
+                    try:
+                        docker_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+                    except Exception:
+                        pass
+                    await safe_update(page)
+                    return
+            except Exception:
+                pass
+            # Proceed to pull
+            page.snack_bar = ft.SnackBar(ft.Text(f"Pulling {img}..."))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception:
+            pass
+        try:
+            res = subprocess.run(["docker", "pull", img], capture_output=True, text=True)
+            if res.returncode == 0:
+                out = (res.stdout or "").strip()
+                docker_status.value = f"Pulled successfully: {img}\n" + (out[-800:] if out else "")
+                try:
+                    docker_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+                except Exception:
+                    pass
+            else:
+                out = (res.stdout or "") + "\n" + (res.stderr or "")
+                # Friendly hints for common errors
+                lower = out.lower()
+                hints = []
+                repo = img
+                tag = "latest"
+                try:
+                    if ":" in img.rsplit("/", 1)[-1]:
+                        repo, tag = img.rsplit(":", 1)
+                    else:
+                        repo = img
+                except Exception:
+                    pass
+                if "manifest unknown" in lower or "not found" in lower:
+                    # Try to show local tags for this repo
+                    try:
+                        ref = repo
+                        if ref.startswith("docker.io/"):
+                            ref = ref[len("docker.io/"):]
+                        ls = subprocess.run([
+                            "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}",
+                            "--filter", f"reference={ref}:*"
+                        ], capture_output=True, text=True)
+                        lines = [l.strip() for l in (ls.stdout or "").splitlines() if l.strip()]
+                        if lines:
+                            hints.append("Local tags found: " + ", ".join(lines[:8]))
+                    except Exception:
+                        pass
+                    # Optional: probe Docker Hub for available tags
+                    try:
+                        hub_repo = repo
+                        if hub_repo.startswith("docker.io/"):
+                            hub_repo = hub_repo[len("docker.io/"):]
+                        # Skip probing for official library images without namespace nuance here
+                        url = f"https://hub.docker.com/v2/repositories/{hub_repo}/tags?page_size=10"
+                        r = httpx.get(url, timeout=5.0)
+                        if r.status_code == 200:
+                            data = r.json()
+                            names = [t.get("name") for t in (data.get("results") or []) if t.get("name")]
+                            if names:
+                                hints.append("Docker Hub tags: " + ", ".join(names[:8]))
+                    except Exception:
+                        pass
+                if "authentication required" in lower or "unauthorized" in lower:
+                    hints.append("If this is a private repo, run 'docker login' first.")
+                msg = f"docker pull failed (exit {res.returncode}).\n" + out[-800:]
+                if hints:
+                    msg += "\n\nHints: " + "  •  ".join(hints)
+                docker_status.value = msg
+                try:
+                    docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                except Exception:
+                    pass
+        except Exception as ex:
+            docker_status.value = f"Error pulling image: {ex}"
+            try:
+                docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            except Exception:
+                pass
+        try:
+            await safe_update(page)
+        except Exception:
+            pass
 
     # Wrap the existing Training content so we can hide it for non-pod targets
     pod_content_container = ft.Container(
@@ -6298,12 +7223,110 @@ Specify license and any restrictions.
         visible=True,
     )
 
+    # Local specs content (hidden by default)
+    local_specs_container = ft.Container(
+        content=ft.Row([
+            ft.Container(
+                content=ft.Column([
+                    section_title(
+                        "Local Training: System Specs",
+                        getattr(ICONS, "COMPUTER", getattr(ICONS, "TERMINAL", ICONS.SETTINGS)),
+                        "A quick view of your system for local fine‑tuning feasibility.",
+                        on_help_click=_mk_help_handler("Shows CPU, RAM, disk, GPU, and CUDA status to gauge local fine‑tuning readiness."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([ft.Text("OS", width=160), local_os_txt]),
+                            ft.Row([ft.Text("Python", width=160), local_py_txt]),
+                            ft.Row([ft.Text("CPU cores", width=160), local_cpu_txt]),
+                            ft.Row([ft.Text("RAM", width=160), local_ram_txt]),
+                            ft.Row([ft.Text("Disk free", width=160), local_disk_txt]),
+                            ft.Row([ft.Text("PyTorch", width=160), local_torch_txt]),
+                            ft.Row([ft.Text("CUDA", width=160), local_cuda_txt]),
+                            ft.Text("GPUs:"),
+                            ft.Container(local_gpus_txt, padding=6, bgcolor=WITH_OPACITY(0.04, BORDER_BASE), border_radius=6),
+                            ft.Divider(),
+                            local_flags_box,
+                            local_capability_txt,
+                            ft.Divider(),
+                            section_title(
+                                "Docker: Pull Image",
+                                getattr(ICONS, "CLOUD_DOWNLOAD", getattr(ICONS, "DOWNLOAD", ICONS.CLOUD)),
+                                "Pull a Docker image locally for training tasks.",
+                                on_help_click=_mk_help_handler("Use Docker Desktop. This pulls the image to your machine."),
+                            ),
+                            ft.Row([docker_image_tf, docker_pull_btn], wrap=True, spacing=10),
+                            docker_status,
+                            ft.Row([
+                                ft.OutlinedButton("Refresh specs", icon=REFRESH_ICON, on_click=lambda e: page.run_task(on_refresh_local_specs)),
+                            ], wrap=True),
+                            ft.Divider(),
+                            section_title(
+                                "Local Docker: Run Training",
+                                getattr(ICONS, "PLAY_CIRCLE", getattr(ICONS, "TERMINAL", ICONS.PLAY_ARROW)),
+                                "Builds and runs a local Docker container mirroring the Runpod training command.",
+                                on_help_click=_mk_help_handler("Runs the training script inside the selected Docker image with your dataset mounted at /data. Uses the same command builder as Runpod."),
+                            ),
+                            ft.Row([local_host_dir_tf, local_browse_btn], wrap=True, spacing=10),
+                            ft.Row([local_container_name_tf, local_use_gpu_cb, local_pass_hf_token_cb], wrap=True, spacing=10),
+                            ft.Row([local_train_progress, local_train_prog_label], spacing=12),
+                            ft.Container(
+                                ft.Stack([local_train_timeline, local_train_timeline_placeholder], expand=True),
+                                height=240,
+                                width=1000,
+                                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                                border_radius=8,
+                                padding=10,
+                            ),
+                            ft.Row([local_start_btn, local_stop_btn], spacing=10, wrap=True),
+                            local_train_status,
+                        ], spacing=6),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                ], spacing=12),
+                width=1000,
+            )
+        ], alignment=ft.MainAxisAlignment.CENTER),
+        visible=False,
+    )
+
     # Toggle Training content visibility based on selected target
     def _update_training_target(_=None):
         target = (train_target_dd.value or "Runpod - Pod").lower()
         is_pod = target.startswith("runpod - pod")
         try:
-            pod_content_container.visible = is_pod
+            # Always show the wrapper; toggle inner sections as needed
+            pod_content_container.visible = True
+            # Show Local Specs when local
+            local_specs_container.visible = (not is_pod)
+            # Toggle Runpod-only panels and pod log/actions
+            try:
+                rp_infra_panel.visible = is_pod
+            except Exception:
+                pass
+            try:
+                train_progress.visible = is_pod
+                train_prog_label.visible = is_pod
+                train_timeline.visible = is_pod
+                train_timeline_placeholder.visible = is_pod
+            except Exception:
+                pass
+            try:
+                teardown_section.visible = is_pod
+            except Exception:
+                pass
+            try:
+                train_actions.visible = is_pod
+            except Exception:
+                pass
+            # Configuration section is Runpod-only; hide entirely for local
+            try:
+                config_section.visible = is_pod
+            except Exception:
+                pass
         except Exception:
             pass
         if is_pod:
@@ -6312,12 +7335,64 @@ Specify license and any restrictions.
                 _update_mode_visibility()
             except Exception:
                 pass
+            # Restore Runpod spot visibility depending on skill
+            try:
+                expert_spot_cb.disabled = False
+                expert_spot_cb.visible = ((skill_level.value or "Beginner").lower() != "beginner")
+            except Exception:
+                pass
+            # If switching back to Runpod and expert GPU list looks local/unpopulated, refresh Runpod GPUs
+            try:
+                is_beginner = ((skill_level.value or "Beginner").lower() == "beginner")
+                if not is_beginner:
+                    opts = (getattr(expert_gpu_dd, "options", []) or [])
+                    dd_tip = (getattr(expert_gpu_dd, "tooltip", "") or "").lower()
+                    if (len(opts) <= 1) or ("local" in dd_tip):
+                        if hasattr(page, "run_task"):
+                            page.run_task(refresh_expert_gpus)
+            except Exception:
+                pass
+        else:
+            # When switching to local, refresh specs
+            try:
+                if hasattr(page, "run_task"):
+                    page.run_task(on_refresh_local_specs)
+            except Exception:
+                pass
+            # Local target always uses Normal semantics; force dataset/params visible
+            try:
+                dataset_section.visible = True
+                train_params_section.visible = True
+            except Exception:
+                pass
+            # Hide Runpod-only spot toggle; use local GPUs for expert picker
+            try:
+                expert_spot_cb.value = False
+                expert_spot_cb.disabled = True
+                expert_spot_cb.visible = False
+            except Exception:
+                pass
+            # Show/hide local GPU checkbox based on skill (beginner uses checkbox, expert uses dropdown)
+            try:
+                is_beginner = ((skill_level.value or "Beginner").lower() == "beginner")
+                local_use_gpu_cb.visible = is_beginner
+            except Exception:
+                pass
+            # If expert mode and dropdown not populated with locals yet, populate
+            try:
+                if ((skill_level.value or "Beginner").lower() != "beginner") and (len(getattr(expert_gpu_dd, "options", []) or []) <= 1):
+                    if hasattr(page, "run_task"):
+                        page.run_task(refresh_local_gpus)
+            except Exception:
+                pass
         try:
             page.update()
         except Exception:
             pass
 
     train_target_dd.on_change = _update_training_target
+    # Initialize visibility based on default/loaded target
+    _update_training_target()
 
     training_tab = ft.Container(
         content=ft.Column([
@@ -6329,6 +7404,7 @@ Specify license and any restrictions.
                 )
             ], alignment=ft.MainAxisAlignment.CENTER),
             pod_content_container,
+            local_specs_container,
         ], scroll=ft.ScrollMode.AUTO, spacing=0),
         padding=16,
     )
