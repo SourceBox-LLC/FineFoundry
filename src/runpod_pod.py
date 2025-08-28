@@ -211,6 +211,55 @@ def discover_cheapest_gpu(api_key: str, dc_id: str, gpu_count: int) -> Tuple[str
     pick = candidates[0]
     return (pick["id"], pick["spot"])  # gpu_type_id, is_spot
 
+
+# ---------- List available GPUs in a DC ----------
+def list_available_gpus(api_key: str, dc_id: str, gpu_count: int = 1) -> List[Dict[str, Any]]:
+    """Return a list of GPU types available in the given datacenter with availability flags.
+    Each item: {id, displayName, memoryInGb, secureAvailable: bool, spotAvailable: bool}
+    Filters out types with no capacity for the requested gpu_count.
+    """
+    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")['gpuTypes']
+
+    q = (
+        "\n"  # noqa: W291
+        "  query ($id:String!, $dc:String!, $secure:Boolean!, $count:Int!) {\n"
+        "    gpuTypes(input:{id:$id}) {\n"
+        "      id displayName memoryInGb\n"
+        "      lowestPrice(input:{dataCenterId:$dc, secureCloud:$secure, gpuCount:$count}) {\n"
+        "        stockStatus\n"
+        "        maxUnreservedGpuCount\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+    )
+
+    out: List[Dict[str, Any]] = []
+    for t in types:
+        row_secure = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": True, "count": int(gpu_count)})["gpuTypes"][0]
+        row_spot = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": False, "count": int(gpu_count)})["gpuTypes"][0]
+        def _avail(row: Dict[str, Any]) -> bool:
+            lp = row.get("lowestPrice") or {}
+            try:
+                maxu = int(lp.get("maxUnreservedGpuCount") or 0)
+            except Exception:
+                maxu = 0
+            stock = (lp.get("stockStatus") or "").lower()
+            return maxu >= int(gpu_count) and stock in {"high", "medium", "low"}
+        sec_ok = _avail(row_secure)
+        spot_ok = _avail(row_spot)
+        if not (sec_ok or spot_ok):
+            continue
+        out.append({
+            "id": t["id"],
+            "displayName": t.get("displayName") or t["id"],
+            "memoryInGb": t.get("memoryInGb") or 0,
+            "secureAvailable": bool(sec_ok),
+            "spotAvailable": bool(spot_ok),
+        })
+    # Prefer larger memory first
+    out.sort(key=lambda r: float(r.get("memoryInGb") or 0), reverse=True)
+    return out
+
 # ---------- Pod operations ----------
 
 def create_pod(

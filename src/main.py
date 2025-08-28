@@ -1056,12 +1056,41 @@ def main(page: ft.Page):
         page.theme_mode = ft.ThemeMode.DARK if page.theme_mode == ft.ThemeMode.LIGHT else ft.ThemeMode.LIGHT
         page.update()
 
+    def refresh_app(_):
+        # Soft-refresh the app: clear overlays/controls and rebuild the UI
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Refreshing app..."))
+            page.snack_bar.open = True
+            page.update()
+        except Exception:
+            pass
+        try:
+            page.dialog = None
+            page.overlay.clear()
+        except Exception:
+            pass
+        try:
+            page.controls.clear()
+            page.appbar = None
+            page.update()
+        except Exception:
+            pass
+        try:
+            main(page)
+        except Exception:
+            pass
+
     page.appbar = ft.AppBar(
         leading=ft.Icon(ICONS.DATASET_LINKED_OUTLINED),
         title=ft.Text(APP_TITLE, weight=ft.FontWeight.BOLD),
         center_title=False,
         bgcolor=WITH_OPACITY(0.03, COLORS.AMBER),
         actions=[
+            ft.IconButton(
+                getattr(ICONS, "REFRESH", getattr(ICONS, "RESTART_ALT", getattr(ICONS, "SYNC", ICONS.CACHED))),
+                tooltip="Refresh app",
+                on_click=refresh_app,
+            ),
             ft.IconButton(ICONS.INFO_OUTLINE, tooltip="About", on_click=open_about),
             ft.IconButton(ICONS.DARK_MODE_OUTLINED, tooltip="Toggle theme", on_click=toggle_theme),
         ],
@@ -3838,6 +3867,47 @@ Specify license and any restrictions.
         visible=True,
         tooltip="For Beginner: Fastest uses best GPU with aggressive params; Cheapest uses lowest-cost GPU with conservative params.",
     )
+    # Expert-mode GPU picker (hidden by default)
+    expert_gpu_dd = ft.Dropdown(
+        label="GPU (Expert)",
+        options=[ft.dropdown.Option("AUTO")],
+        value="AUTO",
+        width=260,
+        visible=False,
+        tooltip="Pick a GPU type available in the selected datacenter. 'AUTO' will pick the best available secure GPU.",
+    )
+    expert_spot_cb = ft.Checkbox(
+        label="Use Spot (interruptible)",
+        value=False,
+        visible=False,
+        tooltip="When enabled and available, a spot/interruptible pod is used.",
+    )
+    expert_gpu_refresh_btn = ft.IconButton(
+        icon=getattr(ICONS, "REFRESH", getattr(ICONS, "AUTORENEW", getattr(ICONS, "UPDATE", getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", ICONS.REFRESH))))),
+        tooltip="Refresh available GPUs from Runpod",
+        visible=False,
+    )
+    expert_gpu_busy = ft.ProgressRing(width=18, height=18, value=None, visible=False)
+    # Map gpu_id -> availability flags to drive spot toggle enabling
+    expert_gpu_avail: dict = {}
+    def _update_expert_spot_enabled(_=None):
+        try:
+            gid = (expert_gpu_dd.value or "AUTO")
+            flags = expert_gpu_avail.get(gid) or {}
+            sec_ok = bool(flags.get("secureAvailable"))
+            spot_ok = bool(flags.get("spotAvailable"))
+            # Only enable checkbox if any mode is available; constrain value when not supported
+            expert_spot_cb.disabled = not (spot_ok or sec_ok)
+            if not spot_ok and bool(getattr(expert_spot_cb, "value", False)):
+                expert_spot_cb.value = False
+            expert_spot_cb.tooltip = f"Spot available: {spot_ok} • Secure available: {sec_ok}"
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+    expert_gpu_dd.on_change = _update_expert_spot_enabled
     base_model = ft.Dropdown(
         label="Base model",
         options=[
@@ -4113,6 +4183,30 @@ Specify license and any restrictions.
             resume_from_tf.value = hp.get("resume_from", resume_from_tf.value or "")
         except Exception:
             pass
+        # reflect meta.skill_level and meta.beginner_mode in UI without overriding HP
+        try:
+            meta = conf.get("meta") or {}
+            skill = str(meta.get("skill_level") or "").strip().lower()
+            mode = str(meta.get("beginner_mode") or "").strip().lower()
+            if skill in ("beginner", "expert"):
+                try:
+                    train_state["suppress_skill_defaults"] = True
+                except Exception:
+                    pass
+                try:
+                    skill_level.value = "Beginner" if skill == "beginner" else "Expert"
+                    if skill == "beginner" and mode in ("fastest", "cheapest"):
+                        beginner_mode_dd.value = "Fastest" if mode == "fastest" else "Cheapest"
+                    _update_skill_controls()
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        train_state["suppress_skill_defaults"] = False
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         # infra UI
         iu = conf.get("infra_ui") or {}
         try:
@@ -4127,8 +4221,6 @@ Specify license and any restrictions.
             rp_mount_path_tf.value = iu.get("mount_path", rp_mount_path_tf.value)
             rp_category_tf.value = iu.get("category", rp_category_tf.value)
             rp_public_cb.value = bool(iu.get("public", rp_public_cb.value))
-            rp_tb_cb.value = bool(iu.get("tensorboard", rp_tb_cb.value))
-            rp_ssh_cb.value = bool(iu.get("ssh", rp_ssh_cb.value))
         except Exception:
             pass
         # summary
@@ -4198,21 +4290,6 @@ Specify license and any restrictions.
                 pass
             return
         new_tf = ft.TextField(label="New name", value=name, width=420)
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([
-                ft.Icon(getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)), color=ACCENT_COLOR),
-                ft.Text("Rename configuration"),
-            ], alignment=ft.MainAxisAlignment.START),
-            content=ft.Column([ft.Text("Choose a new filename (JSON extension optional)."), new_tf], tight=True, spacing=6),
-            actions=[
-                ft.TextButton("Cancel", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
-                ft.ElevatedButton("Rename", icon=getattr(ICONS, "CHECK", ICONS.SAVE), on_click=lambda e: page.run_task(_do_rename)),
-            ],
-        )
-        page.dialog = dlg
-        dlg.open = True
-        await safe_update(page)
 
         async def _do_rename(_=None):
             try:
@@ -4224,6 +4301,14 @@ Specify license and any restrictions.
                 d = _saved_configs_dir()
                 src = os.path.join(d, name)
                 dst = os.path.join(d, new_name)
+                # No-op if unchanged (case-insensitive on Windows)
+                try:
+                    if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
+                        dlg.open = False
+                        await safe_update(page)
+                        return
+                except Exception:
+                    pass
                 if os.path.exists(dst):
                     page.snack_bar = ft.SnackBar(ft.Text("A config with that name already exists."))
                     page.snack_bar.open = True
@@ -4246,6 +4331,22 @@ Specify license and any restrictions.
                     await safe_update(page)
                 except Exception:
                     pass
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)), color=ACCENT_COLOR),
+                ft.Text("Rename configuration"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Column([ft.Text("Choose a new filename (JSON extension optional)."), new_tf], tight=True, spacing=6),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
+                ft.ElevatedButton("Rename", icon=getattr(ICONS, "CHECK", ICONS.SAVE), on_click=lambda e: page.run_task(_do_rename)),
+            ],
+        )
+        page.dialog = dlg
+        dlg.open = True
+        await safe_update(page)
 
     async def on_edit_config():
         name = (config_files_dd.value or "").strip()
@@ -4532,7 +4633,7 @@ Specify license and any restrictions.
             pass
 
     cancel_train = {"cancelled": False}
-    train_state = {"running": False, "pod_id": None, "infra": None, "api_key": "", "loaded_config": None}
+    train_state = {"running": False, "pod_id": None, "infra": None, "api_key": "", "loaded_config": None, "suppress_skill_defaults": False}
 
     def _update_skill_controls(_=None):
         level = (skill_level.value or "Beginner").lower()
@@ -4553,8 +4654,18 @@ Specify license and any restrictions.
             beginner_mode_dd.visible = is_beginner
         except Exception:
             pass
+        # Expert GPU picker visibility
+        try:
+            expert_gpu_dd.visible = (not is_beginner)
+            expert_spot_cb.visible = (not is_beginner)
+            expert_gpu_refresh_btn.visible = (not is_beginner)
+            if is_beginner:
+                expert_gpu_busy.visible = False
+        except Exception:
+            pass
+        suppress = bool(train_state.get("suppress_skill_defaults"))
         # Set beginner defaults (depend on beginner mode)
-        if is_beginner:
+        if is_beginner and (not suppress):
             try:
                 mode = (beginner_mode_dd.value or "Fastest").lower()
                 epochs_tf.value = epochs_tf.value or "1"
@@ -4570,6 +4681,12 @@ Specify license and any restrictions.
                     max_steps_tf.value = "200"
             except Exception:
                 pass
+        # If switching to Expert for the first time, lazily refresh GPU list
+        try:
+            if (not is_beginner) and (len(getattr(expert_gpu_dd, "options", []) or []) <= 1):
+                schedule_task(refresh_expert_gpus)
+        except Exception:
+            pass
         try:
             page.update()
         except Exception:
@@ -4678,11 +4795,26 @@ Specify license and any restrictions.
         # Build flags for train.py (honor Configuration mode if a config is loaded)
         using_loaded_hp = False
         hp = None
+        cfg = {}
         try:
             mode_val = (config_mode_dd.value or "Normal").lower()
             if mode_val.startswith("config"):
                 cfg = train_state.get("loaded_config") or {}
                 cfg_hp = cfg.get("hp") if isinstance(cfg, dict) else None
+                # Lazy-load from the selected file if not already loaded
+                if not (isinstance(cfg_hp, dict) and cfg_hp):
+                    try:
+                        name = (config_files_dd.value or "").strip()
+                        if name:
+                            path = os.path.join(_saved_configs_dir(), name)
+                            tmp_conf = _read_json_file(path) or {}
+                            tmp_hp = tmp_conf.get("hp") if isinstance(tmp_conf, dict) else None
+                            if isinstance(tmp_hp, dict) and tmp_hp:
+                                cfg = tmp_conf
+                                cfg_hp = tmp_hp
+                                train_state["loaded_config"] = cfg
+                    except Exception:
+                        pass
                 if isinstance(cfg_hp, dict) and cfg_hp:
                     hp = dict(cfg_hp)
                     using_loaded_hp = True
@@ -4691,14 +4823,45 @@ Specify license and any restrictions.
         if not isinstance(hp, dict) or not hp:
             hp = _build_hp()
 
+        # Ensure dataset flags are present in hp (Normal mode only). In Config mode, use hp as-is.
+        mode_now = (config_mode_dd.value or "Normal").lower()
+        if not mode_now.startswith("config"):
+            try:
+                if not (hp.get("hf_dataset_id") or hp.get("json_path")):
+                    src_ui = train_source.value or "Hugging Face"
+                    repo_ui = (train_hf_repo.value or "").strip()
+                    split_ui = (train_hf_split.value or "train").strip()
+                    jpath_ui = (train_json_path.value or "").strip()
+                    if (src_ui == "Hugging Face") and repo_ui:
+                        hp["hf_dataset_id"] = repo_ui
+                        hp["hf_dataset_split"] = split_ui
+                    elif jpath_ui:
+                        hp["json_path"] = jpath_ui
+                if not (hp.get("hf_dataset_id") or hp.get("json_path")):
+                    train_timeline.controls.append(ft.Row([
+                        ft.Icon(ICONS.WARNING, color=COLORS.RED),
+                        ft.Text("Dataset not set. Provide a Hugging Face dataset or JSON path before starting."),
+                    ]))
+                    train_state["running"] = False
+                    update_train_placeholders(); await safe_update(page)
+                    return
+            except Exception:
+                pass
+
         # Beginner mode presets: choose GPU & adjust params
-        level = (skill_level.value or "Beginner").lower()
+        # If using a loaded config, prefer its saved meta for skill/mode
+        meta_cfg = (cfg.get("meta") or {}) if isinstance(cfg, dict) else {}
+        level_src = (meta_cfg.get("skill_level") or skill_level.value or "Beginner")
+        begin_src = (meta_cfg.get("beginner_mode") or beginner_mode_dd.value or "Fastest")
+        level = level_src.lower()
         is_beginner = (level == "beginner")
-        beginner_mode = (beginner_mode_dd.value or "Fastest").lower() if is_beginner else ""
+        beginner_mode = begin_src.lower() if is_beginner else ""
 
         chosen_gpu_type_id = "AUTO"
         chosen_interruptible = False
+        chosen_by = ""
 
+        # Beginner-mode hyperparameter tweaks only when not using loaded config HP
         if is_beginner and (not using_loaded_hp):
             if beginner_mode == "fastest":
                 # Aggressive for speed: rely on best GPU (secure), larger per-device batch, minimal GA
@@ -4710,11 +4873,34 @@ Specify license and any restrictions.
                     hp["max_steps"] = (max_steps_tf.value or "200").strip() or "200"
                 except Exception:
                     pass
+
+        # GPU selection: prefer Expert picker, else explicit config pod overrides, else derive from beginner mode
+        if not is_beginner:
+            try:
+                exp_val = (expert_gpu_dd.value or "AUTO").strip()
+                if exp_val and exp_val != "AUTO":
+                    chosen_gpu_type_id = exp_val
+                    chosen_interruptible = bool(getattr(expert_spot_cb, "value", False))
+                    chosen_by = "expert"
+            except Exception:
+                pass
+        pod_cfg = (cfg.get("pod") or {}) if using_loaded_hp else {}
+        if not chosen_by and isinstance(pod_cfg, dict) and pod_cfg:
+            try:
+                if pod_cfg.get("gpu_type_id"):
+                    chosen_gpu_type_id = pod_cfg.get("gpu_type_id")
+                if "interruptible" in pod_cfg:
+                    chosen_interruptible = bool(pod_cfg.get("interruptible"))
+                chosen_by = "config"
+            except Exception:
+                pass
+        elif is_beginner:
+            if beginner_mode == "fastest":
                 # Keep AUTO + secure (non-interruptible)
                 chosen_gpu_type_id = "AUTO"
                 chosen_interruptible = False
             elif beginner_mode == "cheapest":
-                # Conservative defaults already set; pick the lowest-cost GPU (spot preferred)
+                # Pick the lowest-cost GPU (spot preferred)
                 dc_id = (((infra.get("volume") or {}).get("dc") or "").strip()) or "US-NC-1"
                 try:
                     cheapest_gpu, is_spot = await asyncio.to_thread(rp_pod.discover_cheapest_gpu, api_key, dc_id, 1)
@@ -4724,13 +4910,14 @@ Specify license and any restrictions.
                     train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text(f"Cheapest GPU discovery failed, using AUTO: {e}")]))
 
         # Logs
-        # Log dataset choice
-        src = train_source.value or "Hugging Face"
-        repo = (train_hf_repo.value or "").strip()
-        split = (train_hf_split.value or "train").strip()
-        jpath = (train_json_path.value or "").strip()
+        # Log dataset choice based on hp actually sent to the container
         model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        ds_desc = f"HF: {repo} [{split}]" if (src == "Hugging Face") else (f"JSON: {jpath}" if jpath else "JSON: (unset)")
+        if hp.get("hf_dataset_id"):
+            ds_desc = f"HF: {hp.get('hf_dataset_id')} [{hp.get('hf_dataset_split','train')}]"
+        elif hp.get("json_path"):
+            ds_desc = f"JSON: {hp.get('json_path')}"
+        else:
+            ds_desc = "Dataset: (unset)"
         train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Creating Runpod pod and starting training…")]))
         train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
         train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={hp.get('epochs')} • LR={hp.get('lr')} • BSZ={hp.get('bsz')} • GA={hp.get('grad_accum')}")]))
@@ -4741,6 +4928,13 @@ Specify license and any restrictions.
                 else:
                     bm_text = f"Beginner: Cheapest — selecting lowest-cost GPU ({'spot' if chosen_interruptible else 'secure'}) with conservative params"
                 train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(bm_text)]))
+            except Exception:
+                pass
+        elif (chosen_by == "expert"):
+            try:
+                sel_id = chosen_gpu_type_id
+                mode_txt = "spot" if chosen_interruptible else "secure"
+                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Expert: Using GPU {sel_id} ({mode_txt})")]))
             except Exception:
                 pass
         update_train_placeholders(); await safe_update(page)
@@ -4784,28 +4978,29 @@ Specify license and any restrictions.
                         "vol_size": int(float(rp_vol_size_tf.value or "50")),
                         "resize_if_smaller": bool(getattr(rp_resize_cb, "value", True)),
                         "tpl_name": (rp_tpl_name_tf.value or "unsloth-trainer-template"),
-                        "image": (rp_image_tf.value or ""),
+                        "image": (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest"),
                         "container_disk": int(float(rp_container_disk_tf.value or "30")),
                         "pod_volume_gb": int(float(rp_volume_in_gb_tf.value or "0")),
                         "mount_path": (rp_mount_path_tf.value or "/data"),
                         "category": (rp_category_tf.value or "NVIDIA"),
                         "public": bool(getattr(rp_public_cb, "value", False)),
-                        "tensorboard": bool(getattr(rp_tb_cb, "value", False)),
-                        "ssh": bool(getattr(rp_ssh_cb, "value", False)),
                     }
+                default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(hp.get('base_model','model')).replace('/', '_')}.json"
+                name_tf = ft.TextField(label="Save as", value=default_name, width=420)
+
+                # Build payload for saving configuration
                 payload = {
-                    "version": 1,
-                    "created_at": datetime.utcnow().isoformat() + "Z",
                     "hp": hp,
                     "infra_ui": _collect_infra_ui_state(),
-                    "infra_ids": train_state.get("infra") or {},
                     "meta": {
                         "skill_level": skill_level.value,
                         "beginner_mode": beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else "",
                     },
+                    "pod": {
+                        "gpu_type_id": chosen_gpu_type_id,
+                        "interruptible": bool(chosen_interruptible),
+                    },
                 }
-                default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(hp.get('base_model','model')).replace('/', '_')}.json"
-                name_tf = ft.TextField(label="Save as", value=default_name, width=420)
 
                 def _do_save(_=None):
                     name = (name_tf.value or default_name).strip()
@@ -5179,8 +5374,15 @@ Specify license and any restrictions.
         tooltip="Avoid mounting at /workspace to prevent hiding train.py inside the image. /data is recommended.")
     rp_category_tf = ft.TextField(label="Category", value="NVIDIA", width=160)
     rp_public_cb = ft.Checkbox(label="Public template", value=False)
-    rp_tb_cb = ft.Checkbox(label="Expose TensorBoard (6006)", value=False)
-    rp_ssh_cb = ft.Checkbox(label="Expose SSH (22/tcp)", value=False, tooltip="Adds 22/tcp to template ports; requires SSH server in the container.")
+
+    # Temporary API key input (overrides Settings key for this session)
+    rp_temp_key_tf = ft.TextField(
+        label="Runpod API key (temp)",
+        password=True,
+        can_reveal_password=True,
+        width=420,
+        tooltip="Optional. Overrides Settings key for this run. You can also set RUNPOD_API_KEY env var.",
+    )
 
     # Info icon for "Public template": clarifies visibility and considerations
     rp_public_info = ft.IconButton(
@@ -5192,17 +5394,11 @@ Specify license and any restrictions.
     )
     rp_public_row = ft.Row([rp_public_cb, rp_public_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
+    # (SSH exposure option removed by request)
+
     rp_infra_busy = ft.ProgressRing(visible=False)
-    rp_temp_key_tf = ft.TextField(
-        label="API key (optional, temp)",
-        password=True,
-        can_reveal_password=True,
-        width=320,
-        tooltip="Temporary key used only here. If a key is saved in Settings, that one takes precedence.",
-    )
 
     async def on_ensure_infra():
-        print("EnsureInfra: on_ensure_infra started")
         # Resolve API key: Settings > temp (this tab) > env
         saved_key = ((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip()
         temp_key = (rp_temp_key_tf.value or "").strip()
@@ -5227,8 +5423,6 @@ Specify license and any restrictions.
         mount_path = (rp_mount_path_tf.value or "/data").strip()
         category = (rp_category_tf.value or "NVIDIA").strip()
         is_public = bool(getattr(rp_public_cb, "value", False))
-        tb_expose = bool(getattr(rp_tb_cb, "value", False))
-        ssh_expose = bool(getattr(rp_ssh_cb, "value", False))
 
         # Coerce numbers safely
         try:
@@ -5305,7 +5499,7 @@ Specify license and any restrictions.
                     category=category,
                     is_public=is_public,
                     env_vars=tpl_env,
-                    ports=( ["6006/http"] if tb_expose else [] ) + ( ["22/tcp"] if ssh_expose else [] ),
+                    ports=[],
                 )
             result = await asyncio.to_thread(do_call)
             vol = result.get("volume", {})
@@ -5314,6 +5508,11 @@ Specify license and any restrictions.
             try:
                 train_state["infra"] = result
                 train_state["api_key"] = key
+            except Exception:
+                pass
+            # Refresh Expert GPU list based on ensured volume datacenter
+            try:
+                schedule_task(refresh_expert_gpus)
             except Exception:
                 pass
             train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
@@ -5396,6 +5595,100 @@ Specify license and any restrictions.
         rp_infra_busy,
     ], spacing=10)
 
+    # Populate Expert GPU dropdown from Runpod based on datacenter
+    async def refresh_expert_gpus(_=None):
+        try:
+            # Resolve API key similar to Ensure Infra
+            saved_key = (((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip())
+            temp_key = (rp_temp_key_tf.value or "").strip()
+            key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
+            if not key:
+                page.snack_bar = ft.SnackBar(ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access."))
+                page.snack_bar.open = True
+                return
+            infra = train_state.get("infra") or {}
+            # Determine datacenter: prefer ensured volume's dc, else current field, else default
+            try:
+                dc_src = ((infra.get("volume") or {}).get("dc")) or (rp_dc_tf.value or "")
+                dc_id = (dc_src.strip() or "US-NC-1")
+            except Exception:
+                dc_id = "US-NC-1"
+
+            # Show busy while fetching
+            try:
+                expert_gpu_busy.visible = True
+                page.update()
+            except Exception:
+                pass
+
+            # Fetch GPUs
+            def _fetch():
+                return rp_pod.list_available_gpus(key, dc_id, 1)
+            gpus = await asyncio.to_thread(_fetch)
+            # Build options with de-duplication by GPU type id, merging flags
+            opts = [ft.dropdown.Option(text="AUTO (best secure)", key="AUTO")]
+            expert_gpu_avail.clear()
+            agg: dict = {}
+            for g in (gpus or []):
+                gid = str(g.get("id") or "").strip()
+                if not gid:
+                    continue
+                d = agg.get(gid) or {
+                    "displayName": str(g.get("displayName") or gid),
+                    "memoryInGb": g.get("memoryInGb"),
+                    "secureAvailable": False,
+                    "spotAvailable": False,
+                }
+                # Merge availability flags across duplicates
+                d["secureAvailable"] = bool(d.get("secureAvailable")) or bool(g.get("secureAvailable"))
+                d["spotAvailable"] = bool(d.get("spotAvailable")) or bool(g.get("spotAvailable"))
+                # Prefer max memory if multiple values appear
+                try:
+                    mem_prev = float(d.get("memoryInGb") or 0)
+                    mem_new = float(g.get("memoryInGb") or 0)
+                    d["memoryInGb"] = max(mem_prev, mem_new)
+                except Exception:
+                    pass
+                agg[gid] = d
+            # Emit unique options
+            for gid, d in agg.items():
+                name = str(d.get("displayName") or gid)
+                mem = d.get("memoryInGb")
+                sec = bool(d.get("secureAvailable"))
+                spot = bool(d.get("spotAvailable"))
+                tags = []
+                if sec: tags.append("secure")
+                if spot: tags.append("spot")
+                mem_txt = (f" {int(mem)}GB" if isinstance(mem, (int, float)) and mem else "")
+                label = f"{name}{mem_txt} [{'/'.join(tags) if tags else 'limited'}]"
+                opts.append(ft.dropdown.Option(text=label, key=gid))
+                expert_gpu_avail[gid] = {"secureAvailable": sec, "spotAvailable": spot}
+            # Preserve selection if still available
+            cur = (expert_gpu_dd.value or "AUTO")
+            keys = {getattr(o, 'key', None) or o.text for o in opts}
+            expert_gpu_dd.options = opts
+            if cur not in keys:
+                expert_gpu_dd.value = "AUTO"
+            _update_expert_spot_enabled()
+            try:
+                expert_gpu_busy.visible = False
+                page.update()
+            except Exception:
+                pass
+        except Exception as ex:
+            try:
+                expert_gpu_busy.visible = False
+                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to refresh GPUs: {ex}"))
+                page.snack_bar.open = True
+            except Exception:
+                pass
+
+    # Wire refresh button
+    try:
+        expert_gpu_refresh_btn.on_click = lambda e: page.run_task(refresh_expert_gpus)
+    except Exception:
+        pass
+
     # Compact infra action for Configuration mode (button only)
     rp_infra_compact_row = ft.Row([
         ft.OutlinedButton(
@@ -5436,7 +5729,7 @@ Specify license and any restrictions.
             ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
             ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
             ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
-            ft.Row([rp_category_tf, rp_public_row, rp_tb_cb, rp_ssh_cb], wrap=True),
+            ft.Row([rp_category_tf, rp_public_row], wrap=True),
             ft.Row([rp_temp_key_tf], wrap=True),
             rp_infra_actions,
         ], spacing=12),
@@ -5914,6 +6207,7 @@ Specify license and any restrictions.
                 on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
             ),
             ft.Row([skill_level, beginner_mode_dd], wrap=True),
+            ft.Row([expert_gpu_dd, expert_gpu_busy, expert_spot_cb, expert_gpu_refresh_btn], wrap=True),
             ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
             ft.Row([packing_row, auto_resume_row, push_row, hf_repo_row, resume_from_row], wrap=True),
             advanced_params_section,
@@ -5945,6 +6239,19 @@ Specify license and any restrictions.
         except Exception:
             pass
 
+    # Training target selector (top of Training tab)
+    train_target_dd = ft.Dropdown(
+        label="Training target",
+        options=[
+            ft.dropdown.Option("Runpod - Pod"),
+            ft.dropdown.Option("Runpod - Serverless"),
+            ft.dropdown.Option("local"),
+        ],
+        value="Runpod - Pod",
+        width=420,
+        tooltip="Choose where training runs. 'Runpod - Pod' shows the current pod workflow; other options are placeholders.",
+    )
+
     # Hook handlers and initialize config list
     config_mode_dd.on_change = _update_mode_visibility
     config_files_dd.on_change = _update_config_buttons_enabled
@@ -5957,37 +6264,71 @@ Specify license and any restrictions.
     # Ensure initial visibility matches the selected mode
     _update_mode_visibility()
 
+    # Wrap the existing Training content so we can hide it for non-pod targets
+    pod_content_container = ft.Container(
+        content=ft.Row([
+            ft.Container(
+                content=ft.Column([
+                    config_section,
+                    rp_infra_panel,
+                    ft.Divider(),
+                    dataset_section,
+                    train_params_section,
+                    section_title(
+                        "Progress & Logs",
+                        ICONS.TASK_ALT,
+                        "Pod status updates and training logs.",
+                        on_help_click=_mk_help_handler("Pod status updates and training logs."),
+                    ),
+                    ft.Row([train_progress, train_prog_label], spacing=12),
+                    ft.Container(
+                        ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
+                        height=240,
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    teardown_section,
+                    train_actions,
+                ], spacing=12),
+                width=1000,
+            )
+        ], alignment=ft.MainAxisAlignment.CENTER),
+        visible=True,
+    )
+
+    # Toggle Training content visibility based on selected target
+    def _update_training_target(_=None):
+        target = (train_target_dd.value or "Runpod - Pod").lower()
+        is_pod = target.startswith("runpod - pod")
+        try:
+            pod_content_container.visible = is_pod
+        except Exception:
+            pass
+        if is_pod:
+            # Ensure normal/config mode visibility still applies
+            try:
+                _update_mode_visibility()
+            except Exception:
+                pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    train_target_dd.on_change = _update_training_target
+
     training_tab = ft.Container(
         content=ft.Column([
             ft.Row([
                 ft.Container(
-                    content=ft.Column([
-                        config_section,
-                        rp_infra_panel,
-                        ft.Divider(),
-                        dataset_section,
-                        train_params_section,
-                        section_title(
-                            "Progress & Logs",
-                            ICONS.TASK_ALT,
-                            "Pod status updates and training logs.",
-                            on_help_click=_mk_help_handler("Pod status updates and training logs."),
-                        ),
-                        ft.Row([train_progress, train_prog_label], spacing=12),
-                        ft.Container(
-                            ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
-                            height=240,
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        teardown_section,
-                        train_actions,
-                    ], spacing=12),
+                    content=ft.Row([train_target_dd], alignment=ft.MainAxisAlignment.CENTER),
                     width=1000,
+                    padding=ft.padding.only(top=12),
                 )
-            ], alignment=ft.MainAxisAlignment.CENTER)
+            ], alignment=ft.MainAxisAlignment.CENTER),
+            pod_content_container,
         ], scroll=ft.ScrollMode.AUTO, spacing=0),
         padding=16,
     )
