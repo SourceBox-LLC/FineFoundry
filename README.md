@@ -2,6 +2,61 @@
 
 A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze, build/publish, and train on Runpod or locally — then ship to the Hugging Face Hub.
 
+<p align="center">
+  <img src="img/FineForge-logo.png" alt="FineFoundry logo" width="420" />
+  <br/>
+  <br/>
+  <a href="https://www.python.org/">
+    <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+  </a>
+  <a href="https://flet.dev/">
+    <img alt="Flet 0.28.3" src="https://img.shields.io/badge/Flet-0.28.3-03A9F4?style=for-the-badge&logo=flutter&logoColor=white" />
+  </a>
+  <a href="https://huggingface.co/docs/datasets">
+    <img alt="datasets 4.0.0" src="https://img.shields.io/badge/datasets-4.0.0-FF6F00?style=for-the-badge&logo=huggingface&logoColor=white" />
+  </a>
+  <img alt="OS" src="https://img.shields.io/badge/OS-Windows%20|%20macOS%20|%20Linux-2E3440?style=for-the-badge&logo=windows&logoColor=white" />
+  <a href="#license">
+    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-4CAF50?style=for-the-badge" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="#quick-start-gui">Quick Start</a> ·
+  <a href="#using-the-app">Using the App</a> ·
+  <a href="#proxy-configuration">Proxies</a> ·
+  <a href="#cli-build-and-push-without-the-gui">CLI</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#license">License</a>
+</p>
+
+<hr/>
+
+<details>
+  <summary><b>Table of Contents</b></summary>
+
+  - <a href="#quick-start-gui">Quick Start</a>
+  - <a href="#using-the-app">Using the App</a>
+    - <a href="#scrape-tab">Scrape tab</a>
+    - <a href="#build--publish-tab">Build / Publish tab</a>
+    - <a href="#training-tab">Training tab</a>
+    - <a href="#merge-datasets-tab">Merge Datasets tab</a>
+    - <a href="#dataset-analysis-tab">Dataset Analysis tab</a>
+    - <a href="#settings-tab">Settings tab</a>
+  - <a href="#hugging-face-authentication">Hugging Face Authentication</a>
+  - <a href="#proxy-configuration">Proxy Configuration</a>
+  - <a href="#cli-build-and-push-without-the-gui">CLI: Build &amp; Push</a>
+  - <a href="#cli-reddit-scraper">CLI: Reddit Scraper</a>
+  - <a href="#programmatic-4chan-scraper">Programmatic: 4chan</a>
+  - <a href="#programmatic-stack-exchange-scraper">Programmatic: Stack Exchange</a>
+  - <a href="#how-scraping-works-4chan">How Scraping Works (4chan)</a>
+  - <a href="#dataset-artifacts">Dataset Artifacts</a>
+  - <a href="#troubleshooting">Troubleshooting</a>
+  - <a href="#ethical-and-legal-notes">Ethical &amp; Legal</a>
+  - <a href="#development">Development</a>
+  - <a href="#license">License</a>
+</details>
+
 Built with Flet for a fast, native-like UI. Includes:
 
 - 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
@@ -11,7 +66,8 @@ Built with Flet for a fast, native-like UI. Includes:
 - Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
 - Training via Runpod (managed pods, network volume at /data) or local Docker, with LoRA, packing, auto‑resume, and Hub push.
 
-## Contents
+<a id="contents"></a>
+## 🧭 Contents
 
 - `src/main.py` — Flet desktop app (Scrape, Build/Publish, Training, Merge, Analysis, Settings)
 - `src/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
@@ -22,7 +78,8 @@ Built with Flet for a fast, native-like UI. Includes:
 - `src/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
 - `requirements.txt` — pinned dependencies
 
-## Prerequisites
+<a id="prerequisites"></a>
+## 🧰 Prerequisites
 
 - Python 3.10+ on Windows/macOS/Linux
 - Git (optional)
@@ -31,7 +88,8 @@ Optional (for pushing to Hugging Face):
 
 - A Hugging Face account and an access token with write permissions: <https://huggingface.co/settings/tokens>
 
-## Quick Start (GUI)
+<a id="quick-start-gui"></a>
+## 🚀 Quick Start (GUI)
 
 1. Create and activate a virtual environment
 
@@ -62,9 +120,11 @@ Optional (for pushing to Hugging Face):
 
 The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Merge Datasets, Dataset Analysis, and Settings.
 
-## Using the App
+<a id="using-the-app"></a>
+## 🖥️ Using the App
 
-### Scrape tab
+<a id="scrape-tab"></a>
+### 🧭 Scrape tab
 
 - **Boards**: Multi-select chips with Select All / Clear.
 - **Parameters**: `Max Threads`, `Max Pairs`, `Delay (s)`, `Min Length`, `Output JSON Path`.
@@ -79,7 +139,8 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 ]
 ```
 
-### Build / Publish tab
+<a id="build--publish-tab"></a>
+### 🏗️ Build / Publish tab
 
 - Point to your `Data file (JSON)` (defaults to `scraped_training_data.json`).
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.
@@ -91,7 +152,8 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
   - `HF Token` (can be left blank if you logged in via CLI or have `HF_TOKEN` env var)
 - Click **Push + Upload README** to upload the dataset and a generated dataset card.
 
-### Training tab
+<a id="training-tab"></a>
+### 🧠 Training tab
 
 - **Dataset source**: select Hugging Face repo and split for training data.
 - **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, Learning rate, Per-device batch size, Grad accum steps, Max steps.
@@ -104,28 +166,75 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - **Run locally via Docker**:
   - Choose a host data directory to mount as `/data`, select image and GPU, then launch. Outputs land in the mounted folder under `outputs/runpod_run`.
 
-### Merge Datasets tab
+#### 💡 Training notes & tips
+
+- **Base model choice**: The default 4-bit instruct-tuned Llama 3.1 8B reduces VRAM needs and pairs well with LoRA.
+- **LoRA**: Enables parameter-efficient fine-tuning. Use this on consumer GPUs; pushes typically upload adapters rather than full weights.
+- **Packing**: Concatenates multiple short examples up to the model context window to improve throughput. Enable when most samples are short.
+- **Grad accumulation**: If you hit out-of-memory, lower per-device batch size and increase gradient accumulation to keep effective batch similar.
+- **Resume**: Use Auto-resume for interrupted sessions or provide a specific checkpoint path in “Resume from (path)”.
+- **Outputs & checkpoints**: Intermediate checkpoints and the final artifact are saved under `Output dir`. When training remotely on Runpod, this is under `/data/...`.
+- **Push to Hub**: Requires valid auth (see Hugging Face Authentication). Ensure the repo (and organization, if any) exists or your token has permissions to create it.
+
+#### ⚙️ Alternative: AutoTrain Web (no-code)
+
+- Export/push your dataset to the Hub from the Build/Publish tab and then use Hugging Face AutoTrain Web.
+- Recommended base model: `Meta-Llama-3.1-8B-Instruct`.
+- This is independent of the Training tab; settings here won’t affect AutoTrain jobs.
+
+<a id="merge-datasets-tab"></a>
+### 🔀 Merge Datasets tab
 
 - Combine multiple JSON files and/or Hugging Face datasets into a single dataset.
 - Automatically maps input/output columns and filters empty rows.
 - Optionally normalize and save merged results to a JSON path or build a `datasets.DatasetDict`.
 
-### Dataset Analysis tab
+<a id="dataset-analysis-tab"></a>
+### 📊 Dataset Analysis tab
 
-- Select dataset source (Hugging Face or JSON) and click Analyze.
+- Select dataset source (Hugging Face or JSON) and click Analyze dataset.
+- Use "Select all" to toggle all modules at once.
 - Toggles gate computation and visibility:
+  - Basic Stats
+  - Duplicates & Similarity
   - Sentiment
   - Class balance (length buckets)
   - Extra metrics (lightweight proxy metrics): Coverage overlap, Data leakage, Conversation depth, Speaker balance, Question vs Statement, Readability, NER proxy, Toxicity, Politeness, Dialogue Acts, Topics, Alignment
 - A summary lists all active modules after each run.
 
-### Settings tab
+#### What each module shows
+
+- **Basic Stats**: Record count and average input/output lengths.
+- **Duplicates & Similarity**: Approximate duplicate rate using hashed input/output pairs.
+- **Sentiment**: Distribution of sentiment polarity across samples to gauge tone and potential bias.
+- **Class balance (length)**: Buckets by text length to reveal whether training targets are mostly short or long.
+- **Coverage overlap**: Proxy overlap between input and output to catch trivial copies or potential leakage.
+- **Data leakage**: Flags potential target text appearing in inputs (input/output inclusion proxy).
+- **Conversation depth**: Proxy measure of turns/context size for conversational datasets.
+- **Speaker balance**: Approximate input share vs output share (length-based proxy).
+- **Question vs Statement**: Heuristic detection of question-like prompts vs declaratives.
+- **Readability**: Proxy readability score/band to understand complexity.
+- **NER proxy**: Frequency of entity-like tokens (names, orgs, locations) by simple proxies.
+- **Toxicity/Politeness**: Lightweight proxies to surface potentially problematic content.
+- **Dialogue Acts / Topics / Alignment**: Keyword-based proxies to surface common intents/themes and simple alignment signals.
+
+#### Use the insights
+
+- **Cleaning**: High toxicity or low readability? Consider filtering or normalizing before training.
+- **Packing**: Mostly short outputs? Enable packing in Training to improve throughput.
+- **Splits**: Any leakage flags? Rebuild with different shuffle/seed or adjust split sizes.
+- **Curriculum**: Skewed length distribution? Consider mixing datasets or weighting sampling.
+
+<a id="settings-tab"></a>
+### ⚙️ Settings tab
 
 - Hugging Face Access: save token used by Build/Publish and Training push.
 - Proxies: per-scraper defaults and env-proxy usage.
 - Runpod: save API key for infrastructure and pod control.
+- Ollama: enable connection, set base URL, list/select models, and save settings. Used for dataset card generation.
 
-## Hugging Face Authentication
+<a id="hugging-face-authentication"></a>
+## 🔐 Hugging Face Authentication
 
 You can authenticate in one of three ways:
 
@@ -146,7 +255,8 @@ You can authenticate in one of three ways:
 
 The app tries the field value first, then `HF_TOKEN`, then the cached login.
 
-## Proxy Configuration
+<a id="proxy-configuration"></a>
+## 🌐 Proxy Configuration
 
 - All scrapers support proxies via module variables.
   - 4chan (`src/fourchan_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
@@ -169,7 +279,8 @@ The app tries the field value first, then `HF_TOKEN`, then the cached login.
   se.apply_session_config()
   ```
 
-## CLI: Build and Push Without the GUI
+<a id="cli-build-and-push-without-the-gui"></a>
+## 🛠️ CLI: Build and Push Without the GUI
 
 `src/save_dataset.py` provides a fully scriptable path.
 Note: there are no CLI flags; configure constants in the file header, then run it.
@@ -199,7 +310,8 @@ Note: there are no CLI flags; configure constants in the file header, then run i
 
 This saves to `SAVE_DIR` and optionally pushes to `REPO_ID`. A dataset card is generated and uploaded as `README.md` in the repo.
 
-## CLI: Reddit Scraper
+<a id="cli-reddit-scraper"></a>
+## 🧭 CLI: Reddit Scraper
 
 Run the crawler and build pairs from a subreddit or a single post:
 
@@ -227,7 +339,7 @@ python src/reddit_scraper.py \
   - With `--cleanup` (or when `--use-temp-dump` is on), the dump folder is removed after copying pairs.
 
 - Defaults (from `src/reddit_scraper.py`):
-  - `--url`: <https://www.reddit.com/r/Conservative/>
+  - `--url`: <https://www.reddit.com/r/LocalLLaMA/>
   - `--max-posts`: 100
   - `--request-delay`: 1.0 (s)
   - `--request-jitter-frac`: 0.5
@@ -253,7 +365,8 @@ python src/reddit_scraper.py \
     --mode parent_child --pairs-path reddit_pairs.json
   ```
 
-## Programmatic: 4chan Scraper
+<a id="programmatic-4chan-scraper"></a>
+## 🧩 Programmatic: 4chan Scraper
 
 Use the library API from `src/fourchan_scraper.py`.
 
@@ -288,7 +401,8 @@ for board in ["pol", "b"]:
   - `require_question`: keep only pairs with question-like context (default False)
 - Proxy: defaults to Tor via `PROXY_URL = "socks5h://127.0.0.1:9050"`; set `USE_ENV_PROXIES=True` to use `HTTP(S)_PROXY`. If you change these at runtime, call `apply_session_config()` before `scrape()`.
 
-## Programmatic: Stack Exchange Scraper
+<a id="programmatic-stack-exchange-scraper"></a>
+## 🧩 Programmatic: Stack Exchange Scraper
 
 Scrape accepted Q/A pairs via `src/stackexchange_scraper.py`.
 
@@ -319,7 +433,8 @@ pairs = se.scrape(site="superuser", max_pairs=50)
 - Backoff: the API may return a `backoff` value; the scraper honors it automatically.
 - No CLI entrypoint for Stack Exchange; use the programmatic API or the GUI.
 
-## How Scraping Works (4chan)
+<a id="how-scraping-works-4chan"></a>
+## ⚙️ How Scraping Works (4chan)
 
 - Uses the 4chan public JSON API (`a.4cdn.org`).
 - Samples threads across catalog pages to diversify coverage.
@@ -334,14 +449,16 @@ pairs = se.scrape(site="superuser", max_pairs=50)
 Key modules: `src/fourchan_scraper.py` (e.g., `fetch_catalog_pages()`, `fetch_thread()`, `build_pairs_*()`).
 Reddit and Stack Exchange details are documented in their CLI/usage sections below.
 
-## Dataset Artifacts
+<a id="dataset-artifacts"></a>
+## 🗃️ Dataset Artifacts
 
 - On build, a `datasets.DatasetDict` is created with keys among `train`, `validation`, `test`.
 - Saved via `DatasetDict.save_to_disk(SAVE_DIR)`.
 - Pushed datasets are versioned on the Hub. The app also uploads a dataset card with:
   - Summary, fields, size bucket, example records, warnings, usage snippet.
 
-## Troubleshooting
+<a id="troubleshooting"></a>
+## 🩺 Troubleshooting
 
 - **No data found**: Verify boards are selected and `Max Pairs` > 0; check network access to `a.4cdn.org`.
 - **Push fails (401/403)**: Ensure your token has write scope and is correctly provided.
@@ -350,17 +467,20 @@ Reddit and Stack Exchange details are documented in their CLI/usage sections bel
 - **SSL/Cert errors**: Update `certifi` or your system certificates.
 - **Too few pairs when using contextual**: try reducing `Last K`, unchecking "Require question", or increasing `Max Threads`/`Max Pairs`.
 
-## Ethical and Legal Notes
+<a id="ethical-and-legal-notes"></a>
+## ⚖️ Ethical and Legal Notes
 
 - Content may be NSFW, offensive, or harmful. For research purposes only.
 - Respect platform policies and applicable laws in your jurisdiction.
 - Before any production use, apply filtering, detoxification, and alignment techniques.
 
-## Development
+<a id="development"></a>
+## 🧑‍💻 Development
 
 - UI built with Flet (`flet`, `flet-desktop`), pinned in `requirements.txt`.
 - Run formatting/linting as desired. Contributions welcome via PR.
 
-## License
+<a id="license"></a>
+## 📄 License
 
 MIT

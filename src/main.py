@@ -79,7 +79,13 @@ else:
     ICONS = getattr(ft, "icons", None)
 
 # Common icon fallbacks
-REFRESH_ICON = getattr(ICONS, "REFRESH", getattr(ICONS, "AUTORENEW", ICONS.RESTART_ALT))
+REFRESH_ICON = getattr(ICONS, "REFRESH", getattr(ICONS, "AUTORENEW", getattr(ICONS, "RESTART_ALT", None)))
+INFO_ICON = getattr(
+    ICONS,
+    "INFO_OUTLINE",
+    getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", getattr(ICONS, "HELP", None))),
+)
+DARK_ICON = getattr(ICONS, "DARK_MODE_OUTLINED", getattr(ICONS, "DARK_MODE", None))
 
 async def safe_update(page: ft.Page):
     """Update the page across Flet versions (async if available, else sync)."""
@@ -1113,21 +1119,229 @@ def main(page: ft.Page):
         except Exception:
             pass
 
+    # In-app User Guide (opens a detailed, scrollable modal)
+    def open_user_guide(_):
+        try:
+            # Console debug to ensure click wiring on all runtimes
+            try:
+                print("open_user_guide clicked")
+            except Exception:
+                pass
+            # Immediate feedback to verify click wiring
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Opening user guide..."))
+                page.snack_bar.open = True
+                page.update()
+            except Exception:
+                pass
+
+            guide_md = """# FineFoundry — In‑App User Guide
+
+## Overview
+FineFoundry is a desktop studio to scrape, merge, analyze, build/publish, and train LLM datasets.
+
+Tabs:
+- Scrape
+- Build / Publish
+- Training
+- Merge Datasets
+- Dataset Analysis
+- Settings
+
+## Quick Navigation
+- Top‑right icons: Refresh • User guide • Theme toggle
+- Use the tabs to switch workflows.
+
+## Scrape
+- Choose source (4chan, Reddit, StackExchange).
+- Configure parameters (max pairs, threads, delays, length filters).
+- Start scraping and preview results in a two‑column grid (input/output).
+- Proxy support per scraper; system env proxies optional.
+
+## Build / Publish
+- Create train/val/test splits with Hugging Face `datasets`.
+- Save locally and optionally push to the Hugging Face Hub.
+- Provide `HF_TOKEN` in Settings or via environment/CLI login.
+
+## Merge Datasets
+- Combine JSON files and/or HF datasets.
+- Auto‑map `input`/`output` columns; filter empty rows.
+- Save merged JSON or build a `datasets.DatasetDict`.
+
+## Training
+- Default base: `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`.
+- LoRA: parameter‑efficient fine‑tuning for consumer GPUs.
+- Packing: concatenate short samples to improve throughput.
+- Grad accumulation: lower per‑device batch, increase accumulation to fit memory.
+- Resume: Auto‑resume or explicit `Resume from (path)`.
+- Outputs & checkpoints: saved under Output dir. On Runpod, use `/data/...`.
+- Push to Hub: requires valid auth and repo permissions.
+- Alternative: use Hugging Face AutoTrain Web (independent of these settings).
+
+## Dataset Analysis
+- Select dataset source (HF or JSON) and click **Analyze dataset**.
+- Use **Select all** to toggle modules. Only enabled modules are computed and shown.
+- Modules: Basic Stats • Duplicates • Sentiment • Class balance (length) •
+  Extra proxies (Coverage overlap, Data leakage, Conversation depth, Speaker balance,
+  Question vs Statement, Readability, NER proxy, Toxicity, Politeness, Dialogue Acts, Topics, Alignment).
+- Summary lists active modules after each run; sample rows are shown for quick checks.
+
+## Settings
+- Hugging Face: save access token.
+- Proxies: per‑scraper defaults and/or system env proxies.
+- Runpod: save API key; standard mount path is `/data`.
+- Ollama: enable connection, set base URL, list/select models; used for dataset cards.
+
+## Runpod Notes
+- Use `/data` as the network volume mount to avoid path issues with container assets.
+
+## Troubleshooting
+- No data found: verify source/boards and `Max Pairs` > 0; check network access.
+- Push fails (401/403): ensure token has write scope and is provided.
+- Slow previews: use the paginated preview or open the saved dataset with Python.
+- SSL/cert errors: update certificates (e.g., `certifi`).
+
+## About
+- App: FineFoundry — desktop studio for dataset curation and fine‑tuning.
+"""
+
+            # Build Markdown content with robust fallbacks (some Flet builds differ)
+            try:
+                content = _make_md(guide_md)
+            except Exception:
+                try:
+                    content = ft.Markdown(guide_md, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB)
+                except Exception:
+                    try:
+                        content = ft.Markdown(guide_md)
+                    except Exception:
+                        content = ft.Text(guide_md)
+
+            def _close_dialog():
+                try:
+                    # Preferred in Flet 0.28+: use page.close(dlg)
+                    page.close(dlg)
+                except Exception:
+                    try:
+                        # Fallback to old pattern
+                        dlg.open = False
+                        page.update()
+                    except Exception:
+                        pass
+
+            dlg = ft.AlertDialog(
+                title=ft.Text("FineFoundry User Guide"),
+                modal=True,
+                on_dismiss=lambda e: page.update(),
+            )
+            dlg.content = ft.Container(
+                width=1000,
+                height=640,
+                content=ft.Column([content], scroll=ft.ScrollMode.AUTO),
+            )
+            dlg.actions = [ft.TextButton("Close", on_click=lambda e: _close_dialog())]
+
+            # Show dialog (Flet 0.28+ pattern with backward-compatible fallback)
+            try:
+                print("guide: trying page.open(dlg)")
+                page.open(dlg)
+                try:
+                    page.update()
+                except Exception:
+                    pass
+                print("guide: page.open(dlg) called")
+            except Exception as _e2:
+                print(f"guide: page.open failed: {_e2}")
+                try:
+                    print("guide: trying legacy page.dialog/dlg.open")
+                    page.dialog = dlg
+                    dlg.open = True
+                    page.update()
+                    print("guide: legacy dialog opened")
+                except Exception as _e2b:
+                    print(f"guide: legacy page.dialog failed: {_e2b}")
+                    try:
+                        print("guide: trying page.overlay append")
+                        page.overlay.append(dlg)
+                        dlg.open = True
+                        page.update()
+                        print("guide: overlay dialog opened")
+                    except Exception as _e3:
+                        print(f"guide: overlay open failed: {_e3}")
+                        try:
+                            print("guide: trying minimal test dialog")
+                            page.open(ft.AlertDialog(title=ft.Text("Guide"), content=ft.Text("Minimal test")))
+                            try:
+                                page.update()
+                            except Exception:
+                                pass
+                        except Exception as _e4:
+                            print(f"guide: minimal dialog failed: {_e4}")
+        except Exception as e:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to open guide: {e}"))
+                page.snack_bar.open = True
+                page.update()
+            except Exception:
+                pass
+
+    # Async wrapper used to mirror other working handlers that use page.run_task(...)
+    # NOTE: run_task calls the coroutine without passing an event, so this must take no args
+    async def open_user_guide_async():
+        try:
+            open_user_guide(None)
+        except Exception as _e:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Guide error: {_e}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+
+    # Helper: create an AppBar action that falls back to a TextButton if icon isn't available
+    def _appbar_action(icon_const, tooltip: str, on_click_cb, text_fallback: Optional[str] = None):
+        try:
+            if icon_const is not None:
+                # Use page.run_task if target is async; otherwise call directly
+                if getattr(on_click_cb, "__name__", "").endswith("_async"):
+                    return ft.IconButton(icon=icon_const, tooltip=tooltip, on_click=lambda e: page.run_task(on_click_cb))
+                return ft.IconButton(icon=icon_const, tooltip=tooltip, on_click=lambda e: on_click_cb(e))
+        except Exception:
+            pass
+        if getattr(on_click_cb, "__name__", "").endswith("_async"):
+            return ft.TextButton(text_fallback or tooltip, on_click=lambda e: page.run_task(on_click_cb))
+        return ft.TextButton(text_fallback or tooltip, on_click=lambda e: on_click_cb(e))
+
     page.appbar = ft.AppBar(
-        leading=ft.Icon(ICONS.DATASET_LINKED_OUTLINED),
+        leading=ft.Icon(getattr(ICONS, "DATASET_LINKED_OUTLINED", getattr(ICONS, "DATASET", getattr(ICONS, "DESCRIPTION", None)))) ,
         title=ft.Text(APP_TITLE, weight=ft.FontWeight.BOLD),
         center_title=False,
         bgcolor=WITH_OPACITY(0.03, COLORS.AMBER),
         actions=[
-            ft.IconButton(
-                getattr(ICONS, "REFRESH", getattr(ICONS, "RESTART_ALT", getattr(ICONS, "SYNC", ICONS.CACHED))),
-                tooltip="Refresh app",
-                on_click=refresh_app,
-            ),
-            ft.IconButton(ICONS.INFO_OUTLINE, tooltip="About", on_click=open_about),
-            ft.IconButton(ICONS.DARK_MODE_OUTLINED, tooltip="Toggle theme", on_click=toggle_theme),
+            _appbar_action(REFRESH_ICON or getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", None)), "Refresh app", refresh_app, text_fallback="Refresh"),
+            _appbar_action(DARK_ICON, "Toggle theme", toggle_theme, text_fallback="Theme"),
         ],
     )
+    try:
+        page.update()
+    except Exception:
+        pass
+
+    # Keyboard shortcut: F1 opens the user guide
+    def _kb(e):
+        try:
+            key = str(getattr(e, "key", "")).upper()
+            et = str(getattr(e, "type", "")).lower()
+            if key == "F1" and et == "keydown":
+                open_user_guide(None)
+        except Exception:
+            pass
+    try:
+        page.on_keyboard_event = _kb
+    except Exception:
+        pass
+
+    # Guide FAB is placed in root Stack (see page.add(root_stack) above). No overlay used.
 
     # Reusable: build a click handler that opens a small dialog with the given help text
     def _mk_help_handler(text: str):
@@ -1180,7 +1394,7 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option("4chan"), ft.dropdown.Option("reddit"), ft.dropdown.Option("stackexchange")],
         width=180,
     )
-    reddit_url = ft.TextField(label="Reddit URL (subreddit or post)", value="https://www.reddit.com/r/Conservative/", width=420)
+    reddit_url = ft.TextField(label="Reddit URL (subreddit or post)", value="https://www.reddit.com/r/LocalLLaMA/", width=420)
     reddit_max_posts = ft.TextField(label="Max Posts (Reddit)", value="30", width=180, keyboard_type=ft.KeyboardType.NUMBER)
     se_site = ft.TextField(label="StackExchange Site", value="stackoverflow", width=260)
     max_threads = ft.TextField(label="Max Threads", value="50", width=160, keyboard_type=ft.KeyboardType.NUMBER)
@@ -8838,7 +9052,21 @@ Specify license and any restrictions.
         expand=1,
     )
 
+    # Add tabs and attach a page-level Floating Action Button (bottom-right)
     page.add(tabs)
+    try:
+        page.floating_action_button = ft.FloatingActionButton(
+            icon=(INFO_ICON or getattr(ICONS, "INFO", None)),
+            tooltip="User guide (F1)",
+            on_click=lambda e: open_user_guide(e),
+        )
+    except Exception:
+        pass
+    try:
+        page.update()
+    except Exception:
+        pass
+
     # Initialize visibility by current source value
     update_source_controls()
     try:
