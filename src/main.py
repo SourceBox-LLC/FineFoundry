@@ -1149,7 +1149,8 @@ Tabs:
 - Settings
 
 ## Quick Navigation
-- Top‑right icons: Refresh • User guide • Theme toggle
+- Top‑right icons: Refresh • Theme toggle
+- User guide: press F1 or click the bottom‑right Help FAB.
 - Use the tabs to switch workflows.
 
 ## Scrape
@@ -9036,10 +9037,10 @@ Specify license and any restrictions.
                 ], scroll=ft.ScrollMode.AUTO, spacing=12),
                 width=1000,
             )
-        ], alignment=ft.MainAxisAlignment.CENTER),
-        padding=16,
+        ])
     )
-
+    
+    # Tabs and welcome screen
     tabs = ft.Tabs(
         tabs=[
             ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
@@ -9052,47 +9053,71 @@ Specify license and any restrictions.
         expand=1,
     )
 
-    # Add tabs and attach a page-level Floating Action Button (bottom-right)
-    page.add(tabs)
+    def show_main_app(_=None):
+        try:
+            page.controls.clear()
+            page.add(tabs)
+            try:
+                page.floating_action_button = ft.FloatingActionButton(
+                    icon=(INFO_ICON or getattr(ICONS, "INFO", None)),
+                    tooltip="User guide (F1)",
+                    on_click=lambda e: open_user_guide(e),
+                )
+            except Exception:
+                pass
+            try:
+                page.update()
+            except Exception:
+                pass
+            # Initialize visibility and dependent UI now that tabs exist
+            update_source_controls()
+            try:
+                _update_train_source()
+            except Exception:
+                pass
+            try:
+                _update_skill_controls()
+            except Exception:
+                pass
+            try:
+                _update_analysis_source()
+            except Exception:
+                pass
+            try:
+                _update_analysis_backend()
+            except Exception:
+                pass
+            try:
+                _sync_select_all_modules()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    welcome_logo = ft.Image(src="img/FineForge-logo.png", width=240, height=240, fit=ft.ImageFit.CONTAIN)
+    welcome_tagline = ft.Text("Curate, analyze, and fine‑tune datasets with a beautiful desktop UI.", color=WITH_OPACITY(0.8, BORDER_BASE))
+    start_btn = ft.FilledButton("Start", icon=getattr(ICONS, "PLAY_ARROW", getattr(ICONS, "PLAY_CIRCLE", None)), on_click=show_main_app)
+
+    welcome_view = ft.Container(
+        expand=1,
+        content=ft.Column([
+            welcome_logo,
+            ft.Container(height=8),
+            welcome_tagline,
+            ft.Container(height=16),
+            start_btn,
+        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6),
+        alignment=ft.alignment.center,
+        padding=20,
+    )
+
     try:
-        page.floating_action_button = ft.FloatingActionButton(
-            icon=(INFO_ICON or getattr(ICONS, "INFO", None)),
-            tooltip="User guide (F1)",
-            on_click=lambda e: open_user_guide(e),
-        )
-    except Exception:
-        pass
-    try:
+        page.controls.clear()
+        page.add(welcome_view)
+        page.floating_action_button = None
         page.update()
     except Exception:
         pass
-
-    # Initialize visibility by current source value
-    update_source_controls()
-    try:
-        _update_train_source()
-    except Exception:
-        pass
-    try:
-        _update_skill_controls()
-    except Exception:
-        pass
-    try:
-        _update_analysis_source()
-    except Exception:
-        pass
-
-    try:
-        _update_analysis_backend()
-    except Exception:
-        pass
-
-    # Initialize select-all state based on defaults
-    try:
-        _sync_select_all_modules()
-    except Exception:
-        pass
-
 
 if __name__ == "__main__":
     ft.app(target=main)
