@@ -132,7 +132,7 @@ def WITH_OPACITY(opacity: float, color):
             pass
     return color
 
-APP_TITLE = "Dataset Studio"
+APP_TITLE = "FineFoundry"
 ACCENT_COLOR = COLORS.AMBER
 BORDER_BASE = getattr(COLORS, "ON_SURFACE", getattr(COLORS, "GREY", "#e0e0e0"))
 

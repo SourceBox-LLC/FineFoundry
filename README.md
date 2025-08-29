@@ -1,21 +1,25 @@
-# Dataset Studio
+# FineFoundry
 
-A desktop GUI and CLI toolkit to scrape conversational pairs from 4chan, Reddit, and Stack Exchange, then build and optionally publish clean, versioned datasets to the Hugging Face Hub.
+A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze, build/publish, and train on Runpod or locally — then ship to the Hugging Face Hub.
 
-Built with Flet for a fast, native-like UI. Ships with:
+Built with Flet for a fast, native-like UI. Includes:
 
-- 4chan scraper with adjacent and contextual pairing (quote-chain or cumulative), plus robust cleaning.
-- Reddit scraper CLI that crawls subreddits or single posts, expands "more" comments, and builds pairs (parent→child or contextual).
-- Stack Exchange Q/A scraper (programmatic) that fetches questions and accepted answers.
-- Dataset builder that creates train/val/test splits and saves with `datasets`, with optional push + dataset card.
+- 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
+- Reddit scraper CLI for subreddits or single posts; expands “more” comments; builds pairs (parent→child or contextual).
+- Stack Exchange Q/A scraper (programmatic) for accepted answers.
+- Dataset builder for train/val/test splits with Hugging Face `datasets`, with optional push + dataset card.
+- Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
+- Training via Runpod (managed pods, network volume at /data) or local Docker, with LoRA, packing, auto‑resume, and Hub push.
 
 ## Contents
 
-- `src/main.py` — Flet desktop app (Scrape + Build/Publish tabs)
+- `src/main.py` — Flet desktop app (Scrape, Build/Publish, Training, Merge, Analysis, Settings)
 - `src/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
 - `src/reddit_scraper.py` — Reddit scraper CLI + conversational pair builder
 - `src/stackexchange_scraper.py` — Stack Exchange Q/A scraper (programmatic)
 - `src/save_dataset.py` — CLI dataset builder and Hub pusher
+- `src/ensure_infra.py` — Runpod infrastructure automation (network volume + template)
+- `src/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
 - `requirements.txt` — pinned dependencies
 
 ## Prerequisites
@@ -56,7 +60,7 @@ Optional (for pushing to Hugging Face):
    flet run src/main.py
    ```
 
-The app opens a desktop window. Use the two tabs: Scrape and Build / Publish.
+The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Merge Datasets, Dataset Analysis, and Settings.
 
 ## Using the App
 
@@ -75,16 +79,6 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 ]
 ```
 
-### Contextual Pairing (Quote Chain)
-
-- **Pairing Mode**: choose `contextual` to enable advanced pairing.
-- **Context Strategy**: `quote_chain` follows 4chan quotelinks (e.g., `>>123`) backwards up to `Last K` steps to build the input context for each reply; `cumulative` falls back to the last K sequential posts.
-- **Last K**: maximum depth for quote-chain traversal or cumulative fallback.
-- **Max Input Chars**: truncate input context from the end if it exceeds this length.
-- **Merge same poster**: merges consecutive context messages from the same poster ID when available.
-- **Require question in context**: only keep pairs where the built context looks like a question.
-- Fallbacks: if no quotelinks are present, the scraper falls back to cumulative last-K; if even that is empty, it pairs adjacent posts.
-
 ### Build / Publish tab
 
 - Point to your `Data file (JSON)` (defaults to `scraped_training_data.json`).
@@ -97,6 +91,40 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
   - `HF Token` (can be left blank if you logged in via CLI or have `HF_TOKEN` env var)
 - Click **Push + Upload README** to upload the dataset and a generated dataset card.
 
+### Training tab
+
+- **Dataset source**: select Hugging Face repo and split for training data.
+- **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, Learning rate, Per-device batch size, Grad accum steps, Max steps.
+- **Options**: Use LoRA, Packing, Auto-resume.
+- **Output**: `Output dir` defaults to `/data/outputs/runpod_run`. Optional `Resume from (path)` to continue from a checkpoint.
+- **Push to Hub**: toggle to upload trained weights/adapters; set HF repo id and ensure authentication.
+- **Run on Runpod**:
+  - First, ensure infrastructure: create/reuse a Network Volume and a Pod Template. The default mount path is `/data`. Avoid `/workspace` to prevent hiding `train.py` inside the image.
+  - Start training on a pod from the template; checkpoints will appear under `/data/outputs/runpod_run`.
+- **Run locally via Docker**:
+  - Choose a host data directory to mount as `/data`, select image and GPU, then launch. Outputs land in the mounted folder under `outputs/runpod_run`.
+
+### Merge Datasets tab
+
+- Combine multiple JSON files and/or Hugging Face datasets into a single dataset.
+- Automatically maps input/output columns and filters empty rows.
+- Optionally normalize and save merged results to a JSON path or build a `datasets.DatasetDict`.
+
+### Dataset Analysis tab
+
+- Select dataset source (Hugging Face or JSON) and click Analyze.
+- Toggles gate computation and visibility:
+  - Sentiment
+  - Class balance (length buckets)
+  - Extra metrics (lightweight proxy metrics): Coverage overlap, Data leakage, Conversation depth, Speaker balance, Question vs Statement, Readability, NER proxy, Toxicity, Politeness, Dialogue Acts, Topics, Alignment
+- A summary lists all active modules after each run.
+
+### Settings tab
+
+- Hugging Face Access: save token used by Build/Publish and Training push.
+- Proxies: per-scraper defaults and env-proxy usage.
+- Runpod: save API key for infrastructure and pod control.
+
 ## Hugging Face Authentication
 
 You can authenticate in one of three ways:
@@ -104,11 +132,12 @@ You can authenticate in one of three ways:
 - Paste your token into the `HF Token` field in the UI.
 - Set an environment variable before launching the app:
 
-  ```bash
-  # Windows (PowerShell)
-  setx HF_TOKEN "hf_xxx"
-  # New shells will inherit it
-  ```
+   ```bash
+   # Windows (PowerShell)
+   setx HF_TOKEN "hf_xxx"
+   # New shells will inherit it
+   ```
+
 - Log in via CLI (persisted cache):
 
   ```bash
@@ -161,11 +190,13 @@ Note: there are no CLI flags; configure constants in the file header, then run i
    PRIVATE = True
    HF_TOKEN = None  # if None, uses env HF_TOKEN or cached login
    ```
+
 3. Run the script
 
    ```bash
    python src/save_dataset.py
    ```
+
 This saves to `SAVE_DIR` and optionally pushes to `REPO_ID`. A dataset card is generated and uploaded as `README.md` in the repo.
 
 ## CLI: Reddit Scraper
