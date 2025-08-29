@@ -1955,70 +1955,112 @@ def main(page: ft.Page):
     se_params_row = ft.Row([se_site], wrap=True, visible=False)
 
     scrape_tab = ft.Container(
-        content=ft.Column([
-            section_title(
-                "Source",
-                ICONS.DASHBOARD,
-                "Choose a data source. Options: 4chan, Reddit, StackExchange.",
-                on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange."),
-            ),
-            ft.Row([source_dd], wrap=True),
-            section_title(
-                "4chan Boards",
-                ICONS.DASHBOARD,
-                "Select which 4chan boards to scrape.",
-                on_help_click=_mk_help_handler("Select which 4chan boards to scrape."),
-            ),
-            board_actions,
-            boards_wrap,
-            board_warning,
-            ft.Divider(),
-            section_title(
-                "Parameters",
-                ICONS.TUNE,
-                "Set scraping limits and pairing behavior. Context options appear when applicable.",
-                on_help_click=_mk_help_handler("Set scraping limits and pairing behavior. Context options appear when applicable."),
-            ),
-            reddit_params_row,
-            se_params_row,
-            ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
-            ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
-            ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
-            scrape_actions,
-            ft.Container(height=10),
-            section_title(
-                "Progress",
-                ICONS.TIMELAPSE,
-                "Shows current task progress and counters.",
-                on_help_click=_mk_help_handler("Shows current task progress and counters."),
-            ),
-            ft.Row([scrape_prog, working_ring, ft.Text("Working...")], spacing=16),
-            stats_cards,
-            ft.Row([threads_label, pairs_label], spacing=20),
-            ft.Divider(),
-            section_title(
-                "Live Log",
-                ICONS.TERMINAL,
-                "Streaming log of scraping activity.",
-                on_help_click=_mk_help_handler("Streaming log of scraping activity."),
-            ),
-            ft.Container(log_area, height=180, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                         border_radius=8, padding=10),
-            section_title(
-                "Preview",
-                ICONS.PREVIEW,
-                "Quick sample preview of scraped pairs.",
-                on_help_click=_mk_help_handler("Quick sample preview of scraped pairs."),
-            ),
-            ft.Container(preview_area, height=240, border_radius=8,
-                         border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), padding=6),
-            ft.Row([
-                ft.ElevatedButton(
-                    "Preview Dataset", icon=ICONS.PREVIEW,
-                    on_click=handle_preview_click,
-                )
-            ], alignment=ft.MainAxisAlignment.END),
-        ], scroll=ft.ScrollMode.AUTO, spacing=12),
+        content=ft.Row([
+            ft.Container(
+                content=ft.Column([
+                    section_title(
+                        "Source",
+                        ICONS.DASHBOARD,
+                        "Choose a data source. Options: 4chan, Reddit, StackExchange.",
+                        on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([source_dd], wrap=True),
+                        ], spacing=0),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    section_title(
+                        "4chan Boards",
+                        ICONS.DASHBOARD,
+                        "Select which 4chan boards to scrape.",
+                        on_help_click=_mk_help_handler("Select which 4chan boards to scrape."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            board_actions,
+                            boards_wrap,
+                            board_warning,
+                        ], spacing=6),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    section_title(
+                        "Parameters",
+                        ICONS.TUNE,
+                        "Set scraping limits and pairing behavior. Context options appear when applicable.",
+                        on_help_click=_mk_help_handler("Set scraping limits and pairing behavior. Context options appear when applicable."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            reddit_params_row,
+                            se_params_row,
+                            ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
+                            ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
+                            ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
+                            scrape_actions,
+                        ], spacing=8),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    section_title(
+                        "Progress",
+                        ICONS.TIMELAPSE,
+                        "Shows current task progress and counters.",
+                        on_help_click=_mk_help_handler("Shows current task progress and counters."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([scrape_prog, working_ring, ft.Text("Working...")], spacing=16),
+                            stats_cards,
+                            ft.Row([threads_label, pairs_label], spacing=20),
+                        ], spacing=8),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    section_title(
+                        "Live Log",
+                        ICONS.TERMINAL,
+                        "Streaming log of scraping activity.",
+                        on_help_click=_mk_help_handler("Streaming log of scraping activity."),
+                    ),
+                    ft.Container(log_area, height=180, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                                 border_radius=8, padding=10, width=1000),
+                    section_title(
+                        "Preview",
+                        ICONS.PREVIEW,
+                        "Quick sample preview of scraped pairs.",
+                        on_help_click=_mk_help_handler("Quick sample preview of scraped pairs."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(preview_area, height=240, border_radius=8,
+                                         border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), padding=6),
+                            ft.Row([
+                                ft.ElevatedButton(
+                                    "Preview Dataset", icon=ICONS.PREVIEW,
+                                    on_click=handle_preview_click,
+                                )
+                            ], alignment=ft.MainAxisAlignment.END),
+                        ], spacing=8),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                ], scroll=ft.ScrollMode.AUTO, spacing=12),
+                width=1000,
+            )
+        ], alignment=ft.MainAxisAlignment.CENTER),
         padding=16,
     )
 
@@ -2033,6 +2075,7 @@ def main(page: ft.Page):
         value="JSON file",
         width=180,
     )
+    # Data source and processing controls
     data_file = ft.TextField(label="Data file (JSON)", value="scraped_training_data.json", width=360)
     merged_dir = ft.TextField(label="Merged dataset dir", value="merged_dataset", width=240)
     seed = ft.TextField(label="Seed", value="42", width=120, keyboard_type=ft.KeyboardType.NUMBER)
@@ -2104,6 +2147,8 @@ def main(page: ft.Page):
     dd_ref = {"dd": None}
     push_state = {"inflight": False}
     push_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
+    # Reference to the model card preview container (assigned later)
+    card_preview_container = None
 
     # --- Model Card Creator controls/state ---
     # Switch to enable custom model card instead of autogenerated
@@ -2185,6 +2230,39 @@ Specify license and any restrictions.
     except Exception:
         pass
 
+    # Dedicated preview container (hidden until we have content + preview enabled)
+    card_preview_container = ft.Container(
+        ft.Column([card_preview_md], scroll=ft.ScrollMode.AUTO, spacing=0),
+        height=300,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        padding=8,
+        visible=False,
+    )
+
+    def _has_card_content() -> bool:
+        try:
+            return bool((card_editor.value or "").strip())
+        except Exception:
+            return False
+
+    def _apply_preview_visibility():
+        # Show preview only when: custom mode enabled + live preview on + content non-empty
+        try:
+            show = bool(use_custom_card.value) and bool(card_preview_switch.value) and _has_card_content()
+            try:
+                if hasattr(card_preview_md, "visible"):
+                    card_preview_md.visible = show
+            except Exception:
+                pass
+            try:
+                if card_preview_container is not None:
+                    card_preview_container.visible = show
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _update_preview():
         try:
             if hasattr(card_preview_md, "value"):
@@ -2195,6 +2273,8 @@ Specify license and any restrictions.
                 card_preview_md.value = card_editor.value or ""
             except Exception:
                 pass
+        # Re-evaluate visibility whenever content changes
+        _apply_preview_visibility()
 
     def _on_toggle_custom_card(_):
         enabled = bool(use_custom_card.value)
@@ -2205,6 +2285,7 @@ Specify license and any restrictions.
                 card_preview_md.visible = enabled and bool(card_preview_switch.value)
         except Exception:
             pass
+        _apply_preview_visibility()
         page.update()
 
     use_custom_card.on_change = _on_toggle_custom_card
@@ -2887,58 +2968,73 @@ Specify license and any restrictions.
                             "Choose input source, preprocessing, and output path for building a dataset.",
                             on_help_click=_mk_help_handler("Choose input source, preprocessing, and output path for building a dataset."),
                         ),
-                        ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
-                        ft.Divider(),
-                        section_title(
-                            "Splits",
-                            ICONS.TABLE_VIEW,
-                            "Configure validation and test fractions; train is the remainder.",
-                            on_help_click=_mk_help_handler("Configure validation and test fractions; train is the remainder."),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
+                                ft.Divider(),
+                                section_title(
+                                    "Splits",
+                                    ICONS.TABLE_VIEW,
+                                    "Configure validation and test fractions; train is the remainder.",
+                                    on_help_click=_mk_help_handler("Configure validation and test fractions; train is the remainder."),
+                                ),
+                                ft.Row([
+                                    ft.Column([
+                                        ft.Text("Validation Fraction"), val_slider,
+                                        ft.Text("Test Fraction"), test_slider,
+                                        split_error,
+                                    ], width=360),
+                                    ft.Row([split_badges["train"], split_badges["val"], split_badges["test"]], spacing=10),
+                                ], wrap=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ], spacing=12),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
                         ),
-                        ft.Row([
-                            ft.Column([
-                                ft.Text("Validation Fraction"), val_slider,
-                                ft.Text("Test Fraction"), test_slider,
-                                split_error,
-                            ], width=360),
-                            ft.Row([split_badges["train"], split_badges["val"], split_badges["test"]], spacing=10),
-                        ], wrap=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        ft.Divider(),
                         section_title(
                             "Push to Hub",
                             ICONS.PUBLIC,
                             "Optionally upload your dataset to the Hugging Face Hub.",
                             on_help_click=_mk_help_handler("Optionally upload your dataset to the Hugging Face Hub."),
                         ),
-                        ft.Row([push_toggle, repo_id, private, token_val_ui], wrap=True),
-                        build_actions,
-                        ft.Divider(),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([push_toggle, repo_id, private, token_val_ui], wrap=True),
+                                build_actions,
+                            ], spacing=10),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
                         section_title(
                             "Model Card Creator",
                             ICONS.ARTICLE,
                             "Draft and preview the README dataset card; can generate from template or dataset.",
                             on_help_click=_mk_help_handler("Draft and preview the README dataset card; can generate from template or dataset."),
                         ),
-                        ft.Row([use_custom_card, card_preview_switch], wrap=True),
-                        ft.Row([load_template_btn, gen_from_ds_btn, gen_with_ollama_btn, clear_card_btn], wrap=True),
-                        ft.Row([ollama_gen_status], wrap=True),
-                        # Wrap editor in a scrollable container so long content can be viewed
                         ft.Container(
-                            ft.Column([card_editor], scroll=ft.ScrollMode.AUTO, spacing=0),
-                            height=300,
+                            content=ft.Column([
+                                ft.Row([use_custom_card, card_preview_switch], wrap=True),
+                                ft.Row([load_template_btn, gen_from_ds_btn, gen_with_ollama_btn, clear_card_btn], wrap=True),
+                                ft.Row([ollama_gen_status], wrap=True),
+                                # Wrap editor in a scrollable container so long content can be viewed
+                                ft.Container(
+                                    ft.Column([card_editor], scroll=ft.ScrollMode.AUTO, spacing=0),
+                                    height=300,
+                                    border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                                    border_radius=8,
+                                    padding=8,
+                                ),
+                                # Markdown preview container (hidden until content present & preview enabled)
+                                card_preview_container,
+                            ], spacing=10),
+                            width=1000,
                             border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                             border_radius=8,
-                            padding=8,
+                            padding=10,
                         ),
-                        # Wrap markdown preview in a scrollable container as well
-                        ft.Container(
-                            ft.Column([card_preview_md], scroll=ft.ScrollMode.AUTO, spacing=0),
-                            height=300,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=8,
-                        ),
-                        ft.Divider(),
                         section_title(
                             "Status",
                             ICONS.TASK,
@@ -2948,7 +3044,7 @@ Specify license and any restrictions.
                         ft.Container(
                             ft.Stack([timeline, timeline_placeholder], expand=True),
                             height=260,
-                            width=1200,
+                            width=1000,
                             border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                             border_radius=8,
                             padding=10,
@@ -3321,22 +3417,22 @@ Specify license and any restrictions.
                     except Exception as e:
                         raise RuntimeError(f"Failed to read JSON: {e}")
                     try:
-                        examples = await asyncio.to_thread(sd.normalize_records, records, 1)
+                        data = await asyncio.to_thread(sd.normalize_records, records, 1)
                     except Exception:
                         # Fallback: minimal normalization
-                        examples = []
+                        data = []
                         for r in records or []:
                             if isinstance(r, dict):
                                 a = str((r.get("input") or "")).strip()
                                 b = str((r.get("output") or "")).strip()
                                 if a and b:
-                                    examples.append({"input": a, "output": b})
+                                    data.append({"input": a, "output": b})
                     if output_json:
-                        json_sources.append(examples)
+                        json_sources.append(data)
                     else:
                         if Dataset is None:
                             raise RuntimeError("datasets library unavailable to convert JSON -> HF")
-                        ds = await asyncio.to_thread(lambda: Dataset.from_list(examples))
+                        ds = await asyncio.to_thread(lambda: Dataset.from_list(data))
                         hf_prepped.append(ds)
                     merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {os.path.basename(path)}")]))
             except Exception as e:
@@ -3782,39 +3878,54 @@ Specify license and any restrictions.
                 ft.Container(
                     content=ft.Column([
                         section_title(
-                            "Merge Datasets",
-                            ICONS.TABLE_VIEW,
-                            "Combine datasets and unify columns into input/output schema.",
-                            on_help_click=_mk_help_handler("Combine datasets and unify columns into input/output schema."),
-                        ),
-                        ft.Text("Combine multiple datasets (Hugging Face or local JSON). Map columns to a unified input/output schema and merge.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
-                        ft.Divider(),
-                        section_title(
                             "Operation",
                             ICONS.SHUFFLE,
                             "Choose how to merge rows (e.g., concatenate).",
                             on_help_click=_mk_help_handler("Choose how to merge rows (e.g., concatenate)."),
                         ),
-                        ft.Row([merge_op], wrap=True),
-                        ft.Divider(),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([merge_op], wrap=True),
+                            ], spacing=0),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
                         section_title(
                             "Datasets",
                             ICONS.TABLE_VIEW,
                             "Add datasets from HF or local JSON and map columns.",
                             on_help_click=_mk_help_handler("Add datasets from HF or local JSON and map columns."),
                         ),
-                        ft.Row([add_row_btn, clear_btn], spacing=8),
-                        rows_host,
-                        ft.Divider(),
+                        ft.Row([
+                            add_row_btn, clear_btn
+                        ], spacing=8),
+                        ft.Container(
+                            content=ft.Column([
+                                rows_host,
+                            ], spacing=10),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
                         section_title(
                             "Output",
                             ICONS.SAVE_ALT,
                             "Set output format and save directory.",
                             on_help_click=_mk_help_handler("Set output format and save directory."),
                         ),
-                        ft.Row([merge_output_format, merge_save_dir], wrap=True),
-                        merge_actions,
-                        ft.Divider(),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([merge_output_format, merge_save_dir], wrap=True),
+                                merge_actions,
+                            ], spacing=10),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
                         section_title(
                             "Preview",
                             ICONS.PREVIEW,
@@ -3826,7 +3937,7 @@ Specify license and any restrictions.
                                      width=1000,
                                      border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                                      border_radius=8,
-                                     padding=6,
+                                     padding=10,
                         ),
                         ft.Divider(),
                         section_title(
@@ -5951,13 +6062,25 @@ Specify license and any restrictions.
                 "Create or update the required Runpod Network Volume and Template before training.",
                 on_help_click=_mk_help_handler("Create or update the required Runpod Network Volume and Template before training."),
             ),
-            ft.Text("Defaults are provided; change any value to customize. Key precedence: Settings > Training temp field > environment.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
-            ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
-            ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
-            ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
-            ft.Row([rp_category_tf, rp_public_row], wrap=True),
-            ft.Row([rp_temp_key_tf], wrap=True),
-            rp_infra_actions,
+            ft.Container(
+                content=ft.Column([
+                    ft.Text(
+                        "Defaults are provided; change any value to customize. Key precedence: Settings > Training temp field > environment.",
+                        size=12,
+                        color=WITH_OPACITY(0.7, BORDER_BASE),
+                    ),
+                    ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
+                    ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
+                    ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
+                    ft.Row([rp_category_tf, rp_public_row], wrap=True),
+                    ft.Row([rp_temp_key_tf], wrap=True),
+                    rp_infra_actions,
+                ], spacing=12),
+                width=1000,
+                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                border_radius=8,
+                padding=10,
+            ),
         ], spacing=12),
         visible=True,
     )
@@ -6442,6 +6565,14 @@ Specify license and any restrictions.
         visible=False,
     )
 
+    # Combined holder for Dataset + Training Params. Styled depending on training target.
+    ds_tp_group_container = ft.Container(
+        content=ft.Column([
+            dataset_section,
+            train_params_section,
+        ], spacing=12),
+    )
+
     # Update visibility based on mode selection
     def _update_mode_visibility(_=None):
         mode = (config_mode_dd.value or "Normal").lower()
@@ -6458,6 +6589,11 @@ Specify license and any restrictions.
             train_params_section.visible = (not is_cfg)
             rp_infra_panel.visible = (not is_cfg)
             rp_infra_compact_row.visible = is_cfg
+            # Hide the grouped wrapper entirely in Config mode (Runpod)
+            try:
+                ds_tp_group_container.visible = (not is_cfg)
+            except Exception:
+                pass
         except Exception:
             pass
         try:
@@ -7317,8 +7453,7 @@ Specify license and any restrictions.
                     config_section,
                     rp_infra_panel,
                     ft.Divider(),
-                    dataset_section,
-                    train_params_section,
+                    ds_tp_group_container,
                     pod_logs_section,
                     teardown_section,
                     train_actions,
@@ -7437,6 +7572,50 @@ Specify license and any restrictions.
                 config_section.visible = is_pod
             except Exception:
                 pass
+            # Recompose the Dataset + Training Params grouping depending on target
+            try:
+                if is_pod:
+                    # Runpod view: bordered form like local
+                    ds_tp_group_container.content = ft.Column([
+                        section_title(
+                            "Runpod: Dataset & Params",
+                            getattr(ICONS, "LIST_ALT", getattr(ICONS, "DESCRIPTION", ICONS.SETTINGS)),
+                            "Choose dataset and configure training parameters for Runpod pods.",
+                            on_help_click=_mk_help_handler("Choose dataset source and configure training parameters for Runpod pod training."),
+                        ),
+                        ft.Container(
+                            content=ft.Column([
+                                dataset_section,
+                                train_params_section,
+                            ], spacing=0),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
+                    ], spacing=12)
+                else:
+                    # Local view: add a titled bordered form around Dataset + Training Params
+                    ds_tp_group_container.content = ft.Column([
+                        section_title(
+                            "Local Training: Dataset & Params",
+                            getattr(ICONS, "LIST_ALT", getattr(ICONS, "DESCRIPTION", ICONS.SETTINGS)),
+                            "Choose dataset and set training parameters for local runs.",
+                            on_help_click=_mk_help_handler("Choose dataset source and configure training parameters for local Docker runs."),
+                        ),
+                        ft.Container(
+                            content=ft.Column([
+                                dataset_section,
+                                train_params_section,
+                            ], spacing=0),
+                            width=1000,
+                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                            border_radius=8,
+                            padding=10,
+                        ),
+                    ], spacing=12)
+            except Exception:
+                pass
         except Exception:
             pass
         if is_pod:
@@ -7473,6 +7652,7 @@ Specify license and any restrictions.
             try:
                 dataset_section.visible = True
                 train_params_section.visible = True
+                ds_tp_group_container.visible = True
             except Exception:
                 pass
             # Hide Runpod-only spot toggle; use local GPUs for expert picker
@@ -8462,55 +8642,90 @@ Specify license and any restrictions.
         kpi_avg_out_tile,
         kpi_dupe_tile,
     ], wrap=True, spacing=12)
-    overview_block = ft.Column([
-        section_title(
-            "Overview",
-            getattr(ICONS, "DASHBOARD", getattr(ICONS, "INSIGHTS", ICONS.SEARCH)),
-            "Key KPIs such as total records, average input/output lengths, and duplicate rate (if enabled).",
-            on_help_click=_mk_help_handler("Key KPIs such as total records, average input/output lengths, and duplicate rate (if enabled)."),
-        ),
-        overview_row,
-    ], spacing=6, visible=False)
+    overview_block = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Overview",
+                getattr(ICONS, "DASHBOARD", getattr(ICONS, "INSIGHTS", ICONS.SEARCH)),
+                "Key KPIs such as total records, average input/output lengths, and duplicate rate (if enabled).",
+                on_help_click=_mk_help_handler("Key KPIs such as total records, average input/output lengths, and duplicate rate (if enabled)."),
+            ),
+            overview_row,
+        ], spacing=6),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+        visible=False,
+    )
 
-    sentiment_block = ft.Column([
-        section_title(
-            "Sentiment",
-            getattr(ICONS, "EMOJI_EMOTIONS", getattr(ICONS, "INSERT_EMOTICON", ICONS.SEARCH)),
-            "Heuristic sentiment distribution computed over sampled records.",
-            on_help_click=_mk_help_handler("Heuristic sentiment distribution computed over sampled records."),
-        ),
-        sentiment_section,
-    ], spacing=6, visible=False)
+    sentiment_block = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Sentiment",
+                getattr(ICONS, "EMOJI_EMOTIONS", getattr(ICONS, "INSERT_EMOTICON", ICONS.SEARCH)),
+                "Heuristic sentiment distribution computed over sampled records.",
+                on_help_click=_mk_help_handler("Heuristic sentiment distribution computed over sampled records."),
+            ),
+            sentiment_section,
+        ], spacing=6),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+        visible=False,
+    )
 
-    class_balance_block = ft.Column([
-        section_title(
-            "Class balance",
-            getattr(ICONS, "DONUT_SMALL", getattr(ICONS, "PIE_CHART", ICONS.SEARCH)),
-            "Distribution of labels/classes if present in your dataset.",
-            on_help_click=_mk_help_handler("Distribution of labels/classes if present in your dataset."),
-        ),
-        class_balance_section,
-    ], spacing=6, visible=False)
+    class_balance_block = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Class balance",
+                getattr(ICONS, "DONUT_SMALL", getattr(ICONS, "PIE_CHART", ICONS.SEARCH)),
+                "Distribution of labels/classes if present in your dataset.",
+                on_help_click=_mk_help_handler("Distribution of labels/classes if present in your dataset."),
+            ),
+            class_balance_section,
+        ], spacing=6),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+        visible=False,
+    )
 
-    extra_metrics_block = ft.Column([
-        section_title(
-            "Extra metrics",
-            getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
-            "Lightweight proxies: coverage overlap, leakage check, depth, speaker balance, Q vs statement, readability, NER proxy, toxicity, politeness, dialogue acts, topics, alignment.",
-            on_help_click=_mk_help_handler("Lightweight proxies: coverage overlap, leakage check, depth, speaker balance, Q vs statement, readability, NER proxy, toxicity, politeness, dialogue acts, topics, alignment."),
-        ),
-        extra_metrics_section,
-    ], spacing=6, visible=False)
+    extra_metrics_block = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Extra metrics",
+                getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
+                "Lightweight proxies: coverage overlap, leakage check, depth, speaker balance, Q vs statement, readability, NER proxy, toxicity, politeness, dialogue acts, topics, alignment.",
+                on_help_click=_mk_help_handler("Lightweight proxies: coverage overlap, leakage check, depth, speaker balance, Q vs statement, readability, NER proxy, toxicity, politeness, dialogue acts, topics, alignment."),
+            ),
+            extra_metrics_section,
+        ], spacing=6),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+        visible=False,
+    )
 
-    samples_block = ft.Column([
-        section_title(
-            "Samples",
-            getattr(ICONS, "LIST", getattr(ICONS, "LIST_ALT", ICONS.SEARCH)),
-            "Random sample rows for quick spot checks (input/output and lengths).",
-            on_help_click=_mk_help_handler("Random sample rows for quick spot checks (input/output and lengths)."),
-        ),
-        samples_section,
-    ], spacing=6, visible=False)
+    samples_block = ft.Container(
+        content=ft.Column([
+            section_title(
+                "Samples",
+                getattr(ICONS, "LIST", getattr(ICONS, "LIST_ALT", ICONS.SEARCH)),
+                "Random sample rows for quick spot checks (input/output and lengths).",
+                on_help_click=_mk_help_handler("Random sample rows for quick spot checks (input/output and lengths)."),
+            ),
+            samples_section,
+        ], spacing=6),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+        visible=False,
+    )
 
     # Named dividers for each results block (hidden until analysis produces output)
     div_overview = ft.Divider(visible=False)
@@ -8520,67 +8735,94 @@ Specify license and any restrictions.
     div_samples = ft.Divider(visible=False)
 
     analysis_tab = ft.Container(
-        content=ft.Column([
-            ft.Row([
-                section_title(
-                    "Dataset Analysis",
-                    getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
-                    "Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results.",
-                    on_help_click=_mk_help_handler("Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results."),
-                ),
-                ft.Container(expand=1),
-                analyze_btn,
-                analysis_busy_ring,
-            ], alignment=ft.MainAxisAlignment.START),
+        content=ft.Row([
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        section_title(
+                            "Dataset Analysis",
+                            getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
+                            "Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results.",
+                            on_help_click=_mk_help_handler("Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results."),
+                        ),
+                        ft.Container(expand=1),
+                        analyze_btn,
+                        analysis_busy_ring,
+                    ], alignment=ft.MainAxisAlignment.START),
 
-            # Dataset chooser row
-            ft.Row([
-                analysis_source_dd,
-                analysis_hf_repo,
-                analysis_hf_split,
-                analysis_hf_config,
-                analysis_json_path,
-            ], wrap=True, spacing=10),
-            analysis_dataset_hint,
-            ft.Divider(),
-            section_title(
-                "Analysis modules",
-                getattr(ICONS, "TUNE", ICONS.SETTINGS),
-                "Choose which checks to run. Only enabled modules are computed and displayed.",
-                on_help_click=_mk_help_handler("Choose which checks to run. Only enabled modules are computed and displayed."),
-            ),
-            ft.Row([select_all_modules_cb], wrap=True),
-            ft.Container(_build_modules_table(), padding=4, border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)), border_radius=8),
+                    # Dataset chooser row
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([
+                                analysis_source_dd,
+                                analysis_hf_repo,
+                                analysis_hf_split,
+                                analysis_hf_config,
+                                analysis_json_path,
+                            ], wrap=True, spacing=10),
+                            analysis_dataset_hint,
+                        ], spacing=6),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    ft.Divider(),
+                    section_title(
+                        "Analysis modules",
+                        getattr(ICONS, "TUNE", ICONS.SETTINGS),
+                        "Choose which checks to run. Only enabled modules are computed and displayed.",
+                        on_help_click=_mk_help_handler("Choose which checks to run. Only enabled modules are computed and displayed."),
+                    ),
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([select_all_modules_cb], wrap=True),
+                            _build_modules_table(),
+                        ], spacing=6),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
 
-            ft.Divider(),
-            section_title(
-                "Runtime settings",
-                getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
-                "Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed.",
-                on_help_click=_mk_help_handler("Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed."),
-            ),
-            ft.Row([
-                analysis_backend_dd,
-                analysis_hf_token_tf,
-                analysis_sample_size_tf,
-            ], wrap=True, spacing=10),
+                    ft.Divider(),
+                    section_title(
+                        "Runtime settings",
+                        getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
+                        "Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed.",
+                        on_help_click=_mk_help_handler("Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed."),
+                    ),
+                    ft.Container(
+                        content=ft.Row([
+                            analysis_backend_dd,
+                            analysis_hf_token_tf,
+                            analysis_sample_size_tf,
+                        ], wrap=True, spacing=10),
+                        width=1000,
+                        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+                        border_radius=8,
+                        padding=10,
+                    ),
 
-            analysis_overview_note,
-            div_overview,
-            overview_block,
+                    analysis_overview_note,
+                    div_overview,
+                    overview_block,
 
-            div_sentiment,
-            sentiment_block,
+                    div_sentiment,
+                    sentiment_block,
 
-            div_class,
-            class_balance_block,
+                    div_class,
+                    class_balance_block,
 
-            div_extra,
-            extra_metrics_block,
+                    div_extra,
+                    extra_metrics_block,
 
-            div_samples,
-            samples_block,
-        ], scroll=ft.ScrollMode.AUTO, spacing=12),
+                    div_samples,
+                    samples_block,
+                ], scroll=ft.ScrollMode.AUTO, spacing=12),
+                width=1000,
+            )
+        ], alignment=ft.MainAxisAlignment.CENTER),
         padding=16,
     )
 
