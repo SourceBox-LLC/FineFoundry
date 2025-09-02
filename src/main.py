@@ -8,8 +8,6 @@ from typing import List, Optional, Tuple, Callable
 import json
 import re
 from collections import Counter
-from urllib.request import urlopen
-from urllib.error import URLError, HTTPError
 import platform
 import subprocess
 import ctypes
@@ -17,8 +15,7 @@ import sys
 
 import flet as ft
 import httpx
-import fourchan_scraper as sc
-import requests
+from scrapers import fourchan_scraper as sc
 try:
     import save_dataset as sd
 except Exception:
@@ -26,24 +23,24 @@ except Exception:
     _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     import save_dataset as sd
 
-# Runpod infra helper (local module)
+# Runpod infra helper (package module)
 try:
-    import ensure_infra as rp_infra
+    from runpod import ensure_infra as rp_infra
 except Exception:
     import sys as __sys
     __sys.path.append(os.path.dirname(__file__))
-    import ensure_infra as rp_infra
+    from runpod import ensure_infra as rp_infra
 
-# Runpod pod helper (local module)
+# Runpod pod helper (package module)
 try:
-    import runpod_pod as rp_pod
+    from runpod import runpod_pod as rp_pod
 except Exception:
     import sys as __sys2
     __sys2.path.append(os.path.dirname(__file__))
-    import runpod_pod as rp_pod
+    from runpod import runpod_pod as rp_pod
 
-import reddit_scraper as rdt
-import stackexchange_scraper as sx
+from scrapers import reddit_scraper as rdt
+from scrapers import stackexchange_scraper as sx
 try:
     # Hugging Face datasets (for merge tab)
     from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets, get_dataset_config_names, load_from_disk
@@ -66,556 +63,41 @@ except Exception:
     HfApi = None
     HfFolder = None
 
-# Robust color aliasing: prefer ft.Colors, fall back to ft.colors if present
-if hasattr(ft, "Colors"):
-    COLORS = ft.Colors
-else:
-    COLORS = getattr(ft, "colors", None)
-
-# Robust icons aliasing: prefer ft.Icons, fall back to ft.icons if present
-if hasattr(ft, "Icons"):
-    ICONS = ft.Icons
-else:
-    ICONS = getattr(ft, "icons", None)
-
-# Common icon fallbacks
-REFRESH_ICON = getattr(ICONS, "REFRESH", getattr(ICONS, "AUTORENEW", getattr(ICONS, "RESTART_ALT", None)))
-INFO_ICON = getattr(
+# Import modularized helpers
+from helpers.common import safe_update, set_terminal_title
+from helpers.theme import (
+    COLORS,
     ICONS,
-    "INFO_OUTLINE",
-    getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", getattr(ICONS, "HELP", None))),
+    ACCENT_COLOR,
+    BORDER_BASE,
+    REFRESH_ICON,
+    INFO_ICON,
+    DARK_ICON,
 )
-DARK_ICON = getattr(ICONS, "DARK_MODE_OUTLINED", getattr(ICONS, "DARK_MODE", None))
-
-async def safe_update(page: ft.Page):
-    """Update the page across Flet versions (async if available, else sync)."""
-    if hasattr(page, "update_async"):
-        return await page.update_async()
-    return page.update()
-
-def set_terminal_title(title: str):
-    """Attempt to set the integrated terminal/tab title across platforms."""
-    try:
-        if platform.system().lower().startswith("win"):
-            # Best: Windows API
-            try:
-                if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "kernel32"):
-                    ctypes.windll.kernel32.SetConsoleTitleW(title)
-                    return
-            except Exception:
-                pass
-            # Fallback: shell 'title' command
-            try:
-                os.system(f"title {title}")
-                return
-            except Exception:
-                pass
-        # ANSI OSC sequence fallback (works in many terminals)
-        try:
-            sys.stdout.write(f"\x1b]0;{title}\x07")
-            sys.stdout.flush()
-        except Exception:
-            pass
-    except Exception:
-        pass
+from helpers.boards import load_4chan_boards
+from helpers.ui import (
+    WITH_OPACITY,
+    pill,
+    section_title,
+    make_wrap,
+    make_selectable_pill,
+    make_empty_placeholder,
+    compute_two_col_flex,
+    two_col_header,
+    two_col_row,
+)
+from helpers.proxy import apply_proxy_from_ui
+from ui.tabs.tab_settings import build_settings_tab
+from ui.tabs.tab_scrape import build_scrape_tab
+from ui.tabs.tab_build import build_build_tab
+from ui.tabs.tab_training import build_training_tab
+from ui.tabs.tab_merge import build_merge_tab
+from ui.tabs.tab_analysis import build_analysis_tab
 
 # Set terminal title to uppercase for the current session
 set_terminal_title("PYTHON: MAIN")
 
-def WITH_OPACITY(opacity: float, color):
-    """Apply opacity if supported in this Flet build; otherwise return color as-is."""
-    # Try ft.colors.with_opacity
-    if hasattr(ft, "colors") and hasattr(ft.colors, "with_opacity"):
-        try:
-            return ft.colors.with_opacity(opacity, color)
-        except Exception:
-            pass
-    # Try Colors.with_opacity
-    if hasattr(COLORS, "with_opacity"):
-        try:
-            return COLORS.with_opacity(opacity, color)
-        except Exception:
-            pass
-    return color
-
 APP_TITLE = "FineFoundry"
-ACCENT_COLOR = COLORS.AMBER
-BORDER_BASE = getattr(COLORS, "ON_SURFACE", getattr(COLORS, "GREY", "#e0e0e0"))
-
-# Fallback board list (used if API unavailable)
-DEFAULT_BOARDS: List[str] = [
-    # SFW
-    "a", "c", "w", "m", "cgl", "cm", "f", "n", "jp", "vt", "vp",
-    "v", "vg", "vr", "vm", "vmg", "vst", "co", "g", "tv", "k", "o",
-    "an", "tg", "sp", "xs", "sci", "his", "int", "out", "toy", "i", "po",
-    "p", "ck", "ic", "wg", "lit", "mu", "fa", "3", "gd", "diy", "wsg",
-    "biz", "trv", "fit", "s4s", "adv", "news", "qa", "qst",
-    # 18+
-    "b", "r9k", "pol", "soc", "s", "hc", "hm", "h", "e", "u", "d", "y",
-    "t", "hr", "gif", "aco", "trash", "mlp", "bant", "x",
-]
-
-
-def load_4chan_boards() -> List[str]:
-    """Load all 4chan board codes from public API with a safe fallback."""
-    url = "https://a.4cdn.org/boards.json"
-    try:
-        with urlopen(url, timeout=6) as resp:
-            data = json.load(resp)
-            names = sorted([b.get("board") for b in data.get("boards", []) if b.get("board")])
-            if names:
-                return names
-    except Exception:
-        pass
-    return DEFAULT_BOARDS
-
-
-def pill(text: str, color: str, icon: Optional[str] = None) -> ft.Container:
-    return ft.Container(
-        content=ft.Row([
-            ft.Icon(icon, size=14, color=COLORS.WHITE) if icon else ft.Container(),
-            ft.Text(text, size=12, weight=ft.FontWeight.W_600, color=COLORS.WHITE),
-        ], spacing=6, alignment=ft.MainAxisAlignment.CENTER),
-        bgcolor=color,
-        padding=ft.padding.symmetric(6, 6),
-        border_radius=999,
-    )
-
-
-def make_board_chip(text: str, selected: bool, base_color) :
-    """Return a chip-like control compatible with current Flet version.
-    Tries FilterChip -> ChoiceChip -> Chip -> styled Container.
-    """
-    tooltip = f"/{text}/"
-    # Preferred: FilterChip
-    if hasattr(ft, "FilterChip"):
-        return ft.FilterChip(
-            text=text,
-            selected=selected,
-            bgcolor=WITH_OPACITY(0.1, base_color),
-            selected_color=base_color,
-            tooltip=tooltip,
-        )
-    # Next: ChoiceChip (API might be similar)
-    if hasattr(ft, "ChoiceChip"):
-        try:
-            return ft.ChoiceChip(text=text, selected=selected, tooltip=tooltip)
-        except Exception:
-            pass
-    # Next: Chip (non-selectable)
-    if hasattr(ft, "Chip"):
-        try:
-            return ft.Chip(label=ft.Text(text), tooltip=tooltip, bgcolor=WITH_OPACITY(0.1, base_color))
-        except Exception:
-            pass
-    # Fallback: simple container
-    return ft.Container(
-        content=ft.Text(text),
-        bgcolor=WITH_OPACITY(0.1, base_color) if selected else None,
-        border=ft.border.all(1, WITH_OPACITY(0.2, BORDER_BASE)),
-        border_radius=16,
-        padding=ft.padding.symmetric(8, 6),
-        tooltip=tooltip,
-    )
-
-
-def section_title(title: str, icon: str, help_text: Optional[str] = None, on_help_click: Optional[Callable] = None) -> ft.Row:
-    controls = [
-        ft.Icon(icon, color=ACCENT_COLOR),
-        ft.Text(title, size=16, weight=ft.FontWeight.BOLD),
-    ]
-    if help_text:
-        try:
-            _info_icon_name = getattr(
-                ICONS,
-                "INFO_OUTLINE",
-                getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", getattr(ICONS, "HELP", None))),
-            )
-            if _info_icon_name is None:
-                raise AttributeError("No suitable info icon available")
-            try:
-                controls.append(
-                    ft.IconButton(
-                        icon=_info_icon_name,
-                        icon_color=WITH_OPACITY(0.8, BORDER_BASE),
-                        tooltip=help_text,
-                        on_click=on_help_click,
-                    )
-                )
-            except Exception:
-                # Fallback to Tooltip wrapper if IconButton not available
-                info_ic = ft.Icon(_info_icon_name, size=16, color=WITH_OPACITY(0.8, BORDER_BASE))
-                try:
-                    controls.append(ft.Tooltip(message=help_text, content=ft.Container(content=info_ic, padding=0)))
-                except Exception:
-                    controls.append(ft.Container(content=info_ic, tooltip=help_text))
-        except Exception:
-            # Last resort: simple text with optional tooltip
-            try:
-                controls.append(ft.Tooltip(message=help_text, content=ft.Text("ⓘ")))
-            except Exception:
-                controls.append(ft.Text("ⓘ"))
-    return ft.Row(controls)
-
-
-def make_wrap(controls: list, spacing: int = 6, run_spacing: int = 6):
-    """Return a wrapping layout compatible with current Flet version.
-    Tries Wrap -> Row(wrap=True) -> Row -> Column.
-    """
-    # Preferred: Wrap
-    if hasattr(ft, "Wrap"):
-        try:
-            return ft.Wrap(controls, spacing=spacing, run_spacing=run_spacing)
-        except Exception:
-            pass
-    # Next: Row with wrap
-    try:
-        return ft.Row(controls, wrap=True, spacing=spacing, run_spacing=run_spacing,
-                      alignment=ft.MainAxisAlignment.START)
-    except TypeError:
-        # Older Row without run_spacing or wrap
-        try:
-            return ft.Row(controls, spacing=spacing, alignment=ft.MainAxisAlignment.START)
-        except Exception:
-            pass
-    # Fallback: Column (no wrapping)
-    return ft.Column(controls, spacing=spacing)
-
-
-def make_selectable_pill(label: str, selected: bool = False, base_color: Optional[str] = None, on_change=None) -> ft.Container:
-    """Create a selectable pill using a Container, compatible with older Flet builds."""
-    base_color = base_color or ACCENT_COLOR
-    pill = ft.Container(
-        content=ft.Text(label),
-        bgcolor=WITH_OPACITY(0.15, base_color) if selected else None,
-        border=ft.border.all(1, WITH_OPACITY(0.2, BORDER_BASE)),
-        border_radius=16,
-        padding=ft.padding.symmetric(8, 6),
-        tooltip=f"/{label}/",
-    )
-    # Store state in .data
-    pill.data = {"label": label, "selected": bool(selected), "base_color": base_color, "on_change": on_change}
-
-    def toggle(_):
-        d = pill.data
-        d["selected"] = not d.get("selected", False)
-        pill.bgcolor = WITH_OPACITY(0.15, base_color) if d["selected"] else None
-        pill.update()
-        cb = d.get("on_change")
-        if callable(cb):
-            cb()
-
-    pill.on_click = toggle
-    return pill
-
-
-def make_empty_placeholder(text: str, icon) -> ft.Container:
-    """Centered, subtle placeholder shown when a panel has no content."""
-    return ft.Container(
-        content=ft.Column(
-            [
-                ft.Icon(icon, color=WITH_OPACITY(0.45, BORDER_BASE), size=18),
-                ft.Text(text, size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=6,
-        ),
-        padding=10,
-    )
-
-
-def _env_truthy(val: Optional[str]) -> bool:
-    """Interpret common truthy strings from environment variables."""
-    try:
-        return str(val).strip().lower() in {"1", "true", "yes", "on"}
-    except Exception:
-        return False
-
-
-def apply_proxy_from_env() -> str:
-    """Apply proxy settings from environment to both scrapers.
-
-    Env vars:
-    - TOR_PROXY / PROXY_URL: e.g., socks5h://127.0.0.1:9050
-    - USE_ENV_PROXIES: if truthy, allow requests to use HTTP(S)_PROXY from env
-    Returns a short status string for logging.
-    """
-    raw_proxy = os.getenv("TOR_PROXY") or os.getenv("PROXY_URL")
-    raw_use_env = os.getenv("USE_ENV_PROXIES")
-    use_env = _env_truthy(raw_use_env) if raw_use_env is not None else None
-
-    # 4chan scraper
-    try:
-        if raw_proxy is not None and hasattr(sc, "PROXY_URL"):
-            sc.PROXY_URL = raw_proxy
-        if use_env is not None and hasattr(sc, "USE_ENV_PROXIES"):
-            sc.USE_ENV_PROXIES = bool(use_env)
-        if hasattr(sc, "apply_session_config"):
-            sc.apply_session_config()
-    except Exception:
-        pass
-
-    # Reddit scraper (optional)
-    try:
-        if rdt is not None:
-            if raw_proxy is not None and hasattr(rdt, "PROXY_URL"):
-                rdt.PROXY_URL = raw_proxy
-            if use_env is not None and hasattr(rdt, "USE_ENV_PROXIES"):
-                rdt.USE_ENV_PROXIES = bool(use_env)
-            if hasattr(rdt, "apply_session_config"):
-                rdt.apply_session_config()
-    except Exception:
-        pass
-
-    # StackExchange scraper (optional)
-    try:
-        if sx is not None:
-            if raw_proxy is not None and hasattr(sx, "PROXY_URL"):
-                sx.PROXY_URL = raw_proxy
-            if use_env is not None and hasattr(sx, "USE_ENV_PROXIES"):
-                sx.USE_ENV_PROXIES = bool(use_env)
-            if hasattr(sx, "apply_session_config"):
-                sx.apply_session_config()
-    except Exception:
-        pass
-
-    # Determine effective configuration for logging
-    if use_env is True:
-        return "Proxy: using environment proxies (USE_ENV_PROXIES=on)"
-    if raw_proxy:
-        return f"Proxy: routing via {raw_proxy}"
-
-    # No env overrides provided; report module defaults
-    try:
-        eff_env = bool(getattr(sc, "USE_ENV_PROXIES", False)) or bool(getattr(rdt, "USE_ENV_PROXIES", False) if rdt is not None else False)
-    except Exception:
-        eff_env = False
-    if eff_env:
-        return "Proxy: using environment proxies (module default)"
-
-    eff_proxy = None
-    try:
-        eff_proxy = getattr(rdt, "PROXY_URL", None) if rdt is not None else None
-    except Exception:
-        eff_proxy = None
-    if not eff_proxy:
-        try:
-            eff_proxy = getattr(sc, "PROXY_URL", None)
-        except Exception:
-            eff_proxy = None
-    if eff_proxy:
-        return f"Proxy: routing via {eff_proxy} (module default)"
-    return "Proxy: disabled (no proxy configured)"
-
-
-def apply_proxy_from_ui(enabled: bool, proxy_url: Optional[str], use_env: bool) -> str:
-    """Apply proxy settings based on UI controls.
-
-    Priority:
-    - If not enabled: disable all proxies for both scrapers.
-    - If enabled and use_env: allow requests to use environment proxies.
-    - If enabled and not use_env: route via explicit proxy_url (if provided), else disable.
-    Returns a status string for logging.
-    """
-    try:
-        # 4chan
-        if hasattr(sc, "USE_ENV_PROXIES"):
-            sc.USE_ENV_PROXIES = bool(use_env) if enabled else False
-        if hasattr(sc, "PROXY_URL"):
-            sc.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
-        if hasattr(sc, "apply_session_config"):
-            sc.apply_session_config()
-    except Exception:
-        pass
-
-    try:
-        # Reddit (optional)
-        if rdt is not None:
-            if hasattr(rdt, "USE_ENV_PROXIES"):
-                rdt.USE_ENV_PROXIES = bool(use_env) if enabled else False
-            if hasattr(rdt, "PROXY_URL"):
-                rdt.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
-            if hasattr(rdt, "apply_session_config"):
-                rdt.apply_session_config()
-    except Exception:
-        pass
-
-    try:
-        # StackExchange
-        if hasattr(sx, "USE_ENV_PROXIES"):
-            sx.USE_ENV_PROXIES = bool(use_env) if enabled else False
-        if hasattr(sx, "PROXY_URL"):
-            sx.PROXY_URL = (proxy_url or None) if (enabled and not use_env) else None
-        if hasattr(sx, "apply_session_config"):
-            sx.apply_session_config()
-    except Exception:
-        pass
-
-    if not enabled:
-        return "Proxy: disabled via UI"
-    if use_env:
-        return "Proxy: using environment proxies (UI)"
-    if proxy_url:
-        return f"Proxy: routing via {proxy_url} (UI)"
-    return "Proxy: disabled (no proxy URL provided)"
-
-
-def cell_text(text: str, width: int | None = None, size: int = 13) -> ft.Text:
-    """Create text for DataTable cells that wraps properly within its cell.
-    Do not force width or VISIBLE overflow to avoid overlap; let the table layout size cells.
-    """
-    try:
-        return ft.Text(
-            text or "",
-            no_wrap=False,
-            max_lines=None,
-            size=size,
-        )
-    except Exception:
-        # Fallback if some args are unsupported
-        return ft.Text(text or "")
-
-def get_preview_col_width(page: ft.Page) -> int | None:
-    """Best-effort column width for preview tables to keep columns aligned.
-    Uses window width when available; returns a conservative fallback otherwise.
-    """
-    try:
-        w = getattr(page, "window_width", None) or getattr(page, "width", None)
-        if w:
-            usable = max(600, int(w - 220))  # account for paddings/controls
-            return max(260, int(usable / 2))
-    except Exception:
-        pass
-    return 420
-
-def _estimate_two_col_ratio(samples: list[tuple[str, str]]) -> float:
-    """Estimate width ratio for col A (0..1) based on average content length.
-    Keeps result within [0.35, 0.65] to avoid extreme skews.
-    """
-    if not samples:
-        return 0.5
-    a = sum(min(len(x or ""), 400) for x, _ in samples) / len(samples)
-    b = sum(min(len(y or ""), 400) for _, y in samples) / len(samples)
-    total = a + b
-    if total <= 0:
-        return 0.5
-    r = a / total
-    # Clamp
-    return max(0.35, min(0.65, r))
-
-def compute_two_col_widths(page: ft.Page, samples: list[tuple[str, str]], *,
-                           total_px: int | None = None, spacing_px: int = 16,
-                           min_px_each: int = 180) -> tuple[int, int]:
-    """Compute two column widths that sum to available width minus spacing.
-    If total_px isn't provided, derive from page width conservatively.
-    """
-    try:
-        if total_px is None:
-            w = getattr(page, "window_width", None) or getattr(page, "width", None)
-            if w:
-                total_px = max(600, int(w - 220))
-        if total_px is None:
-            total_px = 840
-    except Exception:
-        total_px = 840
-    # Space available for both columns combined
-    usable = max(2 * min_px_each + 10, total_px)
-    ratio = _estimate_two_col_ratio(samples)
-    w1 = max(min_px_each, int(usable * ratio) - spacing_px // 2)
-    w2 = max(min_px_each, usable - spacing_px - w1)
-    return (w1, w2)
-
-def compute_two_col_flex(samples: list[tuple[str, str]]) -> tuple[int, int]:
-    """Return left/right flex factors based on content ratio with sane clamps."""
-    r = _estimate_two_col_ratio(samples)
-    l = max(1, int(round(r * 100)))
-    return l, max(1, 100 - l)
-
-def two_col_header(left: str = "Input", right: str = "Output", *, left_flex: int = 50, right_flex: int = 50) -> ft.Container:
-    hdr = ft.Row([
-        ft.Container(ft.Text(left, weight=ft.FontWeight.BOLD, size=13), expand=left_flex, padding=4),
-        ft.Container(ft.Text(right, weight=ft.FontWeight.BOLD, size=13), expand=right_flex, padding=4),
-    ], spacing=12, alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START)
-    return ft.Container(
-        content=hdr,
-        padding=ft.padding.only(left=6, right=6, bottom=6),
-        border=ft.border.only(bottom=ft.border.BorderSide(1, WITH_OPACITY(0.12, BORDER_BASE))),
-    )
-
-def two_col_row(a: str, b: str, left_flex: int, right_flex: int) -> ft.Container:
-    """Compact, uniform two-column row; cells are fixed-height and internally scrollable."""
-    CELL_H = 88
-    COL_SPACING = 12
-
-    def scroll_cell(text: str) -> ft.Container:
-        inner = ft.Column([
-            ft.Text(text or "", no_wrap=False, max_lines=None, size=13)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0)
-        return ft.Container(content=inner, height=CELL_H, padding=6,
-                            border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
-                            border_radius=6)
-
-    row = ft.Row(
-        [
-            ft.Container(content=scroll_cell(a), expand=left_flex),
-            ft.Container(content=scroll_cell(b), expand=right_flex),
-        ],
-        spacing=COL_SPACING,
-        alignment=ft.MainAxisAlignment.START,
-        vertical_alignment=ft.CrossAxisAlignment.START,
-    )
-    return ft.Container(
-        content=row,
-        padding=ft.padding.symmetric(6, 6),
-        border=ft.border.only(bottom=ft.border.BorderSide(1, WITH_OPACITY(0.06, BORDER_BASE))),
-    )
-
-async def simulate_scrape(page: ft.Page, log_view: ft.ListView, prog: ft.ProgressBar,
-                          stats_labels: dict, preview_host: ft.ListView,
-                          cancel_flag: dict) -> None:
-    log = lambda m: (log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")),
-                     page.update())
-
-    total_steps = 120
-    visited = 0
-    pairs = 0
-    prog.value = 0
-    log("Starting scrape across selected boards...")
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape started 🚀"))
-    page.snack_bar.open = True
-    await safe_update(page)
-
-    for step in range(1, total_steps + 1):
-        if cancel_flag.get("cancelled"):
-            log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-        await asyncio.sleep(0.04 + random.uniform(0, 0.02))
-        prog.value = step / total_steps
-        # Fake stats
-        bump_threads = random.choice([0, 1])
-        visited += bump_threads
-        pairs += random.randint(10, 40)
-        stats_labels["threads"].value = f"Threads Visited: {visited}"
-        stats_labels["pairs"].value = f"Pairs Found: {pairs}"
-        if step % 10 == 0:
-            log(f"Visited ~{visited} threads, accumulated ~{pairs} pairs...")
-        await safe_update(page)
-
-    # Build preview rows (mock) into flex grid with scrollable cells
-    preview_host.controls.clear()
-    sample_pairs = [(f"What do you think about topic #{i}?", f"Here's a witty response #{i}.") for i in range(1, 11)]
-    lfx, rfx = compute_two_col_flex(sample_pairs)
-    preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-    for a, b in sample_pairs:
-        preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-    log("Scrape completed successfully.")
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
-    page.snack_bar.open = True
-    await safe_update(page)
 
 async def run_reddit_scrape(
     page: ft.Page,
@@ -721,7 +203,7 @@ async def run_reddit_scrape(
     except Exception as e:
         if cancel_flag.get("cancelled"):
             log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
+            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled "))
             page.snack_bar.open = True
         else:
             log(f"Reddit scrape failed: {e}")
@@ -796,7 +278,7 @@ async def run_reddit_scrape(
             log(f"Cleaned up temp dump: {base_out}")
     except Exception as e:
         log(f"Cleanup warning: {e}")
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
+    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! "))
     page.snack_bar.open = True
     await safe_update(page)
 
@@ -903,6 +385,7 @@ async def run_real_scrape(
     page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
     page.snack_bar.open = True
     await safe_update(page)
+
 
 async def run_stackexchange_scrape(
     page: ft.Page,
@@ -1025,46 +508,7 @@ async def run_stackexchange_scrape(
     page.snack_bar.open = True
     await safe_update(page)
 
-async def simulate_build(page: ft.Page, timeline: ft.Column, split_badges: dict,
-                         split_meta: dict, cancel_flag: dict) -> None:
-    def add_step(text: str, color: str, icon: str):
-        timeline.controls.append(
-            ft.Row([
-                ft.Icon(icon, color=color),
-                ft.Text(text),
-            ])
-        )
 
-    add_step("Validating inputs", COLORS.BLUE, ICONS.TASK_ALT)
-    await safe_update(page); await asyncio.sleep(0.4)
-    if cancel_flag.get("cancelled"):
-        add_step("Build cancelled by user", COLORS.RED, ICONS.CANCEL)
-        await safe_update(page)
-        return
-
-    add_step("Loading and normalizing data", COLORS.BLUE, ICONS.SHUFFLE)
-    await safe_update(page); await asyncio.sleep(0.6)
-
-    add_step("Creating splits (train/val/test)", COLORS.BLUE, ICONS.CALENDAR_VIEW_MONTH)
-    await safe_update(page); await asyncio.sleep(0.8)
-
-    # Fake split sizes
-    total = random.randint(5000, 9000)
-    val = int(total * random.uniform(0.01, 0.1))
-    test = int(total * random.uniform(0.0, 0.05))
-    train = total - val - test
-    split_badges["train"].content = pill(f"Train: {train}", split_meta["train"][0], split_meta["train"][1]).content
-    split_badges["val"].content = pill(f"Val: {val}", split_meta["val"][0], split_meta["val"][1]).content
-    split_badges["test"].content = pill(f"Test: {test}", split_meta["test"][0], split_meta["test"][1]).content
-    await safe_update(page); await asyncio.sleep(0.3)
-
-    add_step("Building dataset card (README)", COLORS.BLUE, ICONS.ARTICLE)
-    await safe_update(page); await asyncio.sleep(0.5)
-
-    add_step("Done!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
-    page.snack_bar = ft.SnackBar(ft.Text("Build complete ✨"))
-    page.snack_bar.open = True
-    await safe_update(page)
 
 
 def main(page: ft.Page):
@@ -1078,9 +522,9 @@ def main(page: ft.Page):
     about_dialog = ft.AlertDialog(
         title=ft.Text("About"),
         content=ft.Text(
-            "4chan Dataset Studio\n\n"
-            "Mocked GUI built with Flet. Scrape 4chan (mock), build datasets (mock), and style with flair.\n"
-            "No real backend calls are made in this demo."
+            "FineFoundry Core Application\n\n"
+            "Scrape sources (4chan, Reddit, StackExchange), build/merge datasets, train locally or on Runpod, and analyze data quality.\n"
+            "Built with Flet."
         ),
         actions=[ft.TextButton("Close", on_click=lambda e: setattr(about_dialog, "open", False))],
         on_dismiss=lambda e: page.update(),
@@ -2164,131 +1608,57 @@ Tabs:
             pass
         schedule_task(on_preview_dataset)
 
-    # Reddit params row (hidden by default)
-    reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True, visible=False)
-    # StackExchange params row (hidden by default)
-    se_params_row = ft.Row([se_site], wrap=True, visible=False)
-
-    scrape_tab = ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    section_title(
-                        "Source",
-                        ICONS.DASHBOARD,
-                        "Choose a data source. Options: 4chan, Reddit, StackExchange.",
-                        on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([source_dd], wrap=True),
-                        ], spacing=0),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "4chan Boards",
-                        ICONS.DASHBOARD,
-                        "Select which 4chan boards to scrape.",
-                        on_help_click=_mk_help_handler("Select which 4chan boards to scrape."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            board_actions,
-                            boards_wrap,
-                            board_warning,
-                        ], spacing=6),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "Parameters",
-                        ICONS.TUNE,
-                        "Set scraping limits and pairing behavior. Context options appear when applicable.",
-                        on_help_click=_mk_help_handler("Set scraping limits and pairing behavior. Context options appear when applicable."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            reddit_params_row,
-                            se_params_row,
-                            ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
-                            ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
-                            ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
-                            scrape_actions,
-                        ], spacing=8),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "Progress",
-                        ICONS.TIMELAPSE,
-                        "Shows current task progress and counters.",
-                        on_help_click=_mk_help_handler("Shows current task progress and counters."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([scrape_prog, working_ring, ft.Text("Working...")], spacing=16),
-                            stats_cards,
-                            ft.Row([threads_label, pairs_label], spacing=20),
-                        ], spacing=8),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "Live Log",
-                        ICONS.TERMINAL,
-                        "Streaming log of scraping activity.",
-                        on_help_click=_mk_help_handler("Streaming log of scraping activity."),
-                    ),
-                    ft.Container(log_area, height=180, border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                 border_radius=8, padding=10, width=1000),
-                    section_title(
-                        "Preview",
-                        ICONS.PREVIEW,
-                        "Quick sample preview of scraped pairs.",
-                        on_help_click=_mk_help_handler("Quick sample preview of scraped pairs."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Container(preview_area, height=240, border_radius=8,
-                                         border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)), padding=6),
-                            ft.Row([
-                                ft.ElevatedButton(
-                                    "Preview Dataset", icon=ICONS.PREVIEW,
-                                    on_click=handle_preview_click,
-                                )
-                            ], alignment=ft.MainAxisAlignment.END),
-                        ], spacing=8),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                ], scroll=ft.ScrollMode.AUTO, spacing=12),
-                width=1000,
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER),
-        padding=16,
-    )
-
-
-    # ---------- BUILD/PUBLISH TAB ----------
+    # Source selector for dataset preview/processing
     source_mode = ft.Dropdown(
-        label="Source",
         options=[
             ft.dropdown.Option("JSON file"),
             ft.dropdown.Option("Merged dataset"),
         ],
         value="JSON file",
         width=180,
+    )
+    # Rows that are toggled by update_source_controls()
+    reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True, visible=False)
+    se_params_row = ft.Row([se_site], wrap=True, visible=False)
+    # Initialize source-specific visibility now that rows exist
+    try:
+        update_source_controls()
+    except Exception:
+        pass
+
+    # Compose Scrape tab via builder (layout only; logic/state remain in main)
+    scrape_tab = build_scrape_tab(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        source_dd=source_dd,
+        board_actions=board_actions,
+        boards_wrap=boards_wrap,
+        board_warning=board_warning,
+        reddit_params_row=reddit_params_row,
+        se_params_row=se_params_row,
+        max_threads=max_threads,
+        max_pairs=max_pairs,
+        delay=delay,
+        min_len=min_len,
+        output_path=output_path,
+        pair_mode=pair_mode,
+        strategy_dd=strategy_dd,
+        k_field=k_field,
+        max_chars_field=max_chars_field,
+        merge_same_id_cb=merge_same_id_cb,
+        require_question_cb=require_question_cb,
+        scrape_actions=scrape_actions,
+        scrape_prog=scrape_prog,
+        working_ring=working_ring,
+        stats_cards=stats_cards,
+        threads_label=threads_label,
+        pairs_label=pairs_label,
+        log_area=log_area,
+        preview_area=preview_area,
+        handle_preview_click=handle_preview_click,
     )
     # Data source and processing controls
     data_file = ft.TextField(label="Data file (JSON)", value="scraped_training_data.json", width=360)
@@ -2312,7 +1682,7 @@ Tabs:
 
     def on_split_change(_):
         total = (val_slider.value or 0) + (test_slider.value or 0)
-        if total >= 0.9:  # generous limit for demo
+        if total >= 0.9:  # generous limit
             split_error.value = f"Warning: val+test too large ({total:.2f})"
         else:
             split_error.value = ""
@@ -2342,7 +1712,7 @@ Tabs:
     # Initialize visibility/disabled state
     on_source_change(None)
 
-    # Split badges (mock values updated during build)
+    # Split badges (values updated during build)
     split_badges = {
         "train": pill("Train: 0", COLORS.BLUE, ICONS.STACKED_LINE_CHART),
         "val": pill("Val: 0", COLORS.ORANGE, ICONS.SIGNAL_CELLULAR_ALT),
@@ -3171,105 +2541,39 @@ Specify license and any restrictions.
         ft.TextButton("Push + Upload README", icon=ICONS.CLOUD_UPLOAD, on_click=lambda e: page.run_task(on_push_async)),
         push_ring,
     ], spacing=10)
-
-    build_tab = ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Column([
-                        section_title(
-                            "Dataset Params",
-                            ICONS.SETTINGS,
-                            "Choose input source, preprocessing, and output path for building a dataset.",
-                            on_help_click=_mk_help_handler("Choose input source, preprocessing, and output path for building a dataset."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
-                                ft.Divider(),
-                                section_title(
-                                    "Splits",
-                                    ICONS.TABLE_VIEW,
-                                    "Configure validation and test fractions; train is the remainder.",
-                                    on_help_click=_mk_help_handler("Configure validation and test fractions; train is the remainder."),
-                                ),
-                                ft.Row([
-                                    ft.Column([
-                                        ft.Text("Validation Fraction"), val_slider,
-                                        ft.Text("Test Fraction"), test_slider,
-                                        split_error,
-                                    ], width=360),
-                                    ft.Row([split_badges["train"], split_badges["val"], split_badges["test"]], spacing=10),
-                                ], wrap=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                            ], spacing=12),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Push to Hub",
-                            ICONS.PUBLIC,
-                            "Optionally upload your dataset to the Hugging Face Hub.",
-                            on_help_click=_mk_help_handler("Optionally upload your dataset to the Hugging Face Hub."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([push_toggle, repo_id, private, token_val_ui], wrap=True),
-                                build_actions,
-                            ], spacing=10),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Model Card Creator",
-                            ICONS.ARTICLE,
-                            "Draft and preview the README dataset card; can generate from template or dataset.",
-                            on_help_click=_mk_help_handler("Draft and preview the README dataset card; can generate from template or dataset."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([use_custom_card, card_preview_switch], wrap=True),
-                                ft.Row([load_template_btn, gen_from_ds_btn, gen_with_ollama_btn, clear_card_btn], wrap=True),
-                                ft.Row([ollama_gen_status], wrap=True),
-                                # Wrap editor in a scrollable container so long content can be viewed
-                                ft.Container(
-                                    ft.Column([card_editor], scroll=ft.ScrollMode.AUTO, spacing=0),
-                                    height=300,
-                                    border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                    border_radius=8,
-                                    padding=8,
-                                ),
-                                # Markdown preview container (hidden until content present & preview enabled)
-                                card_preview_container,
-                            ], spacing=10),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Status",
-                            ICONS.TASK,
-                            "Build timeline with step-by-step status.",
-                            on_help_click=_mk_help_handler("Build timeline with step-by-step status."),
-                        ),
-                        ft.Container(
-                            ft.Stack([timeline, timeline_placeholder], expand=True),
-                            height=260,
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                    ], spacing=12),
-                    width=1000,
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
-        padding=16,
+    build_tab = build_build_tab(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        source_mode=source_mode,
+        data_file=data_file,
+        merged_dir=merged_dir,
+        seed=seed,
+        shuffle=shuffle,
+        min_len_b=min_len_b,
+        save_dir=save_dir,
+        val_slider=val_slider,
+        test_slider=test_slider,
+        split_error=split_error,
+        split_badges=split_badges,
+        push_toggle=push_toggle,
+        repo_id=repo_id,
+        private=private,
+        token_val_ui=token_val_ui,
+        build_actions=build_actions,
+        use_custom_card=use_custom_card,
+        card_preview_switch=card_preview_switch,
+        load_template_btn=load_template_btn,
+        gen_from_ds_btn=gen_from_ds_btn,
+        gen_with_ollama_btn=gen_with_ollama_btn,
+        clear_card_btn=clear_card_btn,
+        ollama_gen_status=ollama_gen_status,
+        card_editor=card_editor,
+        card_preview_container=card_preview_container,
+        timeline=timeline,
+        timeline_placeholder=timeline_placeholder,
     )
 
 
@@ -4087,94 +3391,23 @@ Specify license and any restrictions.
         merge_busy_ring,
     ], spacing=10)
 
-    merge_tab = ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Column([
-                        section_title(
-                            "Operation",
-                            ICONS.SHUFFLE,
-                            "Choose how to merge rows (e.g., concatenate).",
-                            on_help_click=_mk_help_handler("Choose how to merge rows (e.g., concatenate)."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([merge_op], wrap=True),
-                            ], spacing=0),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Datasets",
-                            ICONS.TABLE_VIEW,
-                            "Add datasets from HF or local JSON and map columns.",
-                            on_help_click=_mk_help_handler("Add datasets from HF or local JSON and map columns."),
-                        ),
-                        ft.Row([
-                            add_row_btn, clear_btn
-                        ], spacing=8),
-                        ft.Container(
-                            content=ft.Column([
-                                rows_host,
-                            ], spacing=10),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Output",
-                            ICONS.SAVE_ALT,
-                            "Set output format and save directory.",
-                            on_help_click=_mk_help_handler("Set output format and save directory."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([merge_output_format, merge_save_dir], wrap=True),
-                                merge_actions,
-                            ], spacing=10),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Preview",
-                            ICONS.PREVIEW,
-                            "Shows a sample of the merged result.",
-                            on_help_click=_mk_help_handler("Shows a sample of the merged result."),
-                        ),
-                        ft.Container(ft.Stack([merge_preview_host, merge_preview_placeholder], expand=True),
-                                     height=220,
-                                     width=1000,
-                                     border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                     border_radius=8,
-                                     padding=10,
-                        ),
-                        ft.Divider(),
-                        section_title(
-                            "Status",
-                            ICONS.TASK,
-                            "Merge timeline and diagnostics.",
-                            on_help_click=_mk_help_handler("Merge timeline and diagnostics."),
-                        ),
-                        ft.Container(
-                            ft.Stack([merge_timeline, merge_timeline_placeholder], expand=True),
-                            height=200,
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                    ], spacing=12),
-                    width=1000,
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
-        padding=16,
+    merge_tab = build_merge_tab(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        merge_op=merge_op,
+        rows_host=rows_host,
+        add_row_btn=add_row_btn,
+        clear_btn=clear_btn,
+        merge_output_format=merge_output_format,
+        merge_save_dir=merge_save_dir,
+        merge_actions=merge_actions,
+        merge_preview_host=merge_preview_host,
+        merge_preview_placeholder=merge_preview_placeholder,
+        merge_timeline=merge_timeline,
+        merge_timeline_placeholder=merge_timeline_placeholder,
     )
 
 
@@ -7899,102 +7132,48 @@ Specify license and any restrictions.
     # Initialize visibility based on default/loaded target
     _update_training_target()
 
-    training_tab = ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Row([train_target_dd], alignment=ft.MainAxisAlignment.CENTER),
-                    width=1000,
-                    padding=ft.padding.only(top=12),
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER),
-            pod_content_container,
-            local_specs_container,
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
-        padding=16,
+    training_tab = build_training_tab(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        train_target_dd=train_target_dd,
+        pod_content_container=pod_content_container,
+        local_specs_container=local_specs_container,
     )
 
     # ---------- SETTINGS TAB (Proxy config + Ollama) ----------
-    settings_tab = ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Column([
-                        section_title(
-                            "Proxy Settings",
-                            ICONS.SETTINGS,
-                            "Override network proxy for requests. Use system env or custom URL.",
-                            on_help_click=_mk_help_handler("Override network proxy for requests. Use system env or custom URL."),
-                        ),
-                        ft.Text(
-                            "Configure how network requests route. When enabled, UI settings override environment variables and defaults.",
-                            size=12,
-                            color=WITH_OPACITY(0.7, BORDER_BASE),
-                        ),
-                        ft.Divider(),
-                        ft.Row([proxy_enable_cb], wrap=True),
-                        ft.Row([use_env_cb, proxy_url_tf], wrap=True),
-                        ft.Text(
-                            "Tip: Tor default is socks5h://127.0.0.1:9050. Leave disabled to use direct connections.",
-                            size=11,
-                            color=WITH_OPACITY(0.6, BORDER_BASE),
-                        ),
-                        ft.Divider(),
-                        section_title(
-                            "Hugging Face Access",
-                            getattr(ICONS, "HUB", ICONS.CLOUD),
-                            "Save and test your Hugging Face API token. If saved, it's used globally.",
-                            on_help_click=_mk_help_handler("Save and test your Hugging Face API token. If saved, it's used globally."),
-                        ),
-                        ft.Text(
-                            "Saved token (if set) is used for Hugging Face Hub operations and dataset downloads.",
-                            size=12,
-                            color=WITH_OPACITY(0.7, BORDER_BASE),
-                        ),
-                        ft.Row([hf_token_tf], wrap=True),
-                        ft.Row([hf_test_btn, hf_save_btn, hf_remove_btn], spacing=10, wrap=True),
-                        hf_status,
-                        ft.Divider(),
-                        section_title(
-                            "Runpod API Access",
-                            getattr(ICONS, "VPN_KEY", getattr(ICONS, "KEY", ICONS.SETTINGS)),
-                            "Save and test your Runpod API key. Used by Training → Runpod Infrastructure.",
-                            on_help_click=_mk_help_handler("Save and test your Runpod API key. Used by Training → Runpod Infrastructure."),
-                        ),
-                        ft.Text(
-                            "Stored locally and applied to RUNPOD_API_KEY when saved. Required for ensuring Runpod Network Volume & Template.",
-                            size=12,
-                            color=WITH_OPACITY(0.7, BORDER_BASE),
-                        ),
-                        ft.Row([runpod_key_tf], wrap=True),
-                        ft.Row([runpod_test_btn, runpod_save_btn, runpod_remove_btn], spacing=10, wrap=True),
-                        runpod_status,
-                        ft.Divider(),
-                        section_title(
-                            "Ollama Connection",
-                            getattr(ICONS, "HUB", ICONS.CLOUD),
-                            "Configure connection to Ollama server; only stored here.",
-                            on_help_click=_mk_help_handler("Configure connection to Ollama server; only stored here."),
-                        ),
-                        ft.Text(
-                            "Connect to a local or remote Ollama server. This is only configuration; other tabs won't use it yet.",
-                            size=12,
-                            color=WITH_OPACITY(0.7, BORDER_BASE),
-                        ),
-                        ft.Row([ollama_enable_cb], wrap=True),
-                        ft.Row([ollama_base_url_tf, ollama_default_model_tf], wrap=True),
-                        ft.Row([ollama_models_dd], wrap=True),
-                        ft.Row([ollama_test_btn, ollama_refresh_btn, ollama_save_btn], spacing=10, wrap=True),
-                        ollama_status,
-                    ], spacing=12),
-                    width=1000,
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
-        padding=16,
+    settings_tab = build_settings_tab(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        proxy_enable_cb=proxy_enable_cb,
+        use_env_cb=use_env_cb,
+        proxy_url_tf=proxy_url_tf,
+        hf_token_tf=hf_token_tf,
+        hf_status=hf_status,
+        hf_test_btn=hf_test_btn,
+        hf_save_btn=hf_save_btn,
+        hf_remove_btn=hf_remove_btn,
+        runpod_key_tf=runpod_key_tf,
+        runpod_status=runpod_status,
+        runpod_test_btn=runpod_test_btn,
+        runpod_save_btn=runpod_save_btn,
+        runpod_remove_btn=runpod_remove_btn,
+        ollama_enable_cb=ollama_enable_cb,
+        ollama_base_url_tf=ollama_base_url_tf,
+        ollama_default_model_tf=ollama_default_model_tf,
+        ollama_models_dd=ollama_models_dd,
+        ollama_test_btn=ollama_test_btn,
+        ollama_refresh_btn=ollama_refresh_btn,
+        ollama_save_btn=ollama_save_btn,
+        ollama_status=ollama_status,
+        REFRESH_ICON=REFRESH_ICON,
     )
-
-    # ---- Mocked Dataset Analysis tab (defined inside main) ----
+    
+    # ---- Dataset Analysis tab: UI controls for builder ----
     def kpi_tile(title: str, value, subtitle: str = "", icon=None):
         # Accept either a string or a Flet control for value, so we can update it dynamically later.
         val_ctrl = value if isinstance(value, ft.Control) else ft.Text(str(value), size=18, weight=ft.FontWeight.W_600)
@@ -8125,7 +7304,7 @@ Specify license and any restrictions.
     analysis_json_path = ft.TextField(label="JSON path", width=360, visible=False)
 
     analysis_dataset_hint = ft.Text("Select a dataset to analyze.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
-    # Analysis runtime settings (UI only, mocked)
+    # Analysis runtime settings (UI only)
     analysis_backend_dd = ft.Dropdown(
         label="Backend",
         options=[ft.dropdown.Option("HF Inference API"), ft.dropdown.Option("Local (Transformers)")],
@@ -8170,7 +7349,7 @@ Specify license and any restrictions.
     )
     # Ensure there's always a snackbar to open (handle older Flet without attribute)
     if not getattr(page, "snack_bar", None):
-        page.snack_bar = ft.SnackBar(ft.Text("Mock analysis executed."))
+        page.snack_bar = ft.SnackBar(ft.Text("Analysis ready."))
 
     def _validate_analysis_dataset(_=None):
         try:
@@ -8949,95 +8128,36 @@ Specify license and any restrictions.
     div_extra = ft.Divider(visible=False)
     div_samples = ft.Divider(visible=False)
 
-    analysis_tab = ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    ft.Row([
-                        section_title(
-                            "Dataset Analysis",
-                            getattr(ICONS, "INSIGHTS", getattr(ICONS, "ANALYTICS", ICONS.SEARCH)),
-                            "Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results.",
-                            on_help_click=_mk_help_handler("Run modular analysis on your dataset. Enable modules and click Analyze to compute and reveal results."),
-                        ),
-                        ft.Container(expand=1),
-                        analyze_btn,
-                        analysis_busy_ring,
-                    ], alignment=ft.MainAxisAlignment.START),
-
-                    # Dataset chooser row
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([
-                                analysis_source_dd,
-                                analysis_hf_repo,
-                                analysis_hf_split,
-                                analysis_hf_config,
-                                analysis_json_path,
-                            ], wrap=True, spacing=10),
-                            analysis_dataset_hint,
-                        ], spacing=6),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    ft.Divider(),
-                    section_title(
-                        "Analysis modules",
-                        getattr(ICONS, "TUNE", ICONS.SETTINGS),
-                        "Choose which checks to run. Only enabled modules are computed and displayed.",
-                        on_help_click=_mk_help_handler("Choose which checks to run. Only enabled modules are computed and displayed."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([select_all_modules_cb], wrap=True),
-                            _build_modules_table(),
-                        ], spacing=6),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-
-                    ft.Divider(),
-                    section_title(
-                        "Runtime settings",
-                        getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
-                        "Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed.",
-                        on_help_click=_mk_help_handler("Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed."),
-                    ),
-                    ft.Container(
-                        content=ft.Row([
-                            analysis_backend_dd,
-                            analysis_hf_token_tf,
-                            analysis_sample_size_tf,
-                        ], wrap=True, spacing=10),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-
-                    analysis_overview_note,
-                    div_overview,
-                    overview_block,
-
-                    div_sentiment,
-                    sentiment_block,
-
-                    div_class,
-                    class_balance_block,
-
-                    div_extra,
-                    extra_metrics_block,
-
-                    div_samples,
-                    samples_block,
-                ], scroll=ft.ScrollMode.AUTO, spacing=12),
-                width=1000,
-            )
-        ])
+    analysis_tab = build_analysis_tab(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        analyze_btn=analyze_btn,
+        analysis_busy_ring=analysis_busy_ring,
+        analysis_source_dd=analysis_source_dd,
+        analysis_hf_repo=analysis_hf_repo,
+        analysis_hf_split=analysis_hf_split,
+        analysis_hf_config=analysis_hf_config,
+        analysis_json_path=analysis_json_path,
+        analysis_dataset_hint=analysis_dataset_hint,
+        select_all_modules_cb=select_all_modules_cb,
+        _build_modules_table=_build_modules_table,
+        analysis_backend_dd=analysis_backend_dd,
+        analysis_hf_token_tf=analysis_hf_token_tf,
+        analysis_sample_size_tf=analysis_sample_size_tf,
+        analysis_overview_note=analysis_overview_note,
+        div_overview=div_overview,
+        overview_block=overview_block,
+        div_sentiment=div_sentiment,
+        sentiment_block=sentiment_block,
+        div_class=div_class,
+        class_balance_block=class_balance_block,
+        div_extra=div_extra,
+        extra_metrics_block=extra_metrics_block,
+        div_samples=div_samples,
+        samples_block=samples_block,
     )
     
     # Tabs and welcome screen
