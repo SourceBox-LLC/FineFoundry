@@ -4,13 +4,10 @@ import time
 import os
 import shutil
 from datetime import datetime
-from typing import List, Optional, Tuple, Callable
+from typing import List, Optional, Tuple
 import json
 import re
-from collections import Counter
-import platform
 import subprocess
-import ctypes
 import sys
 
 import flet as ft
@@ -3411,7 +3408,7 @@ Specify license and any restrictions.
     )
 
 
-    # ---------- TRAINING TAB (Mock UI) ----------
+    # ---------- TRAINING TAB ----------
     # Dataset source
     train_source = ft.Dropdown(
         label="Dataset source",
@@ -6058,7 +6055,7 @@ Specify license and any restrictions.
         ],
         value="Runpod - Pod",
         width=420,
-        tooltip="Choose where training runs. 'Runpod - Pod' shows the current pod workflow; 'local' is a placeholder.",
+        tooltip="Choose where training runs. 'Runpod - Pod' uses the Runpod workflow; 'local' runs via Docker on this machine.",
     )
 
     # Hook handlers and initialize config list

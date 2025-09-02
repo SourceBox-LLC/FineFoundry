@@ -70,12 +70,12 @@ Built with Flet for a fast, native-like UI. Includes:
 ## 🧭 Contents
 
 - `src/main.py` — Flet desktop app (Scrape, Build/Publish, Training, Merge, Analysis, Settings)
-- `src/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
-- `src/reddit_scraper.py` — Reddit scraper CLI + conversational pair builder
-- `src/stackexchange_scraper.py` — Stack Exchange Q/A scraper (programmatic)
+- `src/scrapers/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
+- `src/scrapers/reddit_scraper.py` — Reddit scraper CLI + conversational pair builder
+- `src/scrapers/stackexchange_scraper.py` — Stack Exchange Q/A scraper (programmatic)
 - `src/save_dataset.py` — CLI dataset builder and Hub pusher
-- `src/ensure_infra.py` — Runpod infrastructure automation (network volume + template)
-- `src/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
+- `src/runpod/ensure_infra.py` — Runpod infrastructure automation (network volume + template)
+- `src/runpod/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
 - `requirements.txt` — pinned dependencies
 
 <a id="prerequisites"></a>
@@ -259,21 +259,21 @@ The app tries the field value first, then `HF_TOKEN`, then the cached login.
 ## 🌐 Proxy Configuration
 
 - All scrapers support proxies via module variables.
-  - 4chan (`src/fourchan_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
-  - Reddit (`src/reddit_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
-  - Stack Exchange (`src/stackexchange_scraper.py`): `PROXY_URL = None`, `USE_ENV_PROXIES = False` (no proxy by default)
+  - 4chan (`src/scrapers/fourchan_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
+  - Reddit (`src/scrapers/reddit_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
+  - Stack Exchange (`src/scrapers/stackexchange_scraper.py`): `PROXY_URL = None`, `USE_ENV_PROXIES = False` (no proxy by default)
 - To use system env proxies, set `USE_ENV_PROXIES = True` and define `HTTP_PROXY`/`HTTPS_PROXY` before launching.
 - Programmatic runtime change:
 
   ```python
   # 4chan
-  from src.fourchan_scraper import PROXY_URL, USE_ENV_PROXIES, apply_session_config
+  from scrapers.fourchan_scraper import PROXY_URL, USE_ENV_PROXIES, apply_session_config
   PROXY_URL = "http://127.0.0.1:8080"  # or None to disable
   USE_ENV_PROXIES = False
   apply_session_config()
 
   # Stack Exchange
-  from src import stackexchange_scraper as se
+  from scrapers import stackexchange_scraper as se
   se.PROXY_URL = "socks5h://127.0.0.1:9050"
   se.USE_ENV_PROXIES = False
   se.apply_session_config()
@@ -316,7 +316,7 @@ This saves to `SAVE_DIR` and optionally pushes to `REPO_ID`. A dataset card is g
 Run the crawler and build pairs from a subreddit or a single post:
 
 ```bash
-python src/reddit_scraper.py \
+python src/scrapers/reddit_scraper.py \
   --url https://www.reddit.com/r/AskReddit/ \
   --max-posts 50 \
   --mode contextual --k 4 --max-input-chars 2000 \
@@ -331,14 +331,14 @@ python src/reddit_scraper.py \
   - `--build-dataset`, `--mode {parent_child,contextual}`, `--k`, `--max-input-chars` (0=off)
   - `--require-question`, `--no-merge-same-author`, `--min-len`, `--include-automod`
   - `--pairs-path` (copy pairs to a stable path), `--cleanup` (remove dump)
-- Proxy is configured via `PROXY_URL`/`USE_ENV_PROXIES` in `src/reddit_scraper.py` (see Proxy Configuration).
+- Proxy is configured via `PROXY_URL`/`USE_ENV_PROXIES` in `src/scrapers/reddit_scraper.py` (see Proxy Configuration).
 
 - Output:
   - Writes dump under an auto folder, e.g., `reddit_dump_<slug>/` (or `--output-dir`).
   - Saves pairs to `reddit_dump_*/reddit_pairs.json`, then copies to `--pairs-path` or `./reddit_pairs.json` by default.
   - With `--cleanup` (or when `--use-temp-dump` is on), the dump folder is removed after copying pairs.
 
-- Defaults (from `src/reddit_scraper.py`):
+- Defaults (from `src/scrapers/reddit_scraper.py`):
   - `--url`: <https://www.reddit.com/r/LocalLLaMA/>
   - `--max-posts`: 100
   - `--request-delay`: 1.0 (s)
@@ -360,7 +360,7 @@ python src/reddit_scraper.py \
 - Single-post example (ignores `--max-posts`):
 
   ```bash
-  python src/reddit_scraper.py \
+  python src/scrapers/reddit_scraper.py \
     --url https://www.reddit.com/r/AskReddit/comments/abc123/example_post/ \
     --mode parent_child --pairs-path reddit_pairs.json
   ```
@@ -368,10 +368,12 @@ python src/reddit_scraper.py \
 <a id="programmatic-4chan-scraper"></a>
 ## 🧩 Programmatic: 4chan Scraper
 
-Use the library API from `src/fourchan_scraper.py`.
+Use the library API from `src/scrapers/fourchan_scraper.py`.
+
+Tip: Ensure Python can find the `src/` directory for imports, e.g. set `PYTHONPATH=src` or add `sys.path.append("src")` before importing from `scrapers.*`.
 
 ```python
-from src.fourchan_scraper import scrape
+from scrapers.fourchan_scraper import scrape
 
 pairs = []
 for board in ["pol", "b"]:
@@ -404,10 +406,10 @@ for board in ["pol", "b"]:
 <a id="programmatic-stack-exchange-scraper"></a>
 ## 🧩 Programmatic: Stack Exchange Scraper
 
-Scrape accepted Q/A pairs via `src/stackexchange_scraper.py`.
+Scrape accepted Q/A pairs via `src/scrapers/stackexchange_scraper.py`.
 
 ```python
-from src.stackexchange_scraper import scrape
+from scrapers.stackexchange_scraper import scrape
 
 pairs = scrape(site="stackoverflow", max_pairs=300, delay=0.3, min_len=10)
 ```
@@ -415,7 +417,7 @@ pairs = scrape(site="stackoverflow", max_pairs=300, delay=0.3, min_len=10)
 Enable a proxy programmatically:
 
 ```python
-from src import stackexchange_scraper as se
+from scrapers import stackexchange_scraper as se
 se.PROXY_URL = "socks5h://127.0.0.1:9050"  # or HTTP proxy
 se.USE_ENV_PROXIES = False  # or True to use HTTP(S)_PROXY env
 se.apply_session_config()
@@ -446,7 +448,7 @@ pairs = se.scrape(site="superuser", max_pairs=50)
 - Cleans HTML, removes greentext quote lines, quote references, URLs, and collapses whitespace.
 - Minimum length filter is applied per post.
 
-Key modules: `src/fourchan_scraper.py` (e.g., `fetch_catalog_pages()`, `fetch_thread()`, `build_pairs_*()`).
+Key modules: `src/scrapers/fourchan_scraper.py` (e.g., `fetch_catalog_pages()`, `fetch_thread()`, `build_pairs_*()`).
 Reddit and Stack Exchange details are documented in their CLI/usage sections below.
 
 <a id="dataset-artifacts"></a>
