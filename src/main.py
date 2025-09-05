@@ -89,7 +89,7 @@ from ui.tabs.tab_build import build_build_tab
 from ui.tabs.tab_training import build_training_tab
 from ui.tabs.tab_merge import build_merge_tab
 from ui.tabs.tab_analysis import build_analysis_tab
-from helpers.chatml import thread_to_chatml_conversations, pairs_to_chatml
+from helpers.chatml import thread_to_chatml_conversations, pairs_to_chatml, reddit_thread_to_chatml_conversations
 
 # Set terminal title to uppercase for the current session
 set_terminal_title("PYTHON: MAIN")
@@ -222,44 +222,82 @@ async def run_reddit_scrape(
     prog.value = 1.0
     await safe_update(page)
 
-    # Convert pairs to ChatML conversations, write to output, and build preview
+    # Convert to ChatML conversations, write to output, and build preview
     conv_count = 0
     chatml_convs: List[dict] = []
     sample_pairs: List[Tuple[str, str]] = []
     try:
-        if pairs_src is not None and os.path.exists(str(pairs_src)):
-            txt = await asyncio.to_thread(lambda: open(str(pairs_src), "r", encoding="utf-8").read())
-            data = await asyncio.to_thread(lambda: json.loads(txt))
-            if isinstance(data, list):
-                chatml_convs = pairs_to_chatml(data)
-                conv_count = len(chatml_convs)
-                # Write ChatML to desired output path
-                dest = output_path or "scraped_training_data.json"
-                dest_abs = os.path.abspath(dest)
-                os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
-                await asyncio.to_thread(
-                    lambda: open(dest_abs, "w", encoding="utf-8").write(
-                        json.dumps(chatml_convs, ensure_ascii=False, indent=4)
+        if bool(multiturn):
+            # Build multi-turn conversations directly from scraped Reddit threads
+            idx_path = os.path.join(str(base_out), "index.json") if base_out else None
+            threads_count = 0
+            if idx_path and os.path.exists(idx_path):
+                idx = await asyncio.to_thread(lambda: json.load(open(idx_path, "r", encoding="utf-8")))
+                for item in (idx.get("posts") or []):
+                    rel_json = item.get("json")
+                    if not rel_json:
+                        continue
+                    th_path = os.path.join(str(base_out), rel_json)
+                    if not os.path.exists(th_path):
+                        continue
+                    # Load thread and convert to multi-turn ChatML
+                    thread = await asyncio.to_thread(lambda: json.load(open(th_path, "r", encoding="utf-8")))
+                    convs = reddit_thread_to_chatml_conversations(
+                        thread,
+                        min_len=max(0, int(min_len_val)),
+                        k=int(ctx_k),
+                        max_rounds_per_conv=6,
+                        max_chars=(int(ctx_max_chars) if (ctx_max_chars is not None) else None),
+                        merge_same_author=bool(merge_same_id),
                     )
-                )
-                log(f"Wrote {conv_count} conversations to: {dest_abs}")
-                # Build preview from ChatML: first user->assistant pair per conversation
-                for conv in chatml_convs[:10]:
-                    msgs = conv.get("messages", []) or []
-                    user_text = None
-                    assistant_text = None
-                    for m in msgs:
-                        role = m.get("role")
-                        text = m.get("content") or ""
-                        if role == "user" and user_text is None and text:
-                            user_text = text
-                        elif role == "assistant" and user_text is not None and text:
-                            assistant_text = text
-                            break
-                    if user_text and assistant_text:
-                        sample_pairs.append((user_text, assistant_text))
+                    if convs:
+                        chatml_convs.extend(convs)
+                        threads_count += 1
+            conv_count = len(chatml_convs)
+            if threads_count == 0 and conv_count == 0:
+                log("No conversations constructed from threads; falling back to pairs conversion if available.")
+                # Optional fallback to pairs if present
+                if pairs_src is not None and os.path.exists(str(pairs_src)):
+                    data = await asyncio.to_thread(lambda: json.load(open(str(pairs_src), "r", encoding="utf-8")))
+                    if isinstance(data, list):
+                        chatml_convs = pairs_to_chatml(data)
+                        conv_count = len(chatml_convs)
         else:
-            log("No pairs JSON produced (pairs_src missing).")
+            # Single-turn mode: convert pairs to ChatML
+            if pairs_src is not None and os.path.exists(str(pairs_src)):
+                data = await asyncio.to_thread(lambda: json.load(open(str(pairs_src), "r", encoding="utf-8")))
+                if isinstance(data, list):
+                    chatml_convs = pairs_to_chatml(data)
+                    conv_count = len(chatml_convs)
+            else:
+                log("No pairs JSON produced (pairs_src missing).")
+
+        # Write ChatML to desired output path
+        dest = output_path or "scraped_training_data.json"
+        dest_abs = os.path.abspath(dest)
+        os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
+        await asyncio.to_thread(
+            lambda: open(dest_abs, "w", encoding="utf-8").write(
+                json.dumps(chatml_convs, ensure_ascii=False, indent=4)
+            )
+        )
+        log(f"Wrote {conv_count} conversations to: {dest_abs}")
+
+        # Build preview from ChatML: first user->assistant pair per conversation
+        for conv in chatml_convs[:10]:
+            msgs = conv.get("messages", []) or []
+            user_text = None
+            assistant_text = None
+            for m in msgs:
+                role = m.get("role")
+                text = m.get("content") or ""
+                if role == "user" and user_text is None and text:
+                    user_text = text
+                elif role == "assistant" and user_text is not None and text:
+                    assistant_text = text
+                    break
+            if user_text and assistant_text:
+                sample_pairs.append((user_text, assistant_text))
     except Exception as e:
         log(f"Failed to build ChatML/write output: {e}")
     await safe_update(page)
@@ -988,6 +1026,13 @@ Tabs:
     delay = ft.TextField(label="Delay (s)", value="1.0", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     min_len = ft.TextField(label="Min Length", value="3", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     output_path = ft.TextField(label="Output JSON Path", value="scraped_training_data.json", width=360)
+    dataset_format_dd = ft.Dropdown(
+        label="Dataset Format",
+        options=[ft.dropdown.Option("ChatML")],
+        value="ChatML",
+        width=180,
+        tooltip="Select the JSON dataset format for output (ChatML only for now)",
+    )
 
     # Pairing mode control
     multiturn_sw = ft.Switch(label="Multiturn", value=False)
@@ -1456,6 +1501,11 @@ Tabs:
             log_list.controls.append(ft.Text(
                 f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards)>20 else ''}"
             ))
+        # Log chosen dataset format (currently only ChatML)
+        try:
+            log_list.controls.append(ft.Text(f"Dataset format: {dataset_format_dd.value}"))
+        except Exception:
+            pass
         await safe_update(page)
 
         # Disable Start while running
@@ -1777,6 +1827,7 @@ Tabs:
         delay=delay,
         min_len=min_len,
         output_path=output_path,
+        dataset_format_dd=dataset_format_dd,
         multiturn_sw=multiturn_sw,
         strategy_dd=strategy_dd,
         k_field=k_field,

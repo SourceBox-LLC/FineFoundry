@@ -26,6 +26,7 @@ def build_scrape_tab(
     delay,
     min_len,
     output_path,
+    dataset_format_dd,
     multiturn_sw,
     strategy_dd,
     k_field,
@@ -88,7 +89,7 @@ def build_scrape_tab(
                         content=ft.Column([
                             reddit_params_row,
                             se_params_row,
-                            ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
+                            ft.Row([max_threads, max_pairs, delay, min_len, output_path, dataset_format_dd], wrap=True),
                             # Simplified to only expose single vs multi-turn
                             ft.Row([multiturn_sw], wrap=True),
                             scrape_actions,

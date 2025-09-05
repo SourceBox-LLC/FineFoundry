@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 # Reuse cleaners and reference extractors from the existing 4chan scraper
 from scrapers import fourchan_scraper as sc
+from scrapers import reddit_scraper as rs
 
 
 def pair_to_chatml(inp: str, out: str, add_system: Optional[str] = None) -> Dict[str, Any]:
@@ -191,6 +192,140 @@ def thread_to_chatml_conversations(
             messages.append({"role": role, "content": text})
 
         # Only keep conversations that end with assistant
+        if messages and messages[-1].get("role") == "assistant":
+            conversations.append({"messages": messages})
+
+    return conversations
+
+
+def reddit_thread_to_chatml_conversations(
+    thread: Dict[str, Any],
+    *,
+    min_len: int = 1,
+    k: int = 4,
+    max_rounds_per_conv: int = 6,
+    max_chars: Optional[int] = None,
+    merge_same_author: bool = True,
+    add_system: Optional[str] = None,
+    ban_pattern: Optional[re.Pattern] = None,
+) -> List[Dict[str, Any]]:
+    """Build multi-turn ChatML conversations from a single Reddit thread.
+
+    Walks comment ancestry up to k steps (or to the post), merges adjacent
+    chunks from the same author, constructs an alternating user/assistant
+    message sequence ending with an assistant reply, and trims to at most
+    max_rounds_per_conv rounds.
+    """
+    post = (thread or {}).get("post", {}) or {}
+    comments: List[Dict[str, Any]] = (thread or {}).get("comments", []) or []
+    id_map: Dict[str, Dict[str, Any]] = {c.get("id"): c for c in comments}
+
+    # Compose the post text (title + optional selftext)
+    def _post_text(p: Dict[str, Any]) -> str:
+        title = p.get("title") or ""
+        body = p.get("selftext") or ""
+        if body:
+            return rs.clean_text(f"{title}\n\n{body}")
+        return rs.clean_text(title)
+
+    conversations: List[Dict[str, Any]] = []
+
+    for c in comments:
+        child_txt = rs.clean_text((c.get("body") or ""))
+        if len(child_txt) < min_len:
+            continue
+
+        # Build chain from parent to root (post)
+        chain_nodes: List[Dict[str, Any]] = []
+        cur_parent_id = c.get("parent_id") or ""
+        steps = 0
+        while steps < max(0, int(k)) and cur_parent_id:
+            if cur_parent_id.startswith("t1_"):
+                parent = id_map.get(cur_parent_id[3:])
+                if not parent:
+                    break
+                chain_nodes.append(parent)
+                cur_parent_id = parent.get("parent_id") or ""
+                steps += 1
+            elif cur_parent_id.startswith("t3_"):
+                # Root reached — include the post
+                chain_nodes.append({
+                    "__type": "post",
+                    "text": _post_text(post),
+                    "author": post.get("author") or "",
+                })
+                break
+            else:
+                break
+
+        if not chain_nodes:
+            # Fallback: use the post as minimal context
+            chain_nodes.append({
+                "__type": "post",
+                "text": _post_text(post),
+                "author": post.get("author") or "",
+            })
+
+        # Oldest -> newest
+        chain_nodes = list(reversed(chain_nodes))
+
+        # Convert to context chunks with authors
+        ctx_chunks: List[Dict[str, Any]] = []
+        for node in chain_nodes:
+            if node.get("__type") == "post":
+                a = node.get("author") or ""
+                t = (node.get("text") or "").strip()
+            else:
+                a = (node.get("author") or "")
+                t = rs.clean_text(node.get("body") or "")
+            if len(t) >= min_len:
+                ctx_chunks.append({"text": t, "author": a})
+
+        # Append current comment as the last chunk; merge if same author
+        cur_chunk = {"text": child_txt, "author": (c.get("author") or "")}
+        if merge_same_author and ctx_chunks:
+            if (ctx_chunks[-1].get("author") or "") == (cur_chunk.get("author") or ""):
+                ctx_chunks[-1]["text"] = (ctx_chunks[-1]["text"] + "\n\n" + cur_chunk["text"]).strip()
+            else:
+                ctx_chunks.append(cur_chunk)
+        else:
+            ctx_chunks.append(cur_chunk)
+
+        # Extract message texts
+        msgs = [ch.get("text", "").strip() for ch in ctx_chunks if len((ch.get("text") or "").strip()) >= min_len]
+        if len(msgs) < 2:
+            continue
+
+        # Keep only the last 2*max_rounds_per_conv messages
+        keep = max(2, 2 * max(1, int(max_rounds_per_conv or 1)))
+        if len(msgs) > keep:
+            msgs = msgs[-keep:]
+
+        # Ensure conversation ends with assistant (even number of turns)
+        if len(msgs) % 2 != 0:
+            msgs = msgs[1:]
+        if len(msgs) < 2:
+            continue
+
+        # Trim individual messages if needed
+        def trim_msg(s: str) -> str:
+            if max_chars is not None and max_chars > 0 and len(s) > max_chars:
+                return s[-max_chars:]
+            return s
+
+        msgs = [trim_msg(m) for m in msgs]
+
+        # Drop by banned pattern if applicable
+        if ban_pattern and any(ban_pattern.search(m) for m in msgs):
+            continue
+
+        messages: List[Dict[str, str]] = []
+        if add_system:
+            messages.append({"role": "system", "content": add_system})
+        for idx, text in enumerate(msgs):
+            role = "user" if (idx % 2 == 0) else "assistant"
+            messages.append({"role": role, "content": text})
+
         if messages and messages[-1].get("role") == "assistant":
             conversations.append({"messages": messages})
 
