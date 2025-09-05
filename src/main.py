@@ -116,6 +116,7 @@ async def run_reddit_scrape(
     ui_proxy_enabled: bool,
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
+    dataset_format: str,
 ) -> None:
     """Run the Reddit scraper in a worker thread and integrate results into the UI."""
     def log(msg: str):
@@ -163,7 +164,8 @@ async def run_reddit_scrape(
 
     prog.value = 0
     labels.get("threads").value = "Threads Visited: 0"
-    labels.get("pairs").value = "Conversations Found: 0"
+    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
+    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
     await safe_update(page)
 
     log("Starting Reddit scrape...")
@@ -222,9 +224,11 @@ async def run_reddit_scrape(
     prog.value = 1.0
     await safe_update(page)
 
-    # Convert to ChatML conversations, write to output, and build preview
+    # Build output (ChatML conversations or Standard pairs), write to output, and build preview
     conv_count = 0
+    pairs_count = 0
     chatml_convs: List[dict] = []
+    standard_pairs: List[dict] = []
     sample_pairs: List[Tuple[str, str]] = []
     try:
         if bool(multiturn):
@@ -260,46 +264,86 @@ async def run_reddit_scrape(
                 if pairs_src is not None and os.path.exists(str(pairs_src)):
                     data = await asyncio.to_thread(lambda: json.load(open(str(pairs_src), "r", encoding="utf-8")))
                     if isinstance(data, list):
-                        chatml_convs = pairs_to_chatml(data)
-                        conv_count = len(chatml_convs)
+                        if pairs_output:
+                            standard_pairs = data
+                            pairs_count = len(standard_pairs)
+                        else:
+                            chatml_convs = pairs_to_chatml(data)
+                            conv_count = len(chatml_convs)
         else:
-            # Single-turn mode: convert pairs to ChatML
+            # Single-turn mode
             if pairs_src is not None and os.path.exists(str(pairs_src)):
                 data = await asyncio.to_thread(lambda: json.load(open(str(pairs_src), "r", encoding="utf-8")))
                 if isinstance(data, list):
-                    chatml_convs = pairs_to_chatml(data)
-                    conv_count = len(chatml_convs)
+                    if pairs_output:
+                        standard_pairs = data
+                        pairs_count = len(standard_pairs)
+                    else:
+                        chatml_convs = pairs_to_chatml(data)
+                        conv_count = len(chatml_convs)
             else:
                 log("No pairs JSON produced (pairs_src missing).")
 
-        # Write ChatML to desired output path
+        # If Standard selected and we have conversations, convert to first user→assistant pairs
+        if pairs_output and not standard_pairs and chatml_convs:
+            for conv in chatml_convs:
+                try:
+                    msgs = conv.get("messages", []) or []
+                    user_text = None
+                    assistant_text = None
+                    for m in msgs:
+                        role = m.get("role")
+                        text = m.get("content") or ""
+                        if role == "user" and user_text is None and text:
+                            user_text = text
+                        elif role == "assistant" and user_text is not None and text:
+                            assistant_text = text
+                            break
+                    if user_text and assistant_text:
+                        standard_pairs.append({"input": user_text, "output": assistant_text})
+                except Exception:
+                    pass
+            pairs_count = len(standard_pairs)
+
+        # Write to desired output path (ChatML or Standard)
         dest = output_path or "scraped_training_data.json"
         dest_abs = os.path.abspath(dest)
         os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
+        payload = chatml_convs if not pairs_output else standard_pairs
         await asyncio.to_thread(
             lambda: open(dest_abs, "w", encoding="utf-8").write(
-                json.dumps(chatml_convs, ensure_ascii=False, indent=4)
+                json.dumps(payload, ensure_ascii=False, indent=4)
             )
         )
-        log(f"Wrote {conv_count} conversations to: {dest_abs}")
+        if pairs_output:
+            log(f"Wrote {pairs_count} pairs to: {dest_abs}")
+        else:
+            log(f"Wrote {conv_count} conversations to: {dest_abs}")
 
-        # Build preview from ChatML: first user->assistant pair per conversation
-        for conv in chatml_convs[:10]:
-            msgs = conv.get("messages", []) or []
-            user_text = None
-            assistant_text = None
-            for m in msgs:
-                role = m.get("role")
-                text = m.get("content") or ""
-                if role == "user" and user_text is None and text:
-                    user_text = text
-                elif role == "assistant" and user_text is not None and text:
-                    assistant_text = text
-                    break
-            if user_text and assistant_text:
-                sample_pairs.append((user_text, assistant_text))
+        # Build preview
+        if pairs_output:
+            for ex in (standard_pairs or [])[:10]:
+                a = (ex.get("input", "") or "") if isinstance(ex, dict) else ""
+                b = (ex.get("output", "") or "") if isinstance(ex, dict) else ""
+                sample_pairs.append((a, b))
+        else:
+            # From ChatML: first user→assistant pair per conversation
+            for conv in chatml_convs[:10]:
+                msgs = conv.get("messages", []) or []
+                user_text = None
+                assistant_text = None
+                for m in msgs:
+                    role = m.get("role")
+                    text = m.get("content") or ""
+                    if role == "user" and user_text is None and text:
+                        user_text = text
+                    elif role == "assistant" and user_text is not None and text:
+                        assistant_text = text
+                        break
+                if user_text and assistant_text:
+                    sample_pairs.append((user_text, assistant_text))
     except Exception as e:
-        log(f"Failed to build ChatML/write output: {e}")
+        log(f"Failed to build output/write file: {e}")
     await safe_update(page)
 
     # Read index.json for post count (threads label)
@@ -312,7 +356,9 @@ async def run_reddit_scrape(
     except Exception:
         pass
 
-    labels.get("pairs").value = f"Conversations Found: {conv_count}"
+    labels.get("pairs").value = (
+        f"Pairs Found: {pairs_count}" if pairs_output else f"Conversations Found: {conv_count}"
+    )
 
     # Populate preview grid from ChatML-derived sample pairs
     try:
@@ -361,6 +407,7 @@ async def run_real_scrape(
     ui_proxy_enabled: bool,
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
+    dataset_format: str,
 ) -> None:
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
@@ -373,11 +420,9 @@ async def run_real_scrape(
     pairs_accum: List[dict] = []
     conversations_accum: List[dict] = []
     chatml_enabled = bool(multiturn)
+    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
     # Initialize counters label
-    if chatml_enabled:
-        labels.get("pairs").value = "Conversations Found: 0"
-    else:
-        labels.get("pairs").value = "Pairs Found: 0"
+    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
 
     # Apply proxy settings from UI (overrides env/defaults)
     try:
@@ -494,18 +539,42 @@ async def run_real_scrape(
             log(f"/{b}/ -> {len(data)} pairs (total {len(pairs_accum)})")
             await safe_update(page)
 
-    # Write JSON (always ChatML conversations)
+    # Write JSON (ChatML conversations or Standard pairs)
     try:
-        if chatml_enabled:
-            payload = conversations_accum
+        if pairs_output:
+            if chatml_enabled:
+                # Convert conversations to first user→assistant pairs
+                std_pairs: List[dict] = []
+                for conv in conversations_accum:
+                    try:
+                        msgs = conv.get("messages", []) or []
+                        user_text = None
+                        assistant_text = None
+                        for m in msgs:
+                            role = m.get("role")
+                            text = m.get("content") or ""
+                            if role == "user" and user_text is None and text:
+                                user_text = text
+                            elif role == "assistant" and user_text is not None and text:
+                                assistant_text = text
+                                break
+                        if user_text and assistant_text:
+                            std_pairs.append({"input": user_text, "output": assistant_text})
+                    except Exception:
+                        pass
+                payload = std_pairs
+            else:
+                payload = pairs_accum
         else:
-            # Convert single-turn pairs into ChatML conversations
-            payload = pairs_to_chatml(pairs_accum)
+            if chatml_enabled:
+                payload = conversations_accum
+            else:
+                payload = pairs_to_chatml(pairs_accum)
         await asyncio.to_thread(
             lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
         )
         log(
-            f"Wrote {len(payload)} conversations to {output_path}"
+            (f"Wrote {len(payload)} pairs to {output_path}" if pairs_output else f"Wrote {len(payload)} conversations to {output_path}")
         )
     except Exception as e:
         log(f"Failed to write {output_path}: {e}")
@@ -514,12 +583,38 @@ async def run_real_scrape(
 
     # Populate preview with flex grid and scrollable cells
     preview_host.controls.clear()
-    if chatml_enabled:
-        # Derive a sample of user/assistant pairs from conversations for preview
-        sample_pairs: List[Tuple[str, str]] = []
+    if pairs_output:
+        # Standard: preview raw pairs
+        head = []
+        if chatml_enabled:
+            # Convert conversations to first pairs just for preview
+            for conv in (conversations_accum or [])[:10]:
+                try:
+                    msgs = conv.get("messages", []) or []
+                    user_text = None
+                    assistant_text = None
+                    for m in msgs:
+                        role = m.get("role")
+                        text = m.get("content") or ""
+                        if role == "user" and user_text is None and text:
+                            user_text = text
+                        elif role == "assistant" and user_text is not None and text:
+                            assistant_text = text
+                            break
+                    if user_text and assistant_text:
+                        head.append({"input": user_text, "output": assistant_text})
+                except Exception:
+                    pass
+        else:
+            head = pairs_accum[:10]
+        sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
+        if not sample_pairs:
+            sample_pairs = [("(no preview)", "")]
+    else:
+        # ChatML: derive preview from conversations
+        sample_pairs = []
         for conv in (conversations_accum or [])[:10]:
             msgs = conv.get("messages", []) or []
-            # Find first user->assistant pair
             user_text = None
             assistant_text = None
             for m in msgs:
@@ -534,9 +629,6 @@ async def run_real_scrape(
                 sample_pairs.append((user_text, assistant_text))
         if not sample_pairs:
             sample_pairs = [("(no preview)", "")]
-    else:
-        head = pairs_accum[:10]
-        sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
 
     lfx, rfx = compute_two_col_flex(sample_pairs)
     preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
@@ -562,6 +654,7 @@ async def run_stackexchange_scrape(
     ui_proxy_enabled: bool,
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
+    dataset_format: str,
 ) -> None:
     """Run the Stack Exchange scraper in a worker thread and integrate results into the UI."""
     def log(msg: str):
@@ -577,7 +670,8 @@ async def run_stackexchange_scrape(
 
     prog.value = 0
     labels.get("threads").value = "Pages processed: 0"
-    labels.get("pairs").value = "Conversations Found: 0"
+    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
+    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
     await safe_update(page)
 
     log(f"Starting StackExchange scrape (site={site}, max_pairs={max_pairs})...")
@@ -636,43 +730,51 @@ async def run_stackexchange_scrape(
     prog.value = 1.0
     await safe_update(page)
 
-    # Convert to ChatML and write JSON
-    pairs_count = 0
+    # Write output according to dataset format and build preview
+    count = 0
     preview_pairs: List[Tuple[str, str]] = []
     try:
-        chatml_convs = pairs_to_chatml(results or [])
+        if pairs_output:
+            payload = results or []
+        else:
+            payload = pairs_to_chatml(results or [])
         await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(chatml_convs, ensure_ascii=False, indent=4))
+            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
         )
-        log(f"Wrote {len(chatml_convs)} conversations to {output_path}")
-        pairs_count = len(chatml_convs)
-        # Build preview from first user→assistant turn in each conversation
-        head = chatml_convs[:10]
-        for c in head:
-            try:
-                msgs = c.get("messages", [])
-                user_text = None
-                assistant_text = None
-                for m in msgs:
-                    role = m.get("role")
-                    text = m.get("content") or ""
-                    if role == "user" and user_text is None and text:
-                        user_text = text
-                    elif role == "assistant" and user_text is not None and text:
-                        assistant_text = text
-                        break
-                if user_text and assistant_text:
-                    preview_pairs.append((user_text, assistant_text))
-            except Exception:
-                pass
+        if pairs_output:
+            log(f"Wrote {len(payload)} pairs to {output_path}")
+            count = len(payload)
+            head = payload[:10]
+            preview_pairs = [((ex.get("input", "") or ""), (ex.get("output", "") or "")) for ex in head]
+        else:
+            log(f"Wrote {len(payload)} conversations to {output_path}")
+            count = len(payload)
+            head = payload[:10]
+            for c in head:
+                try:
+                    msgs = c.get("messages", [])
+                    user_text = None
+                    assistant_text = None
+                    for m in msgs:
+                        role = m.get("role")
+                        text = m.get("content") or ""
+                        if role == "user" and user_text is None and text:
+                            user_text = text
+                        elif role == "assistant" and user_text is not None and text:
+                            assistant_text = text
+                            break
+                    if user_text and assistant_text:
+                        preview_pairs.append((user_text, assistant_text))
+                except Exception:
+                    pass
         if not preview_pairs:
             preview_pairs = [("(no preview)", "")]
     except Exception as e:
         log(f"Failed to write results: {e}")
     await safe_update(page)
 
-    labels.get("pairs").value = f"Conversations Found: {pairs_count}"
-    labels.get("threads").value = f"Questions processed: {pairs_count}"
+    labels.get("pairs").value = (f"Pairs Found: {count}" if pairs_output else f"Conversations Found: {count}")
+    labels.get("threads").value = f"Questions processed: {count}"
 
     # Populate preview grid
     try:
@@ -1028,10 +1130,10 @@ Tabs:
     output_path = ft.TextField(label="Output JSON Path", value="scraped_training_data.json", width=360)
     dataset_format_dd = ft.Dropdown(
         label="Dataset Format",
-        options=[ft.dropdown.Option("ChatML")],
+        options=[ft.dropdown.Option("ChatML"), ft.dropdown.Option("Standard")],
         value="ChatML",
-        width=180,
-        tooltip="Select the JSON dataset format for output (ChatML only for now)",
+        width=200,
+        tooltip="Select output dataset format: ChatML (multi-turn conversations) or Standard (raw input/output pairs).",
     )
 
     # Pairing mode control
@@ -1501,7 +1603,7 @@ Tabs:
             log_list.controls.append(ft.Text(
                 f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards)>20 else ''}"
             ))
-        # Log chosen dataset format (currently only ChatML)
+        # Log chosen dataset format
         try:
             log_list.controls.append(ft.Text(f"Dataset format: {dataset_format_dd.value}"))
         except Exception:
@@ -1541,6 +1643,7 @@ Tabs:
                     ui_proxy_enabled=bool(proxy_enable_cb.value),
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
+                    dataset_format=(dataset_format_dd.value or "ChatML"),
                 )
             elif source_dd.value == "stackexchange":
                 await run_stackexchange_scrape(
@@ -1558,6 +1661,7 @@ Tabs:
                     ui_proxy_enabled=bool(proxy_enable_cb.value),
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
+                    dataset_format=(dataset_format_dd.value or "ChatML"),
                 )
             else:
                 await run_real_scrape(
@@ -1582,6 +1686,7 @@ Tabs:
                     ui_proxy_enabled=bool(proxy_enable_cb.value),
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
+                    dataset_format=(dataset_format_dd.value or "ChatML"),
                 )
         finally:
             start_button.disabled = False

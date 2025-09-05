@@ -82,8 +82,8 @@ def build_scrape_tab(
                     section_title(
                         "Parameters",
                         ICONS.TUNE,
-                        "Set scraping limits, path, and choose turn mode (single vs multi). All outputs are ChatML.",
-                        on_help_click=_mk_help_handler("Set scraping limits, path, and choose turn mode (single vs multi). All outputs are ChatML."),
+                        "Set scraping limits, path, and choose turn mode (single vs multi). Outputs follow the selected dataset format (ChatML or Standard).",
+                        on_help_click=_mk_help_handler("Set scraping limits, path, and choose turn mode (single vs multi). Outputs follow the selected dataset format (ChatML or Standard)."),
                     ),
                     ft.Container(
                         content=ft.Column([
@@ -133,8 +133,8 @@ def build_scrape_tab(
                     section_title(
                         "Preview",
                         ICONS.PREVIEW,
-                        "Quick sample preview of scraped ChatML conversations (first user→assistant turn).",
-                        on_help_click=_mk_help_handler("Quick sample preview of scraped ChatML conversations (first user→assistant turn)."),
+                        "Quick sample preview of the selected dataset format. ChatML: first user→assistant turn; Standard: raw input/output pairs.",
+                        on_help_click=_mk_help_handler("Quick sample preview of the selected dataset format. ChatML: first user→assistant turn; Standard: raw input/output pairs."),
                     ),
                     ft.Container(
                         content=ft.Column([
