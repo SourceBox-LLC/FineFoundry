@@ -26,7 +26,7 @@ def build_scrape_tab(
     delay,
     min_len,
     output_path,
-    pair_mode,
+    multiturn_sw,
     strategy_dd,
     k_field,
     max_chars_field,
@@ -81,16 +81,16 @@ def build_scrape_tab(
                     section_title(
                         "Parameters",
                         ICONS.TUNE,
-                        "Set scraping limits and pairing behavior. Context options appear when applicable.",
-                        on_help_click=_mk_help_handler("Set scraping limits and pairing behavior. Context options appear when applicable."),
+                        "Set scraping limits, path, and choose turn mode (single vs multi). All outputs are ChatML.",
+                        on_help_click=_mk_help_handler("Set scraping limits, path, and choose turn mode (single vs multi). All outputs are ChatML."),
                     ),
                     ft.Container(
                         content=ft.Column([
                             reddit_params_row,
                             se_params_row,
                             ft.Row([max_threads, max_pairs, delay, min_len, output_path], wrap=True),
-                            ft.Row([pair_mode, strategy_dd, k_field, max_chars_field], wrap=True),
-                            ft.Row([merge_same_id_cb, require_question_cb], wrap=True),
+                            # Simplified to only expose single vs multi-turn
+                            ft.Row([multiturn_sw], wrap=True),
                             scrape_actions,
                         ], spacing=8),
                         width=1000,
@@ -132,8 +132,8 @@ def build_scrape_tab(
                     section_title(
                         "Preview",
                         ICONS.PREVIEW,
-                        "Quick sample preview of scraped pairs.",
-                        on_help_click=_mk_help_handler("Quick sample preview of scraped pairs."),
+                        "Quick sample preview of scraped ChatML conversations (first user→assistant turn).",
+                        on_help_click=_mk_help_handler("Quick sample preview of scraped ChatML conversations (first user→assistant turn)."),
                     ),
                     ft.Container(
                         content=ft.Column([

@@ -3,12 +3,11 @@ import random
 import time
 import os
 import shutil
+import subprocess
 from datetime import datetime
 from typing import List, Optional, Tuple
 import json
 import re
-import subprocess
-import sys
 
 import flet as ft
 import httpx
@@ -90,6 +89,7 @@ from ui.tabs.tab_build import build_build_tab
 from ui.tabs.tab_training import build_training_tab
 from ui.tabs.tab_merge import build_merge_tab
 from ui.tabs.tab_analysis import build_analysis_tab
+from helpers.chatml import thread_to_chatml_conversations, pairs_to_chatml
 
 # Set terminal title to uppercase for the current session
 set_terminal_title("PYTHON: MAIN")
@@ -108,7 +108,7 @@ async def run_reddit_scrape(
     delay: float,
     min_len_val: int,
     output_path: str,
-    pairing_mode: str,
+    multiturn: bool,
     ctx_k: int,
     ctx_max_chars: Optional[int],
     merge_same_id: bool,
@@ -140,7 +140,7 @@ async def run_reddit_scrape(
         rdt.REQUEST_DELAY = max(0.0, float(delay))
         # Always build dataset; we'll copy pairs to desired path
         rdt.BUILD_DATASET = True
-        rdt.PAIRING_MODE = "contextual" if (pairing_mode or "normal") == "contextual" else "parent_child"
+        rdt.PAIRING_MODE = "contextual" if bool(multiturn) else "parent_child"
         rdt.CONTEXT_K = int(ctx_k)
         rdt.MAX_INPUT_CHARS = None if (ctx_max_chars is None) else int(ctx_max_chars)
         rdt.MERGE_SAME_AUTHOR = bool(merge_same_id)
@@ -163,7 +163,7 @@ async def run_reddit_scrape(
 
     prog.value = 0
     labels.get("threads").value = "Threads Visited: 0"
-    labels.get("pairs").value = "Pairs Found: 0"
+    labels.get("pairs").value = "Conversations Found: 0"
     await safe_update(page)
 
     log("Starting Reddit scrape...")
@@ -222,27 +222,46 @@ async def run_reddit_scrape(
     prog.value = 1.0
     await safe_update(page)
 
-    # Copy pairs to desired output path and load for preview
-    pairs_count = 0
-    preview_pairs = []
+    # Convert pairs to ChatML conversations, write to output, and build preview
+    conv_count = 0
+    chatml_convs: List[dict] = []
+    sample_pairs: List[Tuple[str, str]] = []
     try:
         if pairs_src is not None and os.path.exists(str(pairs_src)):
-            dest = output_path or "scraped_training_data.json"
-            dest_abs = os.path.abspath(dest)
-            os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
-            # Copy contents
             txt = await asyncio.to_thread(lambda: open(str(pairs_src), "r", encoding="utf-8").read())
-            await asyncio.to_thread(lambda: open(dest_abs, "w", encoding="utf-8").write(txt))
-            log(f"Copied pairs to: {dest_abs}")
-            # Load for preview
             data = await asyncio.to_thread(lambda: json.loads(txt))
             if isinstance(data, list):
-                pairs_count = len(data)
-                preview_pairs = [(d.get("input", "") or "", d.get("output", "") or "") for d in data[:10]]
+                chatml_convs = pairs_to_chatml(data)
+                conv_count = len(chatml_convs)
+                # Write ChatML to desired output path
+                dest = output_path or "scraped_training_data.json"
+                dest_abs = os.path.abspath(dest)
+                os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
+                await asyncio.to_thread(
+                    lambda: open(dest_abs, "w", encoding="utf-8").write(
+                        json.dumps(chatml_convs, ensure_ascii=False, indent=4)
+                    )
+                )
+                log(f"Wrote {conv_count} conversations to: {dest_abs}")
+                # Build preview from ChatML: first user->assistant pair per conversation
+                for conv in chatml_convs[:10]:
+                    msgs = conv.get("messages", []) or []
+                    user_text = None
+                    assistant_text = None
+                    for m in msgs:
+                        role = m.get("role")
+                        text = m.get("content") or ""
+                        if role == "user" and user_text is None and text:
+                            user_text = text
+                        elif role == "assistant" and user_text is not None and text:
+                            assistant_text = text
+                            break
+                    if user_text and assistant_text:
+                        sample_pairs.append((user_text, assistant_text))
         else:
             log("No pairs JSON produced (pairs_src missing).")
     except Exception as e:
-        log(f"Failed to copy/load pairs: {e}")
+        log(f"Failed to build ChatML/write output: {e}")
     await safe_update(page)
 
     # Read index.json for post count (threads label)
@@ -255,14 +274,16 @@ async def run_reddit_scrape(
     except Exception:
         pass
 
-    labels.get("pairs").value = f"Pairs Found: {pairs_count}"
+    labels.get("pairs").value = f"Conversations Found: {conv_count}"
 
-    # Populate preview grid
+    # Populate preview grid from ChatML-derived sample pairs
     try:
         preview_host.controls.clear()
-        lfx, rfx = compute_two_col_flex(preview_pairs)
+        if not sample_pairs:
+            sample_pairs = [("(no preview)", "")]  # graceful empty state
+        lfx, rfx = compute_two_col_flex(sample_pairs)
         preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-        for a, b in preview_pairs:
+        for a, b in sample_pairs:
             preview_host.controls.append(two_col_row(a, b, lfx, rfx))
     except Exception as e:
         log(f"Failed to render preview: {e}")
@@ -293,7 +314,7 @@ async def run_real_scrape(
     delay: float,
     min_len_val: int,
     output_path: str,
-    pairing_mode: str,
+    multiturn: bool,
     ctx_strategy: str,
     ctx_k: int,
     ctx_max_chars: Optional[int],
@@ -312,6 +333,13 @@ async def run_real_scrape(
         return
     prog.value = 0
     pairs_accum: List[dict] = []
+    conversations_accum: List[dict] = []
+    chatml_enabled = bool(multiturn)
+    # Initialize counters label
+    if chatml_enabled:
+        labels.get("pairs").value = "Conversations Found: 0"
+    else:
+        labels.get("pairs").value = "Pairs Found: 0"
 
     # Apply proxy settings from UI (overrides env/defaults)
     try:
@@ -328,44 +356,119 @@ async def run_real_scrape(
             await safe_update(page)
             return
 
-        remaining = max_pairs_total - len(pairs_accum)
+        remaining = (max_pairs_total - (len(conversations_accum) if chatml_enabled else len(pairs_accum)))
         if remaining <= 0:
             break
 
-        log(f"Scraping /{b}/ (up to {remaining} pairs) — mode={pairing_mode}")
-        try:
-            data = await asyncio.to_thread(
-                sc.scrape,
-                board=b,
-                max_threads=max_threads,
-                max_pairs=remaining,
-                delay=delay,
-                min_len=min_len_val,
-                mode=pairing_mode,
-                strategy=ctx_strategy,
-                k=ctx_k,
-                max_chars=ctx_max_chars,
-                merge_same_id=merge_same_id,
-                require_question=require_question,
-            )
-        except Exception as e:
-            log(f"Error scraping /{b}/: {e}")
+        if chatml_enabled:
+            # Build ChatML conversations by sampling threads round-robin across catalog pages
+            mode_str = "chatml"
+            log(f"Scraping /{b}/ (up to {remaining} conversations) — mode={mode_str}")
+            try:
+                pages = await asyncio.to_thread(sc.fetch_catalog_pages, b)
+            except Exception as e:
+                log(f"Error fetching catalog for /{b}/: {e}")
+                await safe_update(page)
+                continue
+
+            # Round-robin selection of thread IDs up to max_threads
+            thread_ids: List[int] = []
+            rr_idx = [0] * len(pages)
+            try:
+                while len(thread_ids) < max_threads and any(i < len(pages[p]) for p, i in enumerate(rr_idx)):
+                    for p_i in range(len(pages)):
+                        if len(thread_ids) >= max_threads:
+                            break
+                        i2 = rr_idx[p_i]
+                        if i2 < len(pages[p_i]):
+                            thread_ids.append(pages[p_i][i2])
+                            rr_idx[p_i] += 1
+            except Exception:
+                pass
+
+            board_new = 0
+            for tid in thread_ids:
+                if (max_pairs_total - len(conversations_accum)) <= 0:
+                    break
+                try:
+                    posts = await asyncio.to_thread(sc.fetch_thread, b, tid)
+                except Exception:
+                    posts = []
+                if not posts:
+                    continue
+                # Build conversations for this thread
+                convs = thread_to_chatml_conversations(
+                    posts,
+                    min_len=min_len_val,
+                    k=ctx_k,
+                    max_rounds_per_conv=6,
+                    max_chars=ctx_max_chars,
+                    merge_same_id=merge_same_id,
+                    add_system=None,
+                    ban_pattern=None,
+                )
+                if not convs:
+                    await asyncio.sleep(delay)
+                    continue
+                # Respect remaining budget
+                rem = max_pairs_total - len(conversations_accum)
+                if rem <= 0:
+                    break
+                if len(convs) > rem:
+                    convs = convs[:rem]
+                conversations_accum.extend(convs)
+                board_new += len(convs)
+                labels.get("pairs").value = f"Conversations Found: {len(conversations_accum)}"
+                await safe_update(page)
+                await asyncio.sleep(delay)
+
+            labels.get("threads").value = f"Boards processed: {idx}/{total_boards}"
+            prog.value = idx / total_boards
+            log(f"/{b}/ -> {board_new} conversations (total {len(conversations_accum)})")
             await safe_update(page)
-            continue
+        else:
+            mode_str = "contextual" if bool(multiturn) else "normal"
+            log(f"Scraping /{b}/ (up to {remaining} pairs) — mode={mode_str}")
+            try:
+                data = await asyncio.to_thread(
+                    sc.scrape,
+                    board=b,
+                    max_threads=max_threads,
+                    max_pairs=remaining,
+                    delay=delay,
+                    min_len=min_len_val,
+                    mode=mode_str,
+                    strategy=ctx_strategy,
+                    k=ctx_k,
+                    max_chars=ctx_max_chars,
+                    merge_same_id=merge_same_id,
+                    require_question=require_question,
+                )
+            except Exception as e:
+                log(f"Error scraping /{b}/: {e}")
+                await safe_update(page)
+                continue
 
-        pairs_accum.extend(data)
-        labels.get("pairs").value = f"Pairs Found: {len(pairs_accum)}"
-        labels.get("threads").value = f"Boards processed: {idx}/{total_boards}"
-        prog.value = idx / total_boards
-        log(f"/{b}/ -> {len(data)} pairs (total {len(pairs_accum)})")
-        await safe_update(page)
+            pairs_accum.extend(data)
+            labels.get("pairs").value = f"Pairs Found: {len(pairs_accum)}"
+            labels.get("threads").value = f"Boards processed: {idx}/{total_boards}"
+            prog.value = idx / total_boards
+            log(f"/{b}/ -> {len(data)} pairs (total {len(pairs_accum)})")
+            await safe_update(page)
 
-    # Write JSON
+    # Write JSON (always ChatML conversations)
     try:
+        if chatml_enabled:
+            payload = conversations_accum
+        else:
+            # Convert single-turn pairs into ChatML conversations
+            payload = pairs_to_chatml(pairs_accum)
         await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(pairs_accum, ensure_ascii=False, indent=4))
+            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
         )
-        log(f"Wrote {len(pairs_accum)} records to {output_path}")
+        log(
+            f"Wrote {len(payload)} conversations to {output_path}"
+        )
     except Exception as e:
         log(f"Failed to write {output_path}: {e}")
         await safe_update(page)
@@ -373,8 +476,30 @@ async def run_real_scrape(
 
     # Populate preview with flex grid and scrollable cells
     preview_host.controls.clear()
-    head = pairs_accum[:10]
-    sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
+    if chatml_enabled:
+        # Derive a sample of user/assistant pairs from conversations for preview
+        sample_pairs: List[Tuple[str, str]] = []
+        for conv in (conversations_accum or [])[:10]:
+            msgs = conv.get("messages", []) or []
+            # Find first user->assistant pair
+            user_text = None
+            assistant_text = None
+            for m in msgs:
+                role = m.get("role")
+                text = m.get("content") or ""
+                if role == "user" and user_text is None and text:
+                    user_text = text
+                elif role == "assistant" and user_text is not None and text:
+                    assistant_text = text
+                    break
+            if user_text and assistant_text:
+                sample_pairs.append((user_text, assistant_text))
+        if not sample_pairs:
+            sample_pairs = [("(no preview)", "")]
+    else:
+        head = pairs_accum[:10]
+        sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
+
     lfx, rfx = compute_two_col_flex(sample_pairs)
     preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
     for a, b in sample_pairs:
@@ -414,7 +539,7 @@ async def run_stackexchange_scrape(
 
     prog.value = 0
     labels.get("threads").value = "Pages processed: 0"
-    labels.get("pairs").value = "Pairs Found: 0"
+    labels.get("pairs").value = "Conversations Found: 0"
     await safe_update(page)
 
     log(f"Starting StackExchange scrape (site={site}, max_pairs={max_pairs})...")
@@ -473,23 +598,42 @@ async def run_stackexchange_scrape(
     prog.value = 1.0
     await safe_update(page)
 
-    # Write JSON
+    # Convert to ChatML and write JSON
     pairs_count = 0
     preview_pairs: List[Tuple[str, str]] = []
     try:
+        chatml_convs = pairs_to_chatml(results or [])
         await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(results or [], ensure_ascii=False, indent=4))
+            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(chatml_convs, ensure_ascii=False, indent=4))
         )
-        log(f"Wrote {len(results or [])} records to {output_path}")
-        pairs_count = len(results or [])
-        preview_pairs = [
-            (d.get("input", "") or "", d.get("output", "") or "") for d in (results or [])[:10]
-        ]
+        log(f"Wrote {len(chatml_convs)} conversations to {output_path}")
+        pairs_count = len(chatml_convs)
+        # Build preview from first user→assistant turn in each conversation
+        head = chatml_convs[:10]
+        for c in head:
+            try:
+                msgs = c.get("messages", [])
+                user_text = None
+                assistant_text = None
+                for m in msgs:
+                    role = m.get("role")
+                    text = m.get("content") or ""
+                    if role == "user" and user_text is None and text:
+                        user_text = text
+                    elif role == "assistant" and user_text is not None and text:
+                        assistant_text = text
+                        break
+                if user_text and assistant_text:
+                    preview_pairs.append((user_text, assistant_text))
+            except Exception:
+                pass
+        if not preview_pairs:
+            preview_pairs = [("(no preview)", "")]
     except Exception as e:
         log(f"Failed to write results: {e}")
     await safe_update(page)
 
-    labels.get("pairs").value = f"Pairs Found: {pairs_count}"
+    labels.get("pairs").value = f"Conversations Found: {pairs_count}"
     labels.get("threads").value = f"Questions processed: {pairs_count}"
 
     # Populate preview grid
@@ -845,16 +989,8 @@ Tabs:
     min_len = ft.TextField(label="Min Length", value="3", width=160, keyboard_type=ft.KeyboardType.NUMBER)
     output_path = ft.TextField(label="Output JSON Path", value="scraped_training_data.json", width=360)
 
-    # Contextual pairing controls
-    pair_mode = ft.Dropdown(
-        label="Pairing Mode",
-        value="normal",
-        options=[
-            ft.dropdown.Option("normal"),
-            ft.dropdown.Option("contextual"),
-        ],
-        width=200,
-    )
+    # Pairing mode control
+    multiturn_sw = ft.Switch(label="Multiturn", value=False)
     strategy_dd = ft.Dropdown(
         label="Context Strategy",
         value="cumulative",
@@ -867,14 +1003,14 @@ Tabs:
     require_question_cb = ft.Checkbox(label="Require question in context", value=False)
 
     def update_context_controls():
-        is_ctx = (pair_mode.value == "contextual")
+        is_ctx = bool(multiturn_sw.value)
         strategy_dd.visible = is_ctx
         k_field.visible = is_ctx
         max_chars_field.visible = is_ctx
         merge_same_id_cb.visible = is_ctx
         require_question_cb.visible = is_ctx
         page.update()
-    pair_mode.on_change = lambda e: update_context_controls()
+    multiturn_sw.on_change = lambda e: update_context_controls()
     update_context_controls()
 
     # Toggle visibility between 4chan, Reddit and StackExchange controls
@@ -903,7 +1039,7 @@ Tabs:
         max_threads.visible = not (is_reddit or is_se)  # 4chan-specific
         max_pairs.visible = not is_reddit               # used by 4chan and StackExchange
         # Pairing/context controls apply to 4chan and Reddit, hide for StackExchange
-        for ctl in [pair_mode, strategy_dd, k_field, max_chars_field, merge_same_id_cb, require_question_cb]:
+        for ctl in [multiturn_sw, strategy_dd, k_field, max_chars_field, merge_same_id_cb, require_question_cb]:
             try:
                 ctl.visible = not is_se
             except Exception:
@@ -1296,7 +1432,7 @@ Tabs:
             ml = 3
         out_path = output_path.value or "scraped_training_data.json"
         # Context params
-        mode_val = (pair_mode.value or "normal")
+        multiturn = bool(multiturn_sw.value)
         strat_val = (strategy_dd.value or "cumulative")
         try:
             k_val = int(k_field.value or 6)
@@ -1347,7 +1483,7 @@ Tabs:
                     delay=dl,
                     min_len_val=ml,
                     output_path=out_path,
-                    pairing_mode=mode_val,
+                    multiturn=multiturn,
                     ctx_k=k_val,
                     ctx_max_chars=max_chars_val,
                     merge_same_id=bool(merge_same_id_cb.value),
@@ -1387,7 +1523,7 @@ Tabs:
                     delay=dl,
                     min_len_val=ml,
                     output_path=out_path,
-                    pairing_mode=mode_val,
+                    multiturn=multiturn,
                     ctx_strategy=strat_val,
                     ctx_k=k_val,
                     ctx_max_chars=max_chars_val,
@@ -1641,7 +1777,7 @@ Tabs:
         delay=delay,
         min_len=min_len,
         output_path=output_path,
-        pair_mode=pair_mode,
+        multiturn_sw=multiturn_sw,
         strategy_dd=strategy_dd,
         k_field=k_field,
         max_chars_field=max_chars_field,
