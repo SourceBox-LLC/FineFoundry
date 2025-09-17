@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 import json
 import re
 
+
 import flet as ft
 import httpx
 from scrapers import fourchan_scraper as sc
