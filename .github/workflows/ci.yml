@@ -6,6 +6,25 @@ on:
   pull_request:
     branches: ["**"]
   workflow_dispatch:
+    inputs:
+      resumeUri:
+        description: "n8n resume URL"
+        required: true
+        type: string
+      env:
+        description: "Target environment"
+        required: false
+        default: "staging"
+        type: string
+      run_migrations:
+        description: "Run DB migrations"
+        required: false
+        default: "false"
+        type: string
+      version:
+        description: "Release tag or version"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -47,6 +66,14 @@ jobs:
         run: |
           python --version
           pip --version
+
+      - name: Print inputs (if workflow_dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          echo "env=${{ inputs.env }}"
+          echo "run_migrations=${{ inputs.run_migrations }}"
+          echo "version=${{ inputs.version }}"
 
       - name: Syntax check (compile all)
         run: |
@@ -96,3 +123,32 @@ jobs:
             exit 0
           }
           exit $LASTEXITCODE
+
+      # Notify n8n only when manually dispatched via n8n (workflow_dispatch)
+      - name: Resume n8n (success, Linux)
+        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Linux' && success() && inputs.resumeUri != '' }}
+        shell: bash
+        run: |
+          curl -sS -X POST "${{ inputs.resumeUri }}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"success","message":"CI finished OK"}'
+
+      - name: Resume n8n (failure, Linux)
+        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Linux' && failure() && inputs.resumeUri != '' }}
+        shell: bash
+        run: |
+          curl -sS -X POST "${{ inputs.resumeUri }}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"failure","message":"CI failed"}'
+
+      - name: Resume n8n (success, Windows)
+        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Windows' && success() && inputs.resumeUri != '' }}
+        shell: pwsh
+        run: |
+          Invoke-RestMethod -Uri "${{ inputs.resumeUri }}" -Method Post -ContentType 'application/json' -Body '{"status":"success","message":"CI finished OK"}'
+
+      - name: Resume n8n (failure, Windows)
+        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Windows' && failure() && inputs.resumeUri != '' }}
+        shell: pwsh
+        run: |
+          Invoke-RestMethod -Uri "${{ inputs.resumeUri }}" -Method Post -ContentType 'application/json' -Body '{"status":"failure","message":"CI failed"}'
