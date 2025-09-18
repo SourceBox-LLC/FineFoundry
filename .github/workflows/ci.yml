@@ -124,31 +124,24 @@ jobs:
           }
           exit $LASTEXITCODE
 
-      # Notify n8n only when manually dispatched via n8n (workflow_dispatch)
-      - name: Resume n8n (success, Linux)
-        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Linux' && success() && inputs.resumeUri != '' }}
-        shell: bash
+      # n8n callback moved to a dedicated job to avoid duplicate callbacks per matrix run
+
+  notify:
+    name: Notify n8n
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.resumeUri != '' }}
+    steps:
+      - name: Resume n8n (success)
+        if: ${{ always() && needs.build.result == 'success' }}
         run: |
           curl -sS -X POST "${{ inputs.resumeUri }}" \
             -H "Content-Type: application/json" \
-            -d '{"status":"success","message":"CI finished OK"}'
+            -d '{"status":"success","message":"CI finished OK","run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","sha":"${{ github.sha }}"}'
 
-      - name: Resume n8n (failure, Linux)
-        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Linux' && failure() && inputs.resumeUri != '' }}
-        shell: bash
+      - name: Resume n8n (failure)
+        if: ${{ always() && needs.build.result != 'success' }}
         run: |
           curl -sS -X POST "${{ inputs.resumeUri }}" \
             -H "Content-Type: application/json" \
-            -d '{"status":"failure","message":"CI failed"}'
-
-      - name: Resume n8n (success, Windows)
-        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Windows' && success() && inputs.resumeUri != '' }}
-        shell: pwsh
-        run: |
-          Invoke-RestMethod -Uri "${{ inputs.resumeUri }}" -Method Post -ContentType 'application/json' -Body '{"status":"success","message":"CI finished OK"}'
-
-      - name: Resume n8n (failure, Windows)
-        if: ${{ github.event_name == 'workflow_dispatch' && runner.os == 'Windows' && failure() && inputs.resumeUri != '' }}
-        shell: pwsh
-        run: |
-          Invoke-RestMethod -Uri "${{ inputs.resumeUri }}" -Method Post -ContentType 'application/json' -Body '{"status":"failure","message":"CI failed"}'
+            -d '{"status":"failure","message":"CI failed","run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","sha":"${{ github.sha }}"}'
