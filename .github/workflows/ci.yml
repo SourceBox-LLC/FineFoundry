@@ -6,25 +6,6 @@ on:
   pull_request:
     branches: ["**"]
   workflow_dispatch:
-    inputs:
-      resumeUri:
-        description: "n8n resume URL"
-        required: true
-        type: string
-      env:
-        description: "Target environment"
-        required: false
-        default: "staging"
-        type: string
-      run_migrations:
-        description: "Run DB migrations"
-        required: false
-        default: "false"
-        type: string
-      version:
-        description: "Release tag or version"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -35,14 +16,9 @@ concurrency:
 
 jobs:
   build:
-    name: Python ${{ matrix.python-version }}
-    runs-on: ${{ matrix.os }}
+    name: Python 3.11
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12"]
     env:
       PYTHONPATH: src
 
@@ -53,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements.txt
 
@@ -67,20 +43,11 @@ jobs:
           python --version
           pip --version
 
-      - name: Print inputs (if workflow_dispatch)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        shell: bash
-        run: |
-          echo "env=${{ inputs.env }}"
-          echo "run_migrations=${{ inputs.run_migrations }}"
-          echo "version=${{ inputs.version }}"
-
       - name: Syntax check (compile all)
         run: |
           python -m compileall -q src scripts
 
-      - name: Verify core packages importable (Linux)
-        if: runner.os == 'Linux'
+      - name: Verify core packages importable
         shell: bash
         run: |
           python - <<'PY'
@@ -91,14 +58,7 @@ jobs:
           print("Core packages imported successfully")
           PY
 
-      - name: Verify core packages importable (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          python -c "import sys,importlib; sys.path.append('src'); [importlib.import_module(p) for p in ('helpers','scrapers','runpod','ui')]; print('Core packages imported successfully')"
-
-      - name: Run tests (Linux)
-        if: runner.os == 'Linux'
+      - name: Run tests
         shell: bash
         run: |
           python -m pip install pytest
@@ -111,37 +71,3 @@ jobs:
             exit 0
           fi
           exit "$rc"
-
-      - name: Run tests (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          python -m pip install pytest
-          pytest -q
-          if ($LASTEXITCODE -eq 5) {
-            Write-Host "No tests collected. Skipping pytest."
-            exit 0
-          }
-          exit $LASTEXITCODE
-
-      # n8n callback moved to a dedicated job to avoid duplicate callbacks per matrix run
-
-  notify:
-    name: Notify n8n
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.resumeUri != '' }}
-    steps:
-      - name: Resume n8n (success)
-        if: ${{ always() && needs.build.result == 'success' }}
-        run: |
-          curl -sS -X POST "${{ inputs.resumeUri }}" \
-            -H "Content-Type: application/json" \
-            -d '{"status":"success","message":"CI finished OK","run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","sha":"${{ github.sha }}"}'
-
-      - name: Resume n8n (failure)
-        if: ${{ always() && needs.build.result != 'success' }}
-        run: |
-          curl -sS -X POST "${{ inputs.resumeUri }}" \
-            -H "Content-Type: application/json" \
-            -d '{"status":"failure","message":"CI failed","run_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}","sha":"${{ github.sha }}"}'
