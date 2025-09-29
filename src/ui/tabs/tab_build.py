@@ -1,12 +1,17 @@
 """Build/Publish tab builder for FineFoundry.
 
 This module composes the Build/Publish tab UI using controls created in main.py.
-No logic changes; only layout composition is centralized here.
+Now delegates to per-section builders under `ui.tabs.build.sections` for clarity.
+No behavior changes.
 """
 from __future__ import annotations
 
 import flet as ft
 
+from ui.tabs.build.sections.dataset_params_section import build_dataset_params_section
+from ui.tabs.build.sections.push_section import build_push_section
+from ui.tabs.build.sections.model_card_section import build_model_card_section
+from ui.tabs.build.sections.status_section import build_status_section
 
 def build_build_tab(
     *,
@@ -48,96 +53,74 @@ def build_build_tab(
     timeline,
     timeline_placeholder,
 ) -> ft.Container:
+    dataset_params = build_dataset_params_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        source_mode=source_mode,
+        data_file=data_file,
+        merged_dir=merged_dir,
+        seed=seed,
+        shuffle=shuffle,
+        min_len_b=min_len_b,
+        save_dir=save_dir,
+        val_slider=val_slider,
+        test_slider=test_slider,
+        split_error=split_error,
+        split_badges=split_badges,
+    )
+
+    push_section = build_push_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        push_toggle=push_toggle,
+        repo_id=repo_id,
+        private=private,
+        token_val_ui=token_val_ui,
+        build_actions=build_actions,
+    )
+
+    model_card_section = build_model_card_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        use_custom_card=use_custom_card,
+        card_preview_switch=card_preview_switch,
+        load_template_btn=load_template_btn,
+        gen_from_ds_btn=gen_from_ds_btn,
+        gen_with_ollama_btn=gen_with_ollama_btn,
+        clear_card_btn=clear_card_btn,
+        ollama_gen_status=ollama_gen_status,
+        card_editor=card_editor,
+        card_preview_container=card_preview_container,
+    )
+
+    status_section = build_status_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        timeline=timeline,
+        timeline_placeholder=timeline_placeholder,
+    )
+
     return ft.Container(
         content=ft.Column([
             ft.Row([
                 ft.Container(
                     content=ft.Column([
-                        section_title(
-                            "Dataset Params",
-                            ICONS.SETTINGS,
-                            "Choose input source, preprocessing, and output path for building a dataset.",
-                            on_help_click=_mk_help_handler("Choose input source, preprocessing, and output path for building a dataset."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
-                                ft.Divider(),
-                                section_title(
-                                    "Splits",
-                                    ICONS.TABLE_VIEW,
-                                    "Configure validation and test fractions; train is the remainder.",
-                                    on_help_click=_mk_help_handler("Configure validation and test fractions; train is the remainder."),
-                                ),
-                                ft.Row([
-                                    ft.Column([
-                                        ft.Text("Validation Fraction"), val_slider,
-                                        ft.Text("Test Fraction"), test_slider,
-                                        split_error,
-                                    ], width=360),
-                                    ft.Row([split_badges["train"], split_badges["val"], split_badges["test"]], spacing=10),
-                                ], wrap=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                            ], spacing=12),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Push to Hub",
-                            ICONS.PUBLIC,
-                            "Optionally upload your dataset to the Hugging Face Hub.",
-                            on_help_click=_mk_help_handler("Optionally upload your dataset to the Hugging Face Hub."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([push_toggle, repo_id, private, token_val_ui], wrap=True),
-                                build_actions,
-                            ], spacing=10),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Model Card Creator",
-                            ICONS.ARTICLE,
-                            "Draft and preview the README dataset card; can generate from template or dataset.",
-                            on_help_click=_mk_help_handler("Draft and preview the README dataset card; can generate from template or dataset."),
-                        ),
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Row([use_custom_card, card_preview_switch], wrap=True),
-                                ft.Row([load_template_btn, gen_from_ds_btn, gen_with_ollama_btn, clear_card_btn], wrap=True),
-                                ft.Row([ollama_gen_status], wrap=True),
-                                ft.Container(
-                                    ft.Column([card_editor], scroll=ft.ScrollMode.AUTO, spacing=0),
-                                    height=300,
-                                    border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                    border_radius=8,
-                                    padding=8,
-                                ),
-                                card_preview_container,
-                            ], spacing=10),
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
-                        section_title(
-                            "Status",
-                            ICONS.TASK,
-                            "Build timeline with step-by-step status.",
-                            on_help_click=_mk_help_handler("Build timeline with step-by-step status."),
-                        ),
-                        ft.Container(
-                            ft.Stack([timeline, timeline_placeholder], expand=True),
-                            height=260,
-                            width=1000,
-                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                            border_radius=8,
-                            padding=10,
-                        ),
+                        dataset_params,
+                        push_section,
+                        model_card_section,
+                        status_section,
                     ], spacing=12),
                     width=1000,
                 )

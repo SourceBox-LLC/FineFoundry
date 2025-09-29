@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import flet as ft
 
+from ui.tabs.training.sections.header_section import build_target_selector_section
 
 def build_training_tab(
     *,
@@ -23,15 +24,11 @@ def build_training_tab(
     Note: All logic and dynamic visibility handlers remain in main.py. This function
     only arranges already-constructed containers and controls.
     """
+    target_selector = build_target_selector_section(train_target_dd=train_target_dd)
+
     return ft.Container(
         content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Row([train_target_dd], alignment=ft.MainAxisAlignment.CENTER),
-                    width=1000,
-                    padding=ft.padding.only(top=12),
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Row([target_selector], alignment=ft.MainAxisAlignment.CENTER),
             pod_content_container,
             local_specs_container,
         ], scroll=ft.ScrollMode.AUTO, spacing=0),

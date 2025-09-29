@@ -2,8 +2,6 @@ import asyncio
 import random
 import time
 import os
-import shutil
-import subprocess
 from typing import List, Optional, Tuple
 import json
 import httpx
@@ -39,6 +37,12 @@ from helpers.theme import (
     BORDER_BASE,
     REFRESH_ICON,
 )
+try:
+    import save_dataset as sd
+except Exception:
+    import sys as _sys
+    _sys.path.append(os.path.dirname(__file__))
+    import save_dataset as sd
 from helpers.boards import load_4chan_boards
 from helpers.ui import (
     WITH_OPACITY,
@@ -73,6 +77,14 @@ from ui.tabs.tab_build import build_build_tab
 from ui.tabs.tab_training import build_training_tab
 from ui.tabs.tab_merge import build_merge_tab
 from ui.tabs.tab_analysis import build_analysis_tab
+from ui.tabs.training.sections.local_specs_section import build_local_specs_container
+from ui.tabs.training.sections.logs_section import build_pod_logs_section
+from ui.tabs.training.sections.pod_content import build_pod_content_container
+from ui.tabs.training.sections.config_section import build_config_section
+from ui.tabs.training.sections.rp_infra_section import build_rp_infra_panel
+from ui.tabs.training.sections.dataset_section import build_dataset_section
+from ui.tabs.training.sections.train_params_section import build_train_params_section
+from ui.tabs.training.sections.teardown_section import build_teardown_section
 from helpers.scrape import (
     run_reddit_scrape as run_reddit_scrape_helper,
     run_real_scrape as run_real_scrape_helper,
@@ -86,9 +98,24 @@ from helpers.merge import (
     run_merge as run_merge_helper,
     preview_merged as preview_merged_helper,
 )
+from helpers.local_docker import (
+    on_docker_pull as on_docker_pull_helper,
+)
 from helpers.local_specs import (
     gather_local_specs as gather_local_specs_helper,
     refresh_local_gpus as refresh_local_gpus_helper,
+)
+from helpers.training_config import (
+    saved_configs_dir as saved_configs_dir_helper,
+    list_saved_configs as list_saved_configs_helper,
+    read_json_file as read_json_file_helper,
+    validate_config as validate_config_helper,
+)
+from helpers.settings_ollama import (
+    load_config as load_ollama_config_helper,
+    save_config as save_ollama_config_helper,
+    fetch_tags as fetch_ollama_tags_helper,
+    chat as ollama_chat_helper,
 )
 
 # Set terminal title to uppercase for the current session
@@ -699,30 +726,14 @@ Tabs:
     runpod_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_runpod)
 
     # ---------- SETTINGS (Ollama) CONTROLS ----------
-    # Simple persistence path (project root)
-    OLLAMA_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ollama_config.json")
-
-    def _load_ollama_config() -> dict:
-        try:
-            with open(OLLAMA_CFG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f) or {}
-        except Exception:
-            cfg = {}
-        return {
-            "enabled": bool(cfg.get("enabled", False)),
-            "base_url": (cfg.get("base_url") or "http://127.0.0.1:11434"),
-            "default_model": (cfg.get("default_model") or ""),
-            "selected_model": (cfg.get("selected_model") or ""),
-        }
-
-    def _save_ollama_config(cfg: dict):
-        try:
-            with open(OLLAMA_CFG_PATH, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-    _ollama_cfg = _load_ollama_config()
+    # Load persisted Ollama settings (with defaults applied for UI bindings)
+    _ollama_raw = load_ollama_config_helper()
+    _ollama_cfg = {
+        "enabled": bool(_ollama_raw.get("enabled", False)),
+        "base_url": (_ollama_raw.get("base_url") or "http://127.0.0.1:11434"),
+        "default_model": (_ollama_raw.get("default_model") or ""),
+        "selected_model": (_ollama_raw.get("selected_model") or ""),
+    }
 
     ollama_enable_cb = ft.Checkbox(label="Enable Ollama connection", value=_ollama_cfg.get("enabled", False))
     ollama_base_url_tf = ft.TextField(label="Ollama base URL", value=_ollama_cfg.get("base_url", "http://127.0.0.1:11434"), width=420)
@@ -736,13 +747,6 @@ Tabs:
             c.disabled = not en
         page.update()
 
-    async def _fetch_ollama_tags(base_url: str) -> dict:
-        url = f"{(base_url or '').rstrip('/')}/api/tags"
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            return r.json()
-
     async def on_test_ollama():
         if not bool(ollama_enable_cb.value):
             return
@@ -750,7 +754,7 @@ Tabs:
         ollama_status.value = f"Testing connection to {base}…"
         await safe_update(page)
         try:
-            data = await _fetch_ollama_tags(base)
+            data = await fetch_ollama_tags_helper(base)
             models = [m.get("name", "") for m in (data.get("models", []) or []) if m.get("name")]
             ollama_models_dd.options = [ft.dropdown.Option(n) for n in models]
             if models and not ollama_models_dd.value:
@@ -772,7 +776,7 @@ Tabs:
             "default_model": (ollama_default_model_tf.value or "").strip(),
             "selected_model": (ollama_models_dd.value or "").strip(),
         }
-        _save_ollama_config(cfg)
+        save_ollama_config_helper(cfg)
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Ollama settings saved"))
             page.snack_bar.open = True
@@ -1500,18 +1504,6 @@ Specify license and any restrictions.
             page.snack_bar.open = True
             await safe_update(page)
 
-    async def _ollama_chat(base_url: str, model: str, messages: List[dict]) -> str:
-        url = f"{(base_url or '').rstrip('/')}/api/chat"
-        payload = {"model": model, "messages": messages, "stream": False}
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(url, json=payload)
-            r.raise_for_status()
-            data = r.json()
-            # Ollama non-stream response typically: { ..., "message": {"role":"assistant","content":"..."} }
-            msg = data.get("message") or {}
-            content = msg.get("content") or data.get("content") or ""
-            return str(content)
-
     ollama_gen_status = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
 
     async def _on_generate_with_ollama(_):
@@ -1525,7 +1517,7 @@ Specify license and any restrictions.
         except Exception:
             pass
 
-        cfg = _load_ollama_config()
+        cfg = load_ollama_config_helper()
         base_url = (cfg.get("base_url") or "http://127.0.0.1:11434").strip()
         model_name = (ollama_models_dd.value or cfg.get("selected_model") or cfg.get("default_model") or "").strip()
         if not model_name:
@@ -1591,7 +1583,7 @@ Specify license and any restrictions.
         ollama_gen_status.value = f"Generating with Ollama model '{model_name}'…"
         await safe_update(page)
         try:
-            md = await _ollama_chat(
+            md = await ollama_chat_helper(
                 base_url,
                 model_name,
                 [
@@ -2228,21 +2220,10 @@ Specify license and any restrictions.
     )
 
     def _saved_configs_dir() -> str:
-        root = os.path.dirname(os.path.dirname(__file__))
-        d = os.path.join(root, "saved_configs")
-        try:
-            os.makedirs(d, exist_ok=True)
-        except Exception:
-            pass
-        return d
+        return saved_configs_dir_helper()
 
     def _list_saved_configs() -> List[str]:
-        d = _saved_configs_dir()
-        try:
-            files = [f for f in os.listdir(d) if f.lower().endswith(".json")]
-        except Exception:
-            files = []
-        return sorted(files)
+        return list_saved_configs_helper(_saved_configs_dir())
 
     def _update_config_buttons_enabled(_=None):
         try:
@@ -2270,30 +2251,10 @@ Specify license and any restrictions.
         _update_config_buttons_enabled()
 
     def _read_json_file(path: str) -> Optional[dict]:
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return None
+        return read_json_file_helper(path)
 
     def _validate_config(conf: dict) -> Tuple[bool, str]:
-        """Lightweight schema validation for saved training configs.
-        Returns (ok, message). On ok=False, message explains the issue.
-        """
-        if not isinstance(conf, dict):
-            return False, "Config is not a JSON object."
-        hp = conf.get("hp")
-        if not isinstance(hp, dict):
-            return False, "Missing or invalid 'hp' section."
-        # Minimal required fields for a viable training run
-        required = ["base_model", "epochs", "lr", "bsz", "grad_accum", "max_steps", "output_dir"]
-        missing = [k for k in required if not str(hp.get(k) or "").strip()]
-        if missing:
-            return False, f"Missing required hp fields: {', '.join(missing)}"
-        # Dataset hint (optional but helpful)
-        if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-            return True, "Note: no dataset specified (hf_dataset_id/json_path)."
-        return True, "OK"
+        return validate_config_helper(conf)
 
     def _apply_config_to_ui(conf: dict) -> None:
         if not isinstance(conf, dict):
@@ -3262,54 +3223,39 @@ Specify license and any restrictions.
         ),
     ], spacing=10)
 
-    # Configuration section wrapper to place in Training tab
-    config_section = ft.Container(
-        content=ft.Column([
-            section_title(
-                "Configuration",
-                getattr(ICONS, "SETTINGS_SUGGEST", ICONS.SETTINGS),
-                "Save or load training configs to streamline repeated runs.",
-                on_help_click=_mk_help_handler("Save or load training configs to streamline repeated runs."),
-            ),
-            ft.Row([config_mode_dd], wrap=True),
-            config_files_row,
-            config_summary_txt,
-            rp_infra_compact_row,
-            ft.Divider(),
-        ], spacing=8),
-        visible=True,
+    # Configuration section wrapper to place in Training tab (delegated)
+    config_section = build_config_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        config_mode_dd=config_mode_dd,
+        config_files_row=config_files_row,
+        config_summary_txt=config_summary_txt,
+        rp_infra_compact_row=rp_infra_compact_row,
     )
 
-    # Group all Runpod infrastructure controls to toggle as one section
-    rp_infra_panel = ft.Container(
-        content=ft.Column([
-            section_title(
-                "Runpod Infrastructure",
-                getattr(ICONS, "CLOUD", ICONS.SETTINGS),
-                "Create or update the required Runpod Network Volume and Template before training.",
-                on_help_click=_mk_help_handler("Create or update the required Runpod Network Volume and Template before training."),
-            ),
-            ft.Container(
-                content=ft.Column([
-                    ft.Text(
-                        "Defaults are provided; change any value to customize. Key precedence: Settings > Training temp field > environment.",
-                        size=12,
-                        color=WITH_OPACITY(0.7, BORDER_BASE),
-                    ),
-                    ft.Row([rp_dc_tf, rp_vol_name_tf, rp_vol_size_tf, rp_resize_row], wrap=True),
-                    ft.Row([rp_tpl_name_tf, rp_image_tf], wrap=True),
-                    ft.Row([rp_container_disk_tf, rp_volume_in_gb_tf, rp_mount_path_tf], wrap=True),
-                    ft.Row([rp_category_tf, rp_public_row], wrap=True),
-                    ft.Row([rp_temp_key_tf], wrap=True),
-                    rp_infra_actions,
-                ], spacing=12),
-                width=1000,
-                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                border_radius=8,
-                padding=10,
-            ),
-        ], spacing=12),
-        visible=True,
+    # Group all Runpod infrastructure controls to toggle as one section (delegated)
+    rp_infra_panel = build_rp_infra_panel(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        rp_dc_tf=rp_dc_tf,
+        rp_vol_name_tf=rp_vol_name_tf,
+        rp_vol_size_tf=rp_vol_size_tf,
+        rp_resize_row=rp_resize_row,
+        rp_tpl_name_tf=rp_tpl_name_tf,
+        rp_image_tf=rp_image_tf,
+        rp_container_disk_tf=rp_container_disk_tf,
+        rp_volume_in_gb_tf=rp_volume_in_gb_tf,
+        rp_mount_path_tf=rp_mount_path_tf,
+        rp_category_tf=rp_category_tf,
+        rp_public_row=rp_public_row,
+        rp_temp_key_tf=rp_temp_key_tf,
+        rp_infra_actions=rp_infra_actions,
     )
 
     # Training action buttons are disabled until infra is ready
@@ -3446,59 +3392,61 @@ Specify license and any restrictions.
             refresh_teardown_ui_fn=_refresh_teardown_ui,
         )
 
-    teardown_section = ft.Container(
-        content=ft.Column([
-            td_title,
-            ft.Text("Select items to teardown.", size=12, color=WITH_OPACITY(0.7, BORDER_BASE)),
-            ft.Container(
-                content=ft.Column([
-                    td_pod_cb,
-                    td_template_cb,
-                    td_volume_cb,
-                ], spacing=6),
-                padding=8,
-                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                border_radius=8,
-            ),
-            ft.Row([
-                ft.ElevatedButton("Teardown Selected", icon=getattr(ICONS, "DELETE", getattr(ICONS, "DELETE_OUTLINE", ICONS.CLOSE)), on_click=lambda e: page.run_task(on_teardown_selected)),
-                ft.OutlinedButton("Teardown All", icon=getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)), on_click=lambda e: page.run_task(on_teardown_all)),
-                td_busy,
-            ], spacing=10),
-        ], spacing=8),
+    teardown_section = build_teardown_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        td_template_cb=td_template_cb,
+        td_volume_cb=td_volume_cb,
+        td_pod_cb=td_pod_cb,
+        td_busy=td_busy,
+        on_teardown_selected_cb=lambda e: page.run_task(on_teardown_selected),
+        on_teardown_all_cb=lambda e: page.run_task(on_teardown_all),
+    )
+
+    # Sections hidden until infrastructure is ensured successfully (delegated)
+    dataset_section = build_dataset_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        train_source=train_source,
+        train_hf_repo=train_hf_repo,
+        train_hf_split=train_hf_split,
+        train_hf_config=train_hf_config,
+        train_json_path=train_json_path,
         visible=False,
     )
 
-    # Sections hidden until infrastructure is ensured successfully
-    dataset_section = ft.Container(
-        content=ft.Column([
-            section_title(
-                "Dataset",
-                ICONS.TABLE_VIEW,
-                "Select the dataset for training.",
-                on_help_click=_mk_help_handler("Select the dataset for training."),
-            ),
-            ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
-            ft.Divider(),
-        ], spacing=0),
-        visible=False,
-    )
-
-    train_params_section = ft.Container(
-        content=ft.Column([
-            section_title(
-                "Training Params",
-                ICONS.SETTINGS,
-                "Basic hyperparameters and LoRA toggle for training.",
-                on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
-            ),
-            ft.Row([skill_level, beginner_mode_dd], wrap=True),
-            ft.Row([expert_gpu_dd, expert_gpu_busy, expert_spot_cb, expert_gpu_refresh_btn], wrap=True),
-            ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
-            ft.Row([packing_row, auto_resume_row, push_row, hf_repo_row, resume_from_row], wrap=True),
-            advanced_params_section,
-            ft.Divider(),
-        ], spacing=0),
+    train_params_section = build_train_params_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        skill_level=skill_level,
+        beginner_mode_dd=beginner_mode_dd,
+        expert_gpu_dd=expert_gpu_dd,
+        expert_gpu_busy=expert_gpu_busy,
+        expert_spot_cb=expert_spot_cb,
+        expert_gpu_refresh_btn=expert_gpu_refresh_btn,
+        base_model=base_model,
+        epochs_tf=epochs_tf,
+        lr_tf=lr_tf,
+        batch_tf=batch_tf,
+        grad_acc_tf=grad_acc_tf,
+        max_steps_tf=max_steps_tf,
+        use_lora_cb=use_lora_cb,
+        out_dir_tf=out_dir_tf,
+        packing_row=packing_row,
+        auto_resume_row=auto_resume_row,
+        push_row=push_row,
+        hf_repo_row=hf_repo_row,
+        resume_from_row=resume_from_row,
+        advanced_params_section=advanced_params_section,
         visible=False,
     )
 
@@ -3811,256 +3759,73 @@ Specify license and any restrictions.
     )
 
     async def on_docker_pull(e=None):
-        img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
-        try:
-            if not shutil.which("docker"):
-                docker_status.value = "Docker CLI not found. Please install Docker Desktop and ensure 'docker' is on PATH."
-                try:
-                    docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                except Exception:
-                    pass
-                await safe_update(page)
-                return
-            # Quick daemon check before pulling
-            try:
-                info_res = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=4)
-                if info_res.returncode != 0:
-                    err_txt = (info_res.stderr or info_res.stdout or "").strip()
-                    raise RuntimeError(err_txt or "Docker daemon not responding")
-            except Exception as ex_chk:
-                # Pretty error if Docker Desktop/daemon isn't running
-                nice_msg = "Docker is not running. Please start Docker Desktop, then retry."
-                docker_status.value = nice_msg
-                try:
-                    docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                except Exception:
-                    pass
-                try:
-                    page.snack_bar = ft.SnackBar(
-                        content=ft.Row([
-                            ft.Icon(getattr(ICONS, "ERROR_OUTLINE", getattr(ICONS, "ERROR", ICONS.WARNING)), color=COLORS.WHITE),
-                            ft.Text(nice_msg, color=COLORS.WHITE),
-                        ], spacing=8),
-                        bgcolor=getattr(COLORS, "RED_400", getattr(COLORS, "RED", None)),
-                    )
-                    page.snack_bar.open = True
-                    await safe_update(page)
-                except Exception:
-                    pass
-                return
-            # If daemon OK, first check if image already exists locally
-            try:
-                insp = subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True)
-                if insp.returncode == 0:
-                    tag_list = []
-                    img_id = ""
-                    created = ""
-                    try:
-                        info = json.loads(insp.stdout or "[]")
-                        if isinstance(info, list) and info:
-                            tag_list = info[0].get("RepoTags") or []
-                            img_id = str(info[0].get("Id", ""))[-12:]
-                            created = (info[0].get("Created") or "")[:19].replace("T", " ")
-                    except Exception:
-                        pass
-                    docker_status.value = f"Image already present locally: {(tag_list and ', '.join(tag_list)) or img}\nID …{img_id}  Created {created}"
-                    try:
-                        docker_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
-                    except Exception:
-                        pass
-                    await safe_update(page)
-                    return
-            except Exception:
-                pass
-            # Proceed to pull
-            page.snack_bar = ft.SnackBar(ft.Text(f"Pulling {img}..."))
-            page.snack_bar.open = True
-            await safe_update(page)
-        except Exception:
-            pass
-        try:
-            res = subprocess.run(["docker", "pull", img], capture_output=True, text=True)
-            if res.returncode == 0:
-                out = (res.stdout or "").strip()
-                docker_status.value = f"Pulled successfully: {img}\n" + (out[-800:] if out else "")
-                try:
-                    docker_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
-                except Exception:
-                    pass
-            else:
-                out = (res.stdout or "") + "\n" + (res.stderr or "")
-                # Friendly hints for common errors
-                lower = out.lower()
-                hints = []
-                repo = img
-                tag = "latest"
-                try:
-                    if ":" in img.rsplit("/", 1)[-1]:
-                        repo, tag = img.rsplit(":", 1)
-                    else:
-                        repo = img
-                except Exception:
-                    pass
-                if "manifest unknown" in lower or "not found" in lower:
-                    # Try to show local tags for this repo
-                    try:
-                        ref = repo
-                        if ref.startswith("docker.io/"):
-                            ref = ref[len("docker.io/"):]
-                        ls = subprocess.run([
-                            "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}",
-                            "--filter", f"reference={ref}:*"
-                        ], capture_output=True, text=True)
-                        lines = [l.strip() for l in (ls.stdout or "").splitlines() if l.strip()]
-                        if lines:
-                            hints.append("Local tags found: " + ", ".join(lines[:8]))
-                    except Exception:
-                        pass
-                    # Optional: probe Docker Hub for available tags
-                    try:
-                        hub_repo = repo
-                        if hub_repo.startswith("docker.io/"):
-                            hub_repo = hub_repo[len("docker.io/"):]
-                        # Skip probing for official library images without namespace nuance here
-                        url = f"https://hub.docker.com/v2/repositories/{hub_repo}/tags?page_size=10"
-                        r = httpx.get(url, timeout=5.0)
-                        if r.status_code == 200:
-                            data = r.json()
-                            names = [t.get("name") for t in (data.get("results") or []) if t.get("name")]
-                            if names:
-                                hints.append("Docker Hub tags: " + ", ".join(names[:8]))
-                    except Exception:
-                        pass
-                if "authentication required" in lower or "unauthorized" in lower:
-                    hints.append("If this is a private repo, run 'docker login' first.")
-                msg = f"docker pull failed (exit {res.returncode}).\n" + out[-800:]
-                if hints:
-                    msg += "\n\nHints: " + "  •  ".join(hints)
-                docker_status.value = msg
-                try:
-                    docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                except Exception:
-                    pass
-        except Exception as ex:
-            docker_status.value = f"Error pulling image: {ex}"
-            try:
-                docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            except Exception:
-                pass
-        try:
-            await safe_update(page)
-        except Exception:
-            pass
+        return await on_docker_pull_helper(
+            page=page,
+            ICONS=ICONS,
+            COLORS=COLORS,
+            docker_image_tf=docker_image_tf,
+            docker_status=docker_status,
+            DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
+        )
 
-    # Pod logs section (title + progress + timeline); hidden when using Local Docker
-    pod_logs_section = ft.Container(
-        content=ft.Column([
-            section_title(
-                "Progress & Logs",
-                ICONS.TASK_ALT,
-                "Pod status updates and training logs.",
-                on_help_click=_mk_help_handler("Pod status updates and training logs."),
-            ),
-            ft.Row([train_progress, train_prog_label], spacing=12),
-            ft.Container(
-                ft.Stack([train_timeline, train_timeline_placeholder], expand=True),
-                height=240,
-                width=1000,
-                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                border_radius=8,
-                padding=10,
-            ),
-        ], spacing=12),
-        visible=True,
+    # Pod logs section (delegated)
+    pod_logs_section = build_pod_logs_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        train_progress=train_progress,
+        train_prog_label=train_prog_label,
+        train_timeline=train_timeline,
+        train_timeline_placeholder=train_timeline_placeholder,
+        mk_help_handler=_mk_help_handler,
     )
 
-    # Wrap the existing Training content so we can hide it for non-pod targets
-    pod_content_container = ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    config_section,
-                    rp_infra_panel,
-                    ft.Divider(),
-                    ds_tp_group_container,
-                    pod_logs_section,
-                    teardown_section,
-                    train_actions,
-                ], spacing=12),
-                width=1000,
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER),
-        visible=True,
+    # Wrap the existing Training content so we can hide it for non-pod targets (delegated)
+    pod_content_container = build_pod_content_container(
+        config_section=config_section,
+        rp_infra_panel=rp_infra_panel,
+        ds_tp_group_container=ds_tp_group_container,
+        pod_logs_section=pod_logs_section,
+        teardown_section=teardown_section,
+        train_actions=train_actions,
     )
 
-    # Local specs content (hidden by default)
-    local_specs_container = ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    section_title(
-                        "Local Training: System Specs",
-                        getattr(ICONS, "COMPUTER", getattr(ICONS, "TERMINAL", ICONS.SETTINGS)),
-                        "A quick view of your system for local fine‑tuning feasibility.",
-                        on_help_click=_mk_help_handler("Shows CPU, RAM, disk, GPU, and CUDA status to gauge local fine‑tuning readiness."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([ft.Text("OS", width=160), local_os_txt]),
-                            ft.Row([ft.Text("Python", width=160), local_py_txt]),
-                            ft.Row([ft.Text("CPU cores", width=160), local_cpu_txt]),
-                            ft.Row([ft.Text("RAM", width=160), local_ram_txt]),
-                            ft.Row([ft.Text("Disk free", width=160), local_disk_txt]),
-                            ft.Row([ft.Text("PyTorch", width=160), local_torch_txt]),
-                            ft.Row([ft.Text("CUDA", width=160), local_cuda_txt]),
-                            ft.Text("GPUs:"),
-                            ft.Container(local_gpus_txt, padding=6, bgcolor=WITH_OPACITY(0.04, BORDER_BASE), border_radius=6),
-                            ft.Divider(),
-                            local_flags_box,
-                            local_capability_txt,
-                            ft.Divider(),
-                            section_title(
-                                "Docker: Pull Image",
-                                getattr(ICONS, "CLOUD_DOWNLOAD", getattr(ICONS, "DOWNLOAD", ICONS.CLOUD)),
-                                "Pull a Docker image locally for training tasks.",
-                                on_help_click=_mk_help_handler("Use Docker Desktop. This pulls the image to your machine."),
-                            ),
-                            ft.Row([docker_image_tf, docker_pull_btn], wrap=True, spacing=10),
-                            docker_status,
-                            ft.Row([
-                                ft.OutlinedButton("Refresh specs", icon=REFRESH_ICON, on_click=lambda e: page.run_task(on_refresh_local_specs)),
-                            ], wrap=True),
-                            ft.Divider(),
-                            section_title(
-                                "Local Docker: Run Training",
-                                getattr(ICONS, "PLAY_CIRCLE", getattr(ICONS, "TERMINAL", ICONS.PLAY_ARROW)),
-                                "Builds and runs a local Docker container mirroring the Runpod training command.",
-                                on_help_click=_mk_help_handler("Runs the training script inside the selected Docker image with your dataset mounted at /data. Uses the same command builder as Runpod."),
-                            ),
-                            ft.Row([local_host_dir_tf, local_browse_btn], wrap=True, spacing=10),
-                            ft.Row([local_container_name_tf, local_use_gpu_cb, local_pass_hf_token_cb], wrap=True, spacing=10),
-                            ft.Row([local_train_progress, local_train_prog_label, local_save_logs_btn], spacing=12),
-                            ft.Container(
-                                ft.Stack([local_train_timeline, local_train_timeline_placeholder], expand=True),
-                                height=240,
-                                width=1000,
-                                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                border_radius=8,
-                                padding=10,
-                            ),
-                            ft.Row([local_start_btn, local_stop_btn], spacing=10, wrap=True),
-                            local_train_status,
-                        ], spacing=6),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                ], spacing=12),
-                width=1000,
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER),
-        visible=False,
+    # Local specs content (delegated; hidden by default)
+    local_specs_container = build_local_specs_container(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        REFRESH_ICON=REFRESH_ICON,
+        local_os_txt=local_os_txt,
+        local_py_txt=local_py_txt,
+        local_cpu_txt=local_cpu_txt,
+        local_ram_txt=local_ram_txt,
+        local_disk_txt=local_disk_txt,
+        local_torch_txt=local_torch_txt,
+        local_cuda_txt=local_cuda_txt,
+        local_gpus_txt=local_gpus_txt,
+        local_flags_box=local_flags_box,
+        local_capability_txt=local_capability_txt,
+        docker_image_tf=docker_image_tf,
+        docker_pull_btn=docker_pull_btn,
+        docker_status=docker_status,
+        refresh_specs_click_cb=lambda e: page.run_task(on_refresh_local_specs),
+        local_host_dir_tf=local_host_dir_tf,
+        local_browse_btn=local_browse_btn,
+        local_container_name_tf=local_container_name_tf,
+        local_use_gpu_cb=local_use_gpu_cb,
+        local_pass_hf_token_cb=local_pass_hf_token_cb,
+        local_train_progress=local_train_progress,
+        local_train_prog_label=local_train_prog_label,
+        local_save_logs_btn=local_save_logs_btn,
+        local_train_timeline=local_train_timeline,
+        local_train_timeline_placeholder=local_train_timeline_placeholder,
+        local_start_btn=local_start_btn,
+        local_stop_btn=local_stop_btn,
+        local_train_status=local_train_status,
+        mk_help_handler=_mk_help_handler,
     )
 
     # Toggle Training content visibility based on selected target

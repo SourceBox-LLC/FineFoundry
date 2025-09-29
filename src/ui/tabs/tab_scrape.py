@@ -1,12 +1,19 @@
 """Scrape tab builder for FineFoundry.
 
 This module composes the Scrape tab UI using controls created in main.py.
-No logic changes; only layout composition is centralized here.
+Delegates to per-section builders under `ui.tabs.scrape.sections`.
+No behavior changes.
 """
 from __future__ import annotations
 
 import flet as ft
 
+from ui.tabs.scrape.sections.source_section import build_source_section
+from ui.tabs.scrape.sections.boards_section import build_boards_section
+from ui.tabs.scrape.sections.params_section import build_params_section
+from ui.tabs.scrape.sections.progress_section import build_progress_section
+from ui.tabs.scrape.sections.log_section import build_log_section
+from ui.tabs.scrape.sections.preview_section import build_preview_section
 
 def build_scrape_tab(
     *,
@@ -43,121 +50,86 @@ def build_scrape_tab(
     preview_area,
     handle_preview_click,
 ) -> ft.Container:
+    source_section = build_source_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        source_dd=source_dd,
+    )
+
+    boards_section = build_boards_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        board_actions=board_actions,
+        boards_wrap=boards_wrap,
+        board_warning=board_warning,
+    )
+
+    params_section = build_params_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        reddit_params_row=reddit_params_row,
+        se_params_row=se_params_row,
+        max_threads=max_threads,
+        max_pairs=max_pairs,
+        delay=delay,
+        min_len=min_len,
+        output_path=output_path,
+        dataset_format_dd=dataset_format_dd,
+        multiturn_sw=multiturn_sw,
+        scrape_actions=scrape_actions,
+    )
+
+    progress_section = build_progress_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        scrape_prog=scrape_prog,
+        working_ring=working_ring,
+        stats_cards=stats_cards,
+        threads_label=threads_label,
+        pairs_label=pairs_label,
+    )
+
+    log_section = build_log_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        log_area=log_area,
+    )
+
+    preview_section = build_preview_section(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        _mk_help_handler=_mk_help_handler,
+        preview_area=preview_area,
+        handle_preview_click=handle_preview_click,
+    )
+
     return ft.Container(
         content=ft.Row([
             ft.Container(
                 content=ft.Column([
-                    section_title(
-                        "Source",
-                        ICONS.DASHBOARD,
-                        "Choose a data source. Options: 4chan, Reddit, StackExchange.",
-                        on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([source_dd], wrap=True),
-                        ], spacing=0),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "4chan Boards",
-                        ICONS.DASHBOARD,
-                        "Select which 4chan boards to scrape.",
-                        on_help_click=_mk_help_handler("Select which 4chan boards to scrape."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            board_actions,
-                            boards_wrap,
-                            board_warning,
-                        ], spacing=6),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "Parameters",
-                        ICONS.TUNE,
-                        "Set scraping limits, path, and choose turn mode (single vs multi). Outputs follow the selected dataset format (ChatML or Standard).",
-                        on_help_click=_mk_help_handler("Set scraping limits, path, and choose turn mode (single vs multi). Outputs follow the selected dataset format (ChatML or Standard)."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            reddit_params_row,
-                            se_params_row,
-                            ft.Row([max_threads, max_pairs, delay, min_len, output_path, dataset_format_dd], wrap=True),
-                            # Simplified to only expose single vs multi-turn
-                            ft.Row([multiturn_sw], wrap=True),
-                            scrape_actions,
-                        ], spacing=8),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "Progress",
-                        ICONS.TIMELAPSE,
-                        "Shows current task progress and counters.",
-                        on_help_click=_mk_help_handler("Shows current task progress and counters."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([scrape_prog, working_ring, ft.Text("Working...")], spacing=16),
-                            stats_cards,
-                            ft.Row([threads_label, pairs_label], spacing=20),
-                        ], spacing=8),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
-                    section_title(
-                        "Live Log",
-                        ICONS.TERMINAL,
-                        "Streaming log of scraping activity.",
-                        on_help_click=_mk_help_handler("Streaming log of scraping activity."),
-                    ),
-                    ft.Container(
-                        log_area,
-                        height=180,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                        width=1000,
-                    ),
-                    section_title(
-                        "Preview",
-                        ICONS.PREVIEW,
-                        "Quick sample preview of the selected dataset format. ChatML: first user→assistant turn; Standard: raw input/output pairs.",
-                        on_help_click=_mk_help_handler("Quick sample preview of the selected dataset format. ChatML: first user→assistant turn; Standard: raw input/output pairs."),
-                    ),
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Container(
-                                preview_area,
-                                height=240,
-                                border_radius=8,
-                                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                padding=6,
-                            ),
-                            ft.Row([
-                                ft.ElevatedButton(
-                                    "Preview Dataset",
-                                    icon=ICONS.PREVIEW,
-                                    on_click=handle_preview_click,
-                                )
-                            ], alignment=ft.MainAxisAlignment.END),
-                        ], spacing=8),
-                        width=1000,
-                        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                        border_radius=8,
-                        padding=10,
-                    ),
+                    source_section,
+                    boards_section,
+                    params_section,
+                    progress_section,
+                    log_section,
+                    preview_section,
                 ], scroll=ft.ScrollMode.AUTO, spacing=12),
                 width=1000,
             )
