@@ -4,64 +4,33 @@ import time
 import os
 import shutil
 import subprocess
-from datetime import datetime
 from typing import List, Optional, Tuple
 import json
-import re
+import httpx
 
 
 import flet as ft
-import httpx
-from scrapers import fourchan_scraper as sc
-try:
-    import save_dataset as sd
-except Exception:
-    import sys as _sys
-    _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    import save_dataset as sd
 
-
-# Runpod infra helper (package module)
-try:
-    from runpod import ensure_infra as rp_infra
-except Exception:
-    import sys as __sys
-    __sys.path.append(os.path.dirname(__file__))
-    from runpod import ensure_infra as rp_infra
-
-# Runpod pod helper (package module)
+# Runpod modules (pod lifecycle and infra helpers)
 try:
     from runpod import runpod_pod as rp_pod
+    from runpod import ensure_infra as rp_infra
 except Exception:
     import sys as __sys2
     __sys2.path.append(os.path.dirname(__file__))
     from runpod import runpod_pod as rp_pod
-
-from scrapers import reddit_scraper as rdt
-from scrapers import stackexchange_scraper as sx
-try:
-    # Hugging Face datasets (for merge tab)
-    from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets, get_dataset_config_names, load_from_disk
     try:
-        from datasets import interleave_datasets as hf_interleave
+        from runpod import ensure_infra as rp_infra
     except Exception:
-        hf_interleave = None
+        rp_infra = None
+
+# Hugging Face datasets (used in training preview and helpers)
+try:
+    from datasets import load_dataset, get_dataset_config_names
 except Exception:
     load_dataset = None
-    Dataset = None
-    DatasetDict = None
-    concatenate_datasets = None
-    hf_interleave = None
     get_dataset_config_names = None
-    load_from_disk = None
 
-try:
-    from huggingface_hub import HfApi, HfFolder
-except Exception:
-    HfApi = None
-    HfFolder = None
-
-# Import modularized helpers
 from helpers.common import safe_update, set_terminal_title
 from helpers.theme import (
     COLORS,
@@ -69,8 +38,6 @@ from helpers.theme import (
     ACCENT_COLOR,
     BORDER_BASE,
     REFRESH_ICON,
-    INFO_ICON,
-    DARK_ICON,
 )
 from helpers.boards import load_4chan_boards
 from helpers.ui import (
@@ -80,716 +47,56 @@ from helpers.ui import (
     make_wrap,
     make_selectable_pill,
     make_empty_placeholder,
-    compute_two_col_flex,
-    two_col_header,
-    two_col_row,
 )
-from helpers.proxy import apply_proxy_from_ui
+from helpers.training import (
+    run_local_training as run_local_training_helper,
+    stop_local_training as stop_local_training_helper,
+    build_hp_from_controls as build_hp_from_controls_helper,
+)
+from helpers.training_pod import (
+    run_pod_training as run_pod_training_helper,
+    restart_pod_container as restart_pod_container_helper,
+    open_runpod as open_runpod_helper,
+    open_web_terminal as open_web_terminal_helper,
+    copy_ssh_command as copy_ssh_command_helper,
+    ensure_infrastructure as ensure_infrastructure_helper,
+    refresh_teardown_ui as refresh_teardown_ui_helper,
+    do_teardown as do_teardown_helper,
+    confirm_teardown_selected as confirm_teardown_selected_helper,
+    confirm_teardown_all as confirm_teardown_all_helper,
+    refresh_expert_gpus as refresh_expert_gpus_helper,
+)
+from helpers.datasets import guess_input_output_columns
 from ui.tabs.tab_settings import build_settings_tab
 from ui.tabs.tab_scrape import build_scrape_tab
 from ui.tabs.tab_build import build_build_tab
 from ui.tabs.tab_training import build_training_tab
 from ui.tabs.tab_merge import build_merge_tab
 from ui.tabs.tab_analysis import build_analysis_tab
-from helpers.chatml import thread_to_chatml_conversations, pairs_to_chatml, reddit_thread_to_chatml_conversations
+from helpers.scrape import (
+    run_reddit_scrape as run_reddit_scrape_helper,
+    run_real_scrape as run_real_scrape_helper,
+    run_stackexchange_scrape as run_stackexchange_scrape_helper,
+)
+from helpers.build import (
+    run_build as run_build_helper,
+    run_push_async as run_push_async_helper,
+)
+from helpers.merge import (
+    run_merge as run_merge_helper,
+    preview_merged as preview_merged_helper,
+)
+from helpers.local_specs import (
+    gather_local_specs as gather_local_specs_helper,
+    refresh_local_gpus as refresh_local_gpus_helper,
+)
 
 # Set terminal title to uppercase for the current session
 set_terminal_title("PYTHON: MAIN")
 
 APP_TITLE = "FineFoundry"
 
-async def run_reddit_scrape(
-    page: ft.Page,
-    log_view: ft.ListView,
-    prog: ft.ProgressBar,
-    labels: dict,
-    preview_host: ft.ListView,
-    cancel_flag: dict,
-    url: str,
-    max_posts: int,
-    delay: float,
-    min_len_val: int,
-    output_path: str,
-    multiturn: bool,
-    ctx_k: int,
-    ctx_max_chars: Optional[int],
-    merge_same_id: bool,
-    require_question: bool,
-    ui_proxy_enabled: bool,
-    ui_proxy_url: Optional[str],
-    ui_use_env_proxies: bool,
-    dataset_format: str,
-) -> None:
-    """Run the Reddit scraper in a worker thread and integrate results into the UI."""
-    def log(msg: str):
-        log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
-    await safe_update(page)
 
-    if rdt is None:
-        log("Reddit scraper module not available.")
-        await safe_update(page)
-        return
-
-    # Configure reddit module from UI inputs
-    try:
-        # Reset run-scoped counters to make stop caps reliable
-        rdt.START_TS = time.time()
-        rdt.REQUESTS_MADE = 0
-        rdt.MAX_REQUESTS_TOTAL = None
-        rdt.STOP_AFTER_SECONDS = None
-
-        rdt.DEFAULT_URL = (url or rdt.DEFAULT_URL).strip()
-        rdt.MAX_POSTS = int(max_posts)
-        rdt.REQUEST_DELAY = max(0.0, float(delay))
-        # Always build dataset; we'll copy pairs to desired path
-        rdt.BUILD_DATASET = True
-        rdt.PAIRING_MODE = "contextual" if bool(multiturn) else "parent_child"
-        rdt.CONTEXT_K = int(ctx_k)
-        rdt.MAX_INPUT_CHARS = None if (ctx_max_chars is None) else int(ctx_max_chars)
-        rdt.MERGE_SAME_AUTHOR = bool(merge_same_id)
-        rdt.REQUIRE_QUESTION = bool(require_question)
-        rdt.MIN_LEN = max(0, int(min_len_val))
-        # Keep dumps temp so we can clean after copying pairs
-        rdt.OUTPUT_DIR = None
-        rdt.USE_TEMP_DUMP = True
-    except Exception as e:
-        log(f"Invalid Reddit configuration: {e}")
-        await safe_update(page)
-        return
-
-    # Apply proxy settings from UI (overrides env/defaults)
-    try:
-        pmsg = apply_proxy_from_ui(bool(ui_proxy_enabled), ui_proxy_url, bool(ui_use_env_proxies))
-        log(pmsg)
-    except Exception:
-        pass
-
-    prog.value = 0
-    labels.get("threads").value = "Threads Visited: 0"
-    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
-    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
-    await safe_update(page)
-
-    log("Starting Reddit scrape...")
-    await safe_update(page)
-
-    # Kick off the blocking scraper in a background thread
-    fut = asyncio.create_task(asyncio.to_thread(rdt.run))
-
-    # A soft progress pulse and cooperative cancellation monitor
-    async def pulse_and_watch():
-        try:
-            tick = 0.0
-            while not fut.done():
-                if cancel_flag.get("cancelled"):
-                    # Force the worker to abort on next HTTP call
-                    rdt.MAX_REQUESTS_TOTAL = 0
-                    rdt.STOP_AFTER_SECONDS = 0
-                # Pulse progress to indicate activity
-                cur = (prog.value or 0.0)
-                cur = 0.4 if cur >= 0.9 else (cur + 0.04)
-                prog.value = cur
-                await safe_update(page)
-                await asyncio.sleep(0.35)
-        except Exception:
-            # Ignore UI pulse errors
-            pass
-
-    pulse_task = asyncio.create_task(pulse_and_watch())
-
-    base_out = None
-    pairs_src = None
-    try:
-        base_out, pairs_src = await fut
-    except Exception as e:
-        if cancel_flag.get("cancelled"):
-            log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled "))
-            page.snack_bar.open = True
-        else:
-            log(f"Reddit scrape failed: {e}")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Reddit scrape failed: {e}"))
-            page.snack_bar.open = True
-        await safe_update(page)
-        try:
-            pulse_task.cancel()
-        except Exception:
-            pass
-        return
-    finally:
-        try:
-            pulse_task.cancel()
-        except Exception:
-            pass
-
-    # Completed
-    prog.value = 1.0
-    await safe_update(page)
-
-    # Build output (ChatML conversations or Standard pairs), write to output, and build preview
-    conv_count = 0
-    pairs_count = 0
-    chatml_convs: List[dict] = []
-    standard_pairs: List[dict] = []
-    sample_pairs: List[Tuple[str, str]] = []
-    try:
-        if bool(multiturn):
-            # Build multi-turn conversations directly from scraped Reddit threads
-            idx_path = os.path.join(str(base_out), "index.json") if base_out else None
-            threads_count = 0
-            if idx_path and os.path.exists(idx_path):
-                idx = await asyncio.to_thread(lambda: json.load(open(idx_path, "r", encoding="utf-8")))
-                for item in (idx.get("posts") or []):
-                    rel_json = item.get("json")
-                    if not rel_json:
-                        continue
-                    th_path = os.path.join(str(base_out), rel_json)
-                    if not os.path.exists(th_path):
-                        continue
-                    # Load thread and convert to multi-turn ChatML
-                    thread = await asyncio.to_thread(lambda: json.load(open(th_path, "r", encoding="utf-8")))
-                    convs = reddit_thread_to_chatml_conversations(
-                        thread,
-                        min_len=max(0, int(min_len_val)),
-                        k=int(ctx_k),
-                        max_rounds_per_conv=6,
-                        max_chars=(int(ctx_max_chars) if (ctx_max_chars is not None) else None),
-                        merge_same_author=bool(merge_same_id),
-                    )
-                    if convs:
-                        chatml_convs.extend(convs)
-                        threads_count += 1
-            conv_count = len(chatml_convs)
-            if threads_count == 0 and conv_count == 0:
-                log("No conversations constructed from threads; falling back to pairs conversion if available.")
-                # Optional fallback to pairs if present
-                if pairs_src is not None and os.path.exists(str(pairs_src)):
-                    data = await asyncio.to_thread(lambda: json.load(open(str(pairs_src), "r", encoding="utf-8")))
-                    if isinstance(data, list):
-                        if pairs_output:
-                            standard_pairs = data
-                            pairs_count = len(standard_pairs)
-                        else:
-                            chatml_convs = pairs_to_chatml(data)
-                            conv_count = len(chatml_convs)
-        else:
-            # Single-turn mode
-            if pairs_src is not None and os.path.exists(str(pairs_src)):
-                data = await asyncio.to_thread(lambda: json.load(open(str(pairs_src), "r", encoding="utf-8")))
-                if isinstance(data, list):
-                    if pairs_output:
-                        standard_pairs = data
-                        pairs_count = len(standard_pairs)
-                    else:
-                        chatml_convs = pairs_to_chatml(data)
-                        conv_count = len(chatml_convs)
-            else:
-                log("No pairs JSON produced (pairs_src missing).")
-
-        # If Standard selected and we have conversations, convert to first user→assistant pairs
-        if pairs_output and not standard_pairs and chatml_convs:
-            for conv in chatml_convs:
-                try:
-                    msgs = conv.get("messages", []) or []
-                    user_text = None
-                    assistant_text = None
-                    for m in msgs:
-                        role = m.get("role")
-                        text = m.get("content") or ""
-                        if role == "user" and user_text is None and text:
-                            user_text = text
-                        elif role == "assistant" and user_text is not None and text:
-                            assistant_text = text
-                            break
-                    if user_text and assistant_text:
-                        standard_pairs.append({"input": user_text, "output": assistant_text})
-                except Exception:
-                    pass
-            pairs_count = len(standard_pairs)
-
-        # Write to desired output path (ChatML or Standard)
-        dest = output_path or "scraped_training_data.json"
-        dest_abs = os.path.abspath(dest)
-        os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
-        payload = chatml_convs if not pairs_output else standard_pairs
-        await asyncio.to_thread(
-            lambda: open(dest_abs, "w", encoding="utf-8").write(
-                json.dumps(payload, ensure_ascii=False, indent=4)
-            )
-        )
-        if pairs_output:
-            log(f"Wrote {pairs_count} pairs to: {dest_abs}")
-        else:
-            log(f"Wrote {conv_count} conversations to: {dest_abs}")
-
-        # Build preview
-        if pairs_output:
-            for ex in (standard_pairs or [])[:10]:
-                a = (ex.get("input", "") or "") if isinstance(ex, dict) else ""
-                b = (ex.get("output", "") or "") if isinstance(ex, dict) else ""
-                sample_pairs.append((a, b))
-        else:
-            # From ChatML: first user→assistant pair per conversation
-            for conv in chatml_convs[:10]:
-                msgs = conv.get("messages", []) or []
-                user_text = None
-                assistant_text = None
-                for m in msgs:
-                    role = m.get("role")
-                    text = m.get("content") or ""
-                    if role == "user" and user_text is None and text:
-                        user_text = text
-                    elif role == "assistant" and user_text is not None and text:
-                        assistant_text = text
-                        break
-                if user_text and assistant_text:
-                    sample_pairs.append((user_text, assistant_text))
-    except Exception as e:
-        log(f"Failed to build output/write file: {e}")
-    await safe_update(page)
-
-    # Read index.json for post count (threads label)
-    try:
-        idx_path = os.path.join(str(base_out), "index.json") if base_out else None
-        if idx_path and os.path.exists(idx_path):
-            idx = await asyncio.to_thread(lambda: json.load(open(idx_path, "r", encoding="utf-8")))
-            pc = int(idx.get("post_count") or 0)
-            labels.get("threads").value = f"Posts processed: {pc}"
-    except Exception:
-        pass
-
-    labels.get("pairs").value = (
-        f"Pairs Found: {pairs_count}" if pairs_output else f"Conversations Found: {conv_count}"
-    )
-
-    # Populate preview grid from ChatML-derived sample pairs
-    try:
-        preview_host.controls.clear()
-        if not sample_pairs:
-            sample_pairs = [("(no preview)", "")]  # graceful empty state
-        lfx, rfx = compute_two_col_flex(sample_pairs)
-        preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-        for a, b in sample_pairs:
-            preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-    except Exception as e:
-        log(f"Failed to render preview: {e}")
-    await safe_update(page)
-
-    # Cleanup temporary dump folder
-    try:
-        if base_out and os.path.isdir(str(base_out)) and getattr(rdt, "USE_TEMP_DUMP", False):
-            shutil.rmtree(str(base_out), ignore_errors=True)
-            log(f"Cleaned up temp dump: {base_out}")
-    except Exception as e:
-        log(f"Cleanup warning: {e}")
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! "))
-    page.snack_bar.open = True
-    await safe_update(page)
-
-
-async def run_real_scrape(
-    page: ft.Page,
-    log_view: ft.ListView,
-    prog: ft.ProgressBar,
-    labels: dict,
-    preview_host: ft.ListView,
-    cancel_flag: dict,
-    boards: List[str],
-    max_threads: int,
-    max_pairs_total: int,
-    delay: float,
-    min_len_val: int,
-    output_path: str,
-    multiturn: bool,
-    ctx_strategy: str,
-    ctx_k: int,
-    ctx_max_chars: Optional[int],
-    merge_same_id: bool,
-    require_question: bool,
-    ui_proxy_enabled: bool,
-    ui_proxy_url: Optional[str],
-    ui_use_env_proxies: bool,
-    dataset_format: str,
-) -> None:
-    def log(msg: str):
-        log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
-    await safe_update(page)
-
-    total_boards = len(boards)
-    if total_boards == 0:
-        return
-    prog.value = 0
-    pairs_accum: List[dict] = []
-    conversations_accum: List[dict] = []
-    chatml_enabled = bool(multiturn)
-    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
-    # Initialize counters label
-    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
-
-    # Apply proxy settings from UI (overrides env/defaults)
-    try:
-        pmsg = apply_proxy_from_ui(bool(ui_proxy_enabled), ui_proxy_url, bool(ui_use_env_proxies))
-        log(pmsg)
-    except Exception:
-        pass
-
-    for idx, b in enumerate(boards, start=1):
-        if cancel_flag.get("cancelled"):
-            log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        remaining = (max_pairs_total - (len(conversations_accum) if chatml_enabled else len(pairs_accum)))
-        if remaining <= 0:
-            break
-
-        if chatml_enabled:
-            # Build ChatML conversations by sampling threads round-robin across catalog pages
-            mode_str = "chatml"
-            log(f"Scraping /{b}/ (up to {remaining} conversations) — mode={mode_str}")
-            try:
-                pages = await asyncio.to_thread(sc.fetch_catalog_pages, b)
-            except Exception as e:
-                log(f"Error fetching catalog for /{b}/: {e}")
-                await safe_update(page)
-                continue
-
-            # Round-robin selection of thread IDs up to max_threads
-            thread_ids: List[int] = []
-            rr_idx = [0] * len(pages)
-            try:
-                while len(thread_ids) < max_threads and any(i < len(pages[p]) for p, i in enumerate(rr_idx)):
-                    for p_i in range(len(pages)):
-                        if len(thread_ids) >= max_threads:
-                            break
-                        i2 = rr_idx[p_i]
-                        if i2 < len(pages[p_i]):
-                            thread_ids.append(pages[p_i][i2])
-                            rr_idx[p_i] += 1
-            except Exception:
-                pass
-
-            board_new = 0
-            for tid in thread_ids:
-                if (max_pairs_total - len(conversations_accum)) <= 0:
-                    break
-                try:
-                    posts = await asyncio.to_thread(sc.fetch_thread, b, tid)
-                except Exception:
-                    posts = []
-                if not posts:
-                    continue
-                # Build conversations for this thread
-                convs = thread_to_chatml_conversations(
-                    posts,
-                    min_len=min_len_val,
-                    k=ctx_k,
-                    max_rounds_per_conv=6,
-                    max_chars=ctx_max_chars,
-                    merge_same_id=merge_same_id,
-                    add_system=None,
-                    ban_pattern=None,
-                )
-                if not convs:
-                    await asyncio.sleep(delay)
-                    continue
-                # Respect remaining budget
-                rem = max_pairs_total - len(conversations_accum)
-                if rem <= 0:
-                    break
-                if len(convs) > rem:
-                    convs = convs[:rem]
-                conversations_accum.extend(convs)
-                board_new += len(convs)
-                labels.get("pairs").value = f"Conversations Found: {len(conversations_accum)}"
-                await safe_update(page)
-                await asyncio.sleep(delay)
-
-            labels.get("threads").value = f"Boards processed: {idx}/{total_boards}"
-            prog.value = idx / total_boards
-            log(f"/{b}/ -> {board_new} conversations (total {len(conversations_accum)})")
-            await safe_update(page)
-        else:
-            mode_str = "contextual" if bool(multiturn) else "normal"
-            log(f"Scraping /{b}/ (up to {remaining} pairs) — mode={mode_str}")
-            try:
-                data = await asyncio.to_thread(
-                    sc.scrape,
-                    board=b,
-                    max_threads=max_threads,
-                    max_pairs=remaining,
-                    delay=delay,
-                    min_len=min_len_val,
-                    mode=mode_str,
-                    strategy=ctx_strategy,
-                    k=ctx_k,
-                    max_chars=ctx_max_chars,
-                    merge_same_id=merge_same_id,
-                    require_question=require_question,
-                )
-            except Exception as e:
-                log(f"Error scraping /{b}/: {e}")
-                await safe_update(page)
-                continue
-
-            pairs_accum.extend(data)
-            labels.get("pairs").value = f"Pairs Found: {len(pairs_accum)}"
-            labels.get("threads").value = f"Boards processed: {idx}/{total_boards}"
-            prog.value = idx / total_boards
-            log(f"/{b}/ -> {len(data)} pairs (total {len(pairs_accum)})")
-            await safe_update(page)
-
-    # Write JSON (ChatML conversations or Standard pairs)
-    try:
-        if pairs_output:
-            if chatml_enabled:
-                # Convert conversations to first user→assistant pairs
-                std_pairs: List[dict] = []
-                for conv in conversations_accum:
-                    try:
-                        msgs = conv.get("messages", []) or []
-                        user_text = None
-                        assistant_text = None
-                        for m in msgs:
-                            role = m.get("role")
-                            text = m.get("content") or ""
-                            if role == "user" and user_text is None and text:
-                                user_text = text
-                            elif role == "assistant" and user_text is not None and text:
-                                assistant_text = text
-                                break
-                        if user_text and assistant_text:
-                            std_pairs.append({"input": user_text, "output": assistant_text})
-                    except Exception:
-                        pass
-                payload = std_pairs
-            else:
-                payload = pairs_accum
-        else:
-            if chatml_enabled:
-                payload = conversations_accum
-            else:
-                payload = pairs_to_chatml(pairs_accum)
-        await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
-        )
-        log(
-            (f"Wrote {len(payload)} pairs to {output_path}" if pairs_output else f"Wrote {len(payload)} conversations to {output_path}")
-        )
-    except Exception as e:
-        log(f"Failed to write {output_path}: {e}")
-        await safe_update(page)
-        return
-
-    # Populate preview with flex grid and scrollable cells
-    preview_host.controls.clear()
-    if pairs_output:
-        # Standard: preview raw pairs
-        head = []
-        if chatml_enabled:
-            # Convert conversations to first pairs just for preview
-            for conv in (conversations_accum or [])[:10]:
-                try:
-                    msgs = conv.get("messages", []) or []
-                    user_text = None
-                    assistant_text = None
-                    for m in msgs:
-                        role = m.get("role")
-                        text = m.get("content") or ""
-                        if role == "user" and user_text is None and text:
-                            user_text = text
-                        elif role == "assistant" and user_text is not None and text:
-                            assistant_text = text
-                            break
-                    if user_text and assistant_text:
-                        head.append({"input": user_text, "output": assistant_text})
-                except Exception:
-                    pass
-        else:
-            head = pairs_accum[:10]
-        sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
-        if not sample_pairs:
-            sample_pairs = [("(no preview)", "")]
-    else:
-        # ChatML: derive preview from conversations
-        sample_pairs = []
-        for conv in (conversations_accum or [])[:10]:
-            msgs = conv.get("messages", []) or []
-            user_text = None
-            assistant_text = None
-            for m in msgs:
-                role = m.get("role")
-                text = m.get("content") or ""
-                if role == "user" and user_text is None and text:
-                    user_text = text
-                elif role == "assistant" and user_text is not None and text:
-                    assistant_text = text
-                    break
-            if user_text and assistant_text:
-                sample_pairs.append((user_text, assistant_text))
-        if not sample_pairs:
-            sample_pairs = [("(no preview)", "")]
-
-    lfx, rfx = compute_two_col_flex(sample_pairs)
-    preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-    for a, b in sample_pairs:
-        preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
-    page.snack_bar.open = True
-    await safe_update(page)
-
-
-async def run_stackexchange_scrape(
-    page: ft.Page,
-    log_view: ft.ListView,
-    prog: ft.ProgressBar,
-    labels: dict,
-    preview_host: ft.ListView,
-    cancel_flag: dict,
-    site: str,
-    max_pairs: int,
-    delay: float,
-    min_len_val: int,
-    output_path: str,
-    ui_proxy_enabled: bool,
-    ui_proxy_url: Optional[str],
-    ui_use_env_proxies: bool,
-    dataset_format: str,
-) -> None:
-    """Run the Stack Exchange scraper in a worker thread and integrate results into the UI."""
-    def log(msg: str):
-        log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
-    await safe_update(page)
-
-    # Apply proxy settings from UI (overrides env/defaults)
-    try:
-        pmsg = apply_proxy_from_ui(bool(ui_proxy_enabled), ui_proxy_url, bool(ui_use_env_proxies))
-        log(pmsg)
-    except Exception:
-        pass
-
-    prog.value = 0
-    labels.get("threads").value = "Pages processed: 0"
-    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
-    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
-    await safe_update(page)
-
-    log(f"Starting StackExchange scrape (site={site}, max_pairs={max_pairs})...")
-    await safe_update(page)
-
-    # Kick off the blocking scraper in a background thread with cancellation support
-    fut = asyncio.create_task(asyncio.to_thread(
-        sx.scrape,
-        site=site or "stackoverflow",
-        max_pairs=int(max_pairs),
-        delay=float(delay),
-        min_len=int(min_len_val),
-        cancel_cb=lambda: bool(cancel_flag.get("cancelled")),
-    ))
-
-    # Progress pulse and cooperative cancellation monitor
-    async def pulse_and_watch():
-        try:
-            while not fut.done():
-                # Nothing to force-cancel; cancel_cb will be polled in the worker
-                cur = (prog.value or 0.0)
-                cur = 0.4 if cur >= 0.9 else (cur + 0.04)
-                prog.value = cur
-                await safe_update(page)
-                await asyncio.sleep(0.35)
-        except Exception:
-            # Ignore UI pulse errors
-            pass
-
-    pulse_task = asyncio.create_task(pulse_and_watch())
-
-    try:
-        results = await fut
-    except Exception as e:
-        if cancel_flag.get("cancelled"):
-            log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
-            page.snack_bar.open = True
-        else:
-            log(f"StackExchange scrape failed: {e}")
-            page.snack_bar = ft.SnackBar(ft.Text(f"StackExchange scrape failed: {e}"))
-            page.snack_bar.open = True
-        await safe_update(page)
-        try:
-            pulse_task.cancel()
-        except Exception:
-            pass
-        return
-    finally:
-        try:
-            pulse_task.cancel()
-        except Exception:
-            pass
-
-    # Completed
-    prog.value = 1.0
-    await safe_update(page)
-
-    # Write output according to dataset format and build preview
-    count = 0
-    preview_pairs: List[Tuple[str, str]] = []
-    try:
-        if pairs_output:
-            payload = results or []
-        else:
-            payload = pairs_to_chatml(results or [])
-        await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
-        )
-        if pairs_output:
-            log(f"Wrote {len(payload)} pairs to {output_path}")
-            count = len(payload)
-            head = payload[:10]
-            preview_pairs = [((ex.get("input", "") or ""), (ex.get("output", "") or "")) for ex in head]
-        else:
-            log(f"Wrote {len(payload)} conversations to {output_path}")
-            count = len(payload)
-            head = payload[:10]
-            for c in head:
-                try:
-                    msgs = c.get("messages", [])
-                    user_text = None
-                    assistant_text = None
-                    for m in msgs:
-                        role = m.get("role")
-                        text = m.get("content") or ""
-                        if role == "user" and user_text is None and text:
-                            user_text = text
-                        elif role == "assistant" and user_text is not None and text:
-                            assistant_text = text
-                            break
-                    if user_text and assistant_text:
-                        preview_pairs.append((user_text, assistant_text))
-                except Exception:
-                    pass
-        if not preview_pairs:
-            preview_pairs = [("(no preview)", "")]
-    except Exception as e:
-        log(f"Failed to write results: {e}")
-    await safe_update(page)
-
-    labels.get("pairs").value = (f"Pairs Found: {count}" if pairs_output else f"Conversations Found: {count}")
-    labels.get("threads").value = f"Questions processed: {count}"
-
-    # Populate preview grid
-    try:
-        preview_host.controls.clear()
-        lfx, rfx = compute_two_col_flex(preview_pairs)
-        preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-        for a, b in preview_pairs:
-            preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-    except Exception as e:
-        log(f"Failed to render preview: {e}")
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
-    page.snack_bar.open = True
-    await safe_update(page)
 
 
 
@@ -849,11 +156,6 @@ def main(page: ft.Page):
     # In-app User Guide (opens a detailed, scrollable modal)
     def open_user_guide(_):
         try:
-            # Console debug to ensure click wiring on all runtimes
-            try:
-                print("open_user_guide clicked")
-            except Exception:
-                pass
             # Immediate feedback to verify click wiring
             try:
                 page.snack_bar = ft.SnackBar(ft.Text("Opening user guide..."))
@@ -971,40 +273,23 @@ Tabs:
 
             # Show dialog (Flet 0.28+ pattern with backward-compatible fallback)
             try:
-                print("guide: trying page.open(dlg)")
                 page.open(dlg)
                 try:
                     page.update()
                 except Exception:
                     pass
-                print("guide: page.open(dlg) called")
-            except Exception as _e2:
-                print(f"guide: page.open failed: {_e2}")
+            except Exception:
                 try:
-                    print("guide: trying legacy page.dialog/dlg.open")
                     page.dialog = dlg
                     dlg.open = True
                     page.update()
-                    print("guide: legacy dialog opened")
-                except Exception as _e2b:
-                    print(f"guide: legacy page.dialog failed: {_e2b}")
+                except Exception:
                     try:
-                        print("guide: trying page.overlay append")
                         page.overlay.append(dlg)
                         dlg.open = True
                         page.update()
-                        print("guide: overlay dialog opened")
-                    except Exception as _e3:
-                        print(f"guide: overlay open failed: {_e3}")
-                        try:
-                            print("guide: trying minimal test dialog")
-                            page.open(ft.AlertDialog(title=ft.Text("Guide"), content=ft.Text("Minimal test")))
-                            try:
-                                page.update()
-                            except Exception:
-                                pass
-                        except Exception as _e4:
-                            print(f"guide: minimal dialog failed: {_e4}")
+                    except Exception:
+                        pass
         except Exception as e:
             try:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Failed to open guide: {e}"))
@@ -1013,18 +298,7 @@ Tabs:
             except Exception:
                 pass
 
-    # Async wrapper used to mirror other working handlers that use page.run_task(...)
-    # NOTE: run_task calls the coroutine without passing an event, so this must take no args
-    async def open_user_guide_async():
-        try:
-            open_user_guide(None)
-        except Exception as _e:
-            try:
-                page.snack_bar = ft.SnackBar(ft.Text(f"Guide error: {_e}"))
-                page.snack_bar.open = True
-                await safe_update(page)
-            except Exception:
-                pass
+    # Removed unused open_user_guide_async wrapper; direct click handlers call open_user_guide
 
     # Helper: create an AppBar action that falls back to a TextButton if icon isn't available
     def _appbar_action(icon_const, tooltip: str, on_click_cb, text_fallback: Optional[str] = None):
@@ -1047,7 +321,12 @@ Tabs:
         bgcolor=WITH_OPACITY(0.03, COLORS.AMBER),
         actions=[
             _appbar_action(REFRESH_ICON or getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", None)), "Refresh app", refresh_app, text_fallback="Refresh"),
-            _appbar_action(DARK_ICON, "Toggle theme", toggle_theme, text_fallback="Theme"),
+            _appbar_action(
+                getattr(ICONS, "DARK_MODE", getattr(ICONS, "BRIGHTNESS_4", getattr(ICONS, "NIGHTS_STAY", None))),
+                "Toggle theme",
+                toggle_theme,
+                text_fallback="Theme",
+            ),
         ],
     )
     try:
@@ -1625,7 +904,7 @@ Tabs:
                     rp = int(reddit_max_posts.value or 30)
                 except Exception:
                     rp = 30
-                await run_reddit_scrape(
+                await run_reddit_scrape_helper(
                     page=page,
                     log_view=log_list,
                     prog=scrape_prog,
@@ -1648,7 +927,7 @@ Tabs:
                     dataset_format=(dataset_format_dd.value or "ChatML"),
                 )
             elif source_dd.value == "stackexchange":
-                await run_stackexchange_scrape(
+                await run_stackexchange_scrape_helper(
                     page=page,
                     log_view=log_list,
                     prog=scrape_prog,
@@ -1666,7 +945,7 @@ Tabs:
                     dataset_format=(dataset_format_dd.value or "ChatML"),
                 )
             else:
-                await run_real_scrape(
+                await run_real_scrape_helper(
                     page=page,
                     log_view=log_list,
                     prog=scrape_prog,
@@ -2359,462 +1638,53 @@ Specify license and any restrictions.
         update_status_placeholder()
 
     async def on_build():
-        cancel_build["cancelled"] = False
-        timeline.controls.clear()
-        for k in split_badges:
-            label = {"train": "Train", "val": "Val", "test": "Test"}[k]
-            split_badges[k].content = pill(f"{label}: 0", split_meta[k][0], split_meta[k][1]).content
-        await safe_update(page)
-        # Hide placeholder now that we will append steps
-        try:
-            timeline_placeholder.visible = False
-        except Exception:
-            pass
-
-        # Parse inputs
-        data_path = data_file.value or "scraped_training_data.json"
-        source_val = (source_mode.value or "JSON file").strip()
-        merged_path = merged_dir.value or "merged_dataset"
-        try:
-            seed_val = int(seed.value or 42)
-        except Exception:
-            seed_val = 42
-        shuffle_val = bool(shuffle.value)
-        try:
-            val_frac = float(val_slider.value or 0.0)
-        except Exception:
-            val_frac = 0.0
-        try:
-            test_frac = float(test_slider.value or 0.0)
-        except Exception:
-            test_frac = 0.0
-        try:
-            min_len_val = int(min_len_b.value or 1)
-        except Exception:
-            min_len_val = 1
-        out_dir = save_dir.value or "hf_dataset"
-        do_push = bool(push_toggle.value)
-        repo = (repo_id.value or "").strip()
-        is_private = bool(private.value)
-        token_val_ui = (token_val_ui.value or "").strip()
-        saved_tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
-        token_val = saved_tok or token_val_ui
-
-        def add_step(text: str, color, icon):
-            timeline.controls.append(ft.Row([ft.Icon(icon, color=color), ft.Text(text)]))
-            try:
-                timeline_placeholder.visible = len(timeline.controls) == 0
-            except Exception:
-                pass
-
-        # If using locally merged dataset, skip JSON pipeline and load from disk
-        if source_val == "Merged dataset":
-            add_step(f"Loading merged dataset from: {merged_path}", COLORS.BLUE, ICONS.UPLOAD_FILE)
-            await safe_update(page)
-            try:
-                loaded = await asyncio.to_thread(load_from_disk, merged_path)
-            except Exception as e:
-                add_step(f"Failed loading merged dataset: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
-                page.snack_bar = ft.SnackBar(ft.Text(f"Merged dataset not found or invalid at '{merged_path}'."))
-                page.snack_bar.open = True
-                await safe_update(page)
-                return
-
-            # Coerce to DatasetDict if needed
-            try:
-                is_dd = isinstance(loaded, DatasetDict)
-            except Exception:
-                is_dd = False
-            if not is_dd:
-                try:
-                    # Treat as single-train dataset
-                    loaded = DatasetDict({"train": loaded})
-                except Exception:
-                    add_step("Loaded object is not a datasets.Dataset or DatasetDict", COLORS.RED, ICONS.ERROR_OUTLINE)
-                    await safe_update(page)
-                    return
-
-            dd = loaded
-
-            # Update split badges with counts
-            train_n = len(dd.get("train", []))
-            val_n = len(dd.get("validation", [])) if "validation" in dd else 0
-            test_n = len(dd.get("test", [])) if "test" in dd else 0
-            split_badges["train"].content = pill(f"Train: {train_n}", split_meta["train"][0], split_meta["train"][1]).content
-            split_badges["val"].content = pill(f"Val: {val_n}", split_meta["val"][0], split_meta["val"][1]).content
-            split_badges["test"].content = pill(f"Test: {test_n}", split_meta["test"][0], split_meta["test"][1]).content
-            await safe_update(page)
-
-            # Save to disk with heartbeat
-            save_text = ft.Text(f"Saving dataset to {out_dir}")
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), save_text]))
-            await safe_update(page)
-            save_task = asyncio.create_task(asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir))))
-            i = 0
-            while not save_task.done():
-                if cancel_build["cancelled"]:
-                    save_text.value = "Cancel requested — waiting for current save to finish…"
-                else:
-                    save_text.value = f"Saving dataset{'.' * (i % 4)}"
-                i += 1
-                await safe_update(page)
-                await asyncio.sleep(0.4)
-            try:
-                await save_task
-            except Exception as e:
-                save_text.value = f"Save failed: {e}"
-                timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Save failed")]))
-                await safe_update(page)
-                return
-            save_text.value = "Saved dataset"
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
-            await safe_update(page)
-            dd_ref["dd"] = dd
-
-            # Optional push
-            if do_push:
-                if not repo:
-                    add_step("Missing Repo ID for push", COLORS.RED, ICONS.ERROR_OUTLINE)
-                    await safe_update(page)
-                    return
-                if not token_val:
-                    try:
-                        token_val = os.environ.get("HF_TOKEN") or sd.HfFolder.get_token()
-                    except Exception:
-                        token_val = ""
-                if not token_val:
-                    add_step("No HF token found — cannot push", COLORS.RED, ICONS.ERROR_OUTLINE)
-                    await safe_update(page)
-                    return
-                add_step(f"Pushing to Hub: {repo}", COLORS.BLUE, ICONS.CLOUD_UPLOAD)
-                await safe_update(page)
-                try:
-                    push_text = ft.Text(f"Pushing to Hub: {repo}")
-                    timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), push_text]))
-                    await safe_update(page)
-                    push_task = asyncio.create_task(asyncio.to_thread(sd.push_to_hub, dd, repo, is_private, token_val))
-                    j = 0
-                    while not push_task.done():
-                        if cancel_build["cancelled"]:
-                            push_text.value = "Cancel requested — waiting for current upload to finish…"
-                        else:
-                            push_text.value = f"Uploading{'.' * (j % 4)}"
-                        j += 1
-                        await safe_update(page)
-                        await asyncio.sleep(0.6)
-                    await push_task
-
-                    if cancel_build["cancelled"]:
-                        timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")]))
-                        await safe_update(page)
-                        return
-
-                    # Prepare README (custom or autogenerated) and upload
-                    readme_text = ft.Text("Preparing dataset card (README)")
-                    timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.BLUE), readme_text]))
-                    await safe_update(page)
-                    # Prefer custom content if enabled and non-empty
-                    _custom_enabled = bool(getattr(use_custom_card, "value", False))
-                    _custom_text = (getattr(card_editor, "value", "") or "").strip()
-                    if _custom_enabled and _custom_text:
-                        readme = _custom_text
-                    else:
-                        readme = await asyncio.to_thread(sd.build_dataset_card_content, dd, repo)
-                    readme_text.value = "Prepared dataset card"
-                    await safe_update(page)
-
-                    up_text = ft.Text("Uploading README.md")
-                    timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.BLUE), up_text]))
-                    await safe_update(page)
-                    up_task = asyncio.create_task(asyncio.to_thread(sd.upload_readme, repo, token_val, readme))
-                    k = 0
-                    while not up_task.done():
-                        if cancel_build["cancelled"]:
-                            up_text.value = "Cancel requested — waiting for current upload to finish…"
-                        else:
-                            up_text.value = f"Uploading README{'.' * (k % 4)}"
-                        k += 1
-                        await safe_update(page)
-                        await asyncio.sleep(0.6)
-                    await up_task
-
-                    _url = f"https://huggingface.co/datasets/{repo}"
-                    timeline.controls.append(
-                        ft.Row([
-                            ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
-                            ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
-                        ])
-                    )
-                    add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
-                    page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
-                    page.snack_bar.open = True
-                    await safe_update(page)
-                except Exception as e:
-                    add_step(f"Push failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
-                    await safe_update(page)
-
-            return
-
-        # Validate splits
-        if val_frac + test_frac >= 1.0:
-            add_step("Invalid split: val+test must be < 1.0", COLORS.RED, ICONS.ERROR_OUTLINE)
-            page.snack_bar = ft.SnackBar(ft.Text("Invalid split: val+test must be < 1.0"))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        # Step 1: Load
-        add_step("Loading data", COLORS.BLUE, ICONS.UPLOAD_FILE)
-        await safe_update(page)
-        try:
-            records = await asyncio.to_thread(sd.load_records, data_path)
-        except Exception as e:
-            add_step(f"Failed loading data: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
-            await safe_update(page)
-            return
-        if cancel_build["cancelled"]:
-            add_step("Build cancelled by user", COLORS.RED, ICONS.CANCEL)
-            await safe_update(page)
-            return
-
-        # Step 2: Normalize
-        add_step("Normalizing records", COLORS.BLUE, ICONS.SHUFFLE)
-        await safe_update(page)
-        try:
-            examples = await asyncio.to_thread(sd.normalize_records, records, min_len_val)
-        except Exception as e:
-            add_step(f"Normalization failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
-            await safe_update(page)
-            return
-        if not examples:
-            add_step("No valid examples after normalization", COLORS.RED, ICONS.ERROR_OUTLINE)
-            page.snack_bar = ft.SnackBar(ft.Text("No valid examples after normalization."))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-        if cancel_build["cancelled"]:
-            add_step("Build cancelled by user", COLORS.RED, ICONS.CANCEL)
-            await safe_update(page)
-            return
-
-        # Step 3: Splits
-        add_step("Creating splits (train/val/test)", COLORS.BLUE, ICONS.CALENDAR_VIEW_MONTH)
-        await safe_update(page)
-        try:
-            dd = await asyncio.to_thread(
-                sd.build_dataset_dict,
-                examples,
-                val_frac,
-                test_frac,
-                shuffle_val,
-                seed_val,
-            )
-        except Exception as e:
-            add_step(f"Split creation failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
-            await safe_update(page)
-            return
-
-        # Update split badges with real counts
-        train_n = len(dd.get("train", []))
-        val_n = len(dd.get("validation", [])) if "validation" in dd else 0
-        test_n = len(dd.get("test", [])) if "test" in dd else 0
-        split_badges["train"].content = pill(f"Train: {train_n}", split_meta["train"][0], split_meta["train"][1]).content
-        split_badges["val"].content = pill(f"Val: {val_n}", split_meta["val"][0], split_meta["val"][1]).content
-        split_badges["test"].content = pill(f"Test: {test_n}", split_meta["test"][0], split_meta["test"][1]).content
-        await safe_update(page)
-        if cancel_build["cancelled"]:
-            add_step("Build cancelled by user", COLORS.RED, ICONS.CANCEL)
-            await safe_update(page)
-            return
-
-        # Step 4: Save to disk (with heartbeat + cancel-aware)
-        # Row that we can live-update
-        save_text = ft.Text(f"Saving dataset to {out_dir}")
-        timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), save_text]))
-        await safe_update(page)
-        # Kick off blocking save in a worker thread and heartbeat the UI
-        save_task = asyncio.create_task(asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir))))
-        i = 0
-        while not save_task.done():
-            if cancel_build["cancelled"]:
-                save_text.value = "Cancel requested — waiting for current save to finish…"
-            else:
-                save_text.value = f"Saving dataset{'.' * (i % 4)}"
-            i += 1
-            await safe_update(page)
-            await asyncio.sleep(0.4)
-        try:
-            await save_task
-        except Exception as e:
-            save_text.value = f"Save failed: {e}"
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Save failed")]))
-            await safe_update(page)
-            return
-        save_text.value = "Saved dataset"
-        timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
-        await safe_update(page)
-        dd_ref["dd"] = dd
-        if cancel_build["cancelled"]:
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")]))
-            await safe_update(page)
-            return
-
-        # Optional push
-        if do_push:
-            if not repo:
-                add_step("Missing Repo ID for push", COLORS.RED, ICONS.ERROR_OUTLINE)
-                await safe_update(page)
-                return
-            if not token_val:
-                try:
-                    token_val = os.environ.get("HF_TOKEN") or sd.HfFolder.get_token()
-                except Exception:
-                    token_val = os.environ.get("HF_TOKEN") or ""
-            if not token_val:
-                add_step("No HF token found — cannot push", COLORS.RED, ICONS.ERROR_OUTLINE)
-                await safe_update(page)
-                return
-            add_step(f"Pushing to Hub: {repo}", COLORS.BLUE, ICONS.CLOUD_UPLOAD)
-            await safe_update(page)
-            try:
-                # Push with heartbeat
-                push_text = ft.Text(f"Pushing to Hub: {repo}")
-                timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), push_text]))
-                await safe_update(page)
-                push_task = asyncio.create_task(asyncio.to_thread(sd.push_to_hub, dd, repo, is_private, token_val))
-                j = 0
-                while not push_task.done():
-                    if cancel_build["cancelled"]:
-                        push_text.value = "Cancel requested — waiting for current upload to finish…"
-                    else:
-                        push_text.value = f"Uploading{'.' * (j % 4)}"
-                    j += 1
-                    await safe_update(page)
-                    await asyncio.sleep(0.6)
-                await push_task
-
-                if cancel_build["cancelled"]:
-                    timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")]))
-                    await safe_update(page)
-                    return
-
-                # Prepare README content (custom or autogenerated)
-                readme_text = ft.Text("Preparing dataset card (README)")
-                timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.BLUE), readme_text]))
-                await safe_update(page)
-                _custom_enabled = bool(getattr(use_custom_card, "value", False))
-                _custom_text = (getattr(card_editor, "value", "") or "").strip()
-                if _custom_enabled and _custom_text:
-                    readme = _custom_text
-                else:
-                    readme = await asyncio.to_thread(sd.build_dataset_card_content, dd, repo)
-                readme_text.value = "Prepared dataset card"
-                await safe_update(page)
-
-                # Upload README with heartbeat
-                up_text = ft.Text("Uploading README.md")
-                timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.BLUE), up_text]))
-                await safe_update(page)
-                up_task = asyncio.create_task(asyncio.to_thread(sd.upload_readme, repo, token_val, readme))
-                k = 0
-                while not up_task.done():
-                    if cancel_build["cancelled"]:
-                        up_text.value = "Cancel requested — waiting for current upload to finish…"
-                    else:
-                        up_text.value = f"Uploading README{'.' * (k % 4)}"
-                    k += 1
-                    await safe_update(page)
-                    await asyncio.sleep(0.6)
-                await up_task
-
-                # Add link to dataset on Hub
-                _url = f"https://huggingface.co/datasets/{repo}"
-                timeline.controls.append(
-                    ft.Row([
-                        ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
-                        ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
-                    ])
-                )
-                add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
-                page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
-                page.snack_bar.open = True
-                await safe_update(page)
-            except Exception as e:
-                add_step(f"Push failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
-                await safe_update(page)
+        # Delegate to helper to keep main.py slim
+        hf_cfg_token = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+        return await run_build_helper(
+            page=page,
+            source_mode=source_mode,
+            data_file=data_file,
+            merged_dir=merged_dir,
+            seed=seed,
+            shuffle=shuffle,
+            val_slider=val_slider,
+            test_slider=test_slider,
+            min_len_b=min_len_b,
+            save_dir=save_dir,
+            push_toggle=push_toggle,
+            repo_id=repo_id,
+            private=private,
+            token_val_ui=token_val_ui,
+            timeline=timeline,
+            timeline_placeholder=timeline_placeholder,
+            split_badges=split_badges,
+            split_meta=split_meta,
+            dd_ref=dd_ref,
+            cancel_build=cancel_build,
+            use_custom_card=use_custom_card,
+            card_editor=card_editor,
+            hf_cfg_token=hf_cfg_token,
+        )
 
     async def on_push_async():
-        # Push using the most recently built dataset (if available)
-        if push_state["inflight"]:
-            return
-        dd = dd_ref.get("dd")
-        if dd is None:
-            page.snack_bar = ft.SnackBar(ft.Text("Build the dataset first."))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-        repo = (repo_id.value or "").strip()
-        saved_tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
-        tok = (token_val_ui.value or "").strip() or saved_tok
-        if not tok:
-            try:
-                tok = os.environ.get("HF_TOKEN") or getattr(sd.HfFolder, "get_token", lambda: "")()
-            except Exception:
-                tok = ""
-        if not repo or not tok:
-            page.snack_bar = ft.SnackBar(ft.Text("Repo ID and a valid HF token are required."))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        # UI: show inflight state
-        push_state["inflight"] = True
-        push_ring.visible = True
-        # Disable the Push button while pushing
-        for ctl in build_actions.controls:
-            if isinstance(ctl, ft.TextButton) and "Push + Upload README" in getattr(ctl, "text", ""):
-                ctl.disabled = True
-        timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), ft.Text(f"Pushing to Hub: {repo}")]))
-        await safe_update(page)
-        update_status_placeholder()
-
-        try:
-            await asyncio.to_thread(sd.push_to_hub, dd, repo, bool(private.value), tok)
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Dataset pushed to Hub")]))
-            await safe_update(page)
-
-            _custom_enabled = bool(getattr(use_custom_card, "value", False))
-            _custom_text = (getattr(card_editor, "value", "") or "").strip()
-            if _custom_enabled and _custom_text:
-                readme = _custom_text
-            else:
-                readme = await asyncio.to_thread(sd.build_dataset_card_content, dd, repo)
-            await asyncio.to_thread(sd.upload_readme, repo, tok, readme)
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.GREEN), ft.Text("Uploaded dataset card (README)")]))
-            # Add link to dataset on Hub
-            _url = f"https://huggingface.co/datasets/{repo}"
-            timeline.controls.append(
-                ft.Row([
-                    ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
-                    ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
-                ])
-            )
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Push complete!")]))
-            page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
-            page.snack_bar.open = True
-            await safe_update(page)
-        except Exception as e:
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Push failed: {e}")]))
-            await safe_update(page)
-        finally:
-            push_state["inflight"] = False
-            push_ring.visible = False
-            # Re-enable Push button
-            for ctl in build_actions.controls:
-                if isinstance(ctl, ft.TextButton) and "Push + Upload README" in getattr(ctl, "text", ""):
-                    ctl.disabled = False
-            update_status_placeholder()
-            await safe_update(page)
+        # Delegate to helper to keep main.py slim
+        hf_cfg_token = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+        return await run_push_async_helper(
+            page=page,
+            repo_id=repo_id,
+            token_val_ui=token_val_ui,
+            private=private,
+            dd_ref=dd_ref,
+            push_state=push_state,
+            push_ring=push_ring,
+            build_actions=build_actions,
+            timeline=timeline,
+            timeline_placeholder=timeline_placeholder,
+            update_status_placeholder=update_status_placeholder,
+            use_custom_card=use_custom_card,
+            card_editor=card_editor,
+            hf_cfg_token=hf_cfg_token,
+        )
 
     def on_cancel_build(_):
         cancel_build["cancelled"] = True
@@ -3005,375 +1875,24 @@ Specify license and any restrictions.
             pass
         page.update()
 
-    def _guess_cols(names: list[str]) -> tuple[Optional[str], Optional[str]]:
-        low = {n.lower(): n for n in names}
-        in_cands = [
-            "input", "prompt", "question", "instruction", "source", "text", "query", "context", "post",
-        ]
-        out_cands = [
-            "output", "response", "answer", "completion", "target", "label", "reply",
-        ]
-        inn = next((low[x] for x in in_cands if x in low), None)
-        outn = next((low[x] for x in out_cands if x in low), None)
-        # Common paired fallbacks
-        if inn is None and outn is None:
-            if "question" in low and "answer" in low:
-                return low["question"], low["answer"]
-        return inn, outn
-
-    async def _load_and_prepare(repo: str, split: str, config: Optional[str], in_col: Optional[str], out_col: Optional[str]):
-        if load_dataset is None:
-            raise RuntimeError("datasets library not available — cannot load from Hub")
-        # Load
-        def do_load():
-            if split == "all":
-                dd = load_dataset(repo, name=(config or None))
-                return dd
-            return load_dataset(repo, split=split, name=(config or None))
-
-        try:
-            obj = await asyncio.to_thread(do_load)
-        except Exception as e:
-            # Handle datasets that require an explicit config
-            msg = str(e).lower()
-            auto_loaded = False
-            if (get_dataset_config_names is not None) and ("config name is missing" in msg or "config name is required" in msg):
-                try:
-                    cfgs = await asyncio.to_thread(lambda: get_dataset_config_names(repo))
-                except Exception:
-                    cfgs = []
-                pick = None
-                for pref in ("main", "default", "socratic"):
-                    if pref in cfgs:
-                        pick = pref
-                        break
-                if not pick and cfgs:
-                    pick = cfgs[0]
-                if pick:
-                    # Log auto-pick to timeline
-                    try:
-                        merge_timeline.controls.append(ft.Row([
-                            ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.8, ACCENT_COLOR)),
-                            ft.Text(f"'{repo}' requires a config; using '{pick}' automatically"),
-                        ]))
-                        await safe_update(page)
-                    except Exception:
-                        pass
-                    def do_load_cfg():
-                        if split == "all":
-                            return load_dataset(repo, name=pick)
-                        return load_dataset(repo, split=split, name=pick)
-                    obj = await asyncio.to_thread(do_load_cfg)
-                    auto_loaded = True
-            if not auto_loaded:
-                raise
-
-        # Normalize to list[Dataset]
-        ds_list: list = []
-        if isinstance(obj, dict) or (DatasetDict is not None and isinstance(obj, DatasetDict)):
-            for k in ["train", "validation", "test"]:
-                try:
-                    if k in obj:
-                        ds_list.append(obj[k])
-                except Exception:
-                    pass
-            # Fallback to any other splits
-            try:
-                for k in getattr(obj, "keys", lambda: [])():
-                    if k not in {"train", "validation", "test"}:
-                        ds_list.append(obj[k])
-            except Exception:
-                pass
-        else:
-            ds_list = [obj]
-
-        prepped = []
-        for ds in ds_list:
-            try:
-                names = list(getattr(ds, "column_names", []) or [])
-            except Exception:
-                names = []
-            # Resolve columns
-            inn = (in_col or "").strip() or None
-            outn = (out_col or "").strip() or None
-            if not inn or inn not in names or not outn or outn not in names:
-                gi, go = _guess_cols(names)
-                inn = inn if (inn and inn in names) else gi
-                outn = outn if (outn and outn in names) else go
-            if not inn or not outn:
-                raise RuntimeError(f"Could not resolve input/output columns for {repo} (have: {', '.join(names)})")
-
-            def mapper(batch):
-                # batched mapping
-                src = batch.get(inn, [])
-                tgt = batch.get(outn, [])
-                return {
-                    "input": ["" if v is None else str(v).strip() for v in src],
-                    "output": ["" if v is None else str(v).strip() for v in tgt],
-                }
-
-            try:
-                mapped = await asyncio.to_thread(
-                    lambda: ds.map(mapper, batched=True, remove_columns=list(getattr(ds, "column_names", []) or []))
-                )
-            except Exception:
-                # Fallback: construct from python list (may be slower)
-                try:
-                    to_list = [
-                        {"input": "" if r.get(inn) is None else str(r.get(inn)).strip(),
-                         "output": "" if r.get(outn) is None else str(r.get(outn)).strip()}
-                        for r in ds
-                    ]
-                    mapped = await asyncio.to_thread(lambda: Dataset.from_list(to_list))
-                except Exception as e:
-                    raise RuntimeError(f"Failed to map columns for {repo}: {e}")
-
-            # Optional filtering of empty rows
-            try:
-                mapped = await asyncio.to_thread(lambda: mapped.filter(lambda r: (len(r.get("input", "") or "") > 0 and len(r.get("output", "") or "") > 0)))
-            except Exception:
-                pass
-
-            prepped.append(mapped)
-            if merge_cancel.get("cancelled"):
-                break
-        return prepped
+    
 
     async def on_merge():
-        merge_cancel["cancelled"] = False
-        merge_timeline.controls.clear()
-        merge_preview_host.controls.clear()
-        merge_busy_ring.visible = True
-        update_merge_placeholders()
-        await safe_update(page)
+        # Delegate to helper to keep main.py slim
+        return await run_merge_helper(
+            page=page,
+            rows_host=rows_host,
+            merge_op=merge_op,
+            merge_output_format=merge_output_format,
+            merge_save_dir=merge_save_dir,
+            merge_timeline=merge_timeline,
+            merge_timeline_placeholder=merge_timeline_placeholder,
+            merge_preview_host=merge_preview_host,
+            merge_preview_placeholder=merge_preview_placeholder,
+            merge_cancel=merge_cancel,
+            merge_busy_ring=merge_busy_ring,
+        )
 
-        # Validate inputs
-        rows = [r for r in list(getattr(rows_host, "controls", []) or []) if isinstance(r, ft.Row)]
-        entries = []
-        for r in rows:
-            d = getattr(r, "data", None) or {}
-            src_dd = d.get("source")
-            ds_tf = d.get("ds")
-            sp_dd = d.get("split")
-            cfg_tf = d.get("config")
-            in_tf = d.get("in")
-            out_tf = d.get("out")
-            json_tf = d.get("json")
-            src = (getattr(src_dd, "value", "Hugging Face") or "Hugging Face") if src_dd else "Hugging Face"
-            repo = (getattr(ds_tf, "value", "") or "").strip() if ds_tf else ""
-            json_path = (getattr(json_tf, "value", "") or "").strip() if json_tf else ""
-            if (src == "Hugging Face" and repo) or (src == "JSON file" and json_path):
-                entries.append({
-                    "source": src,
-                    "repo": repo,
-                    "split": (getattr(sp_dd, "value", "train") or "train") if sp_dd else "train",
-                    "config": (getattr(cfg_tf, "value", "") or "").strip() if cfg_tf else "",
-                    "in": (getattr(in_tf, "value", "") or "").strip() if in_tf else "",
-                    "out": (getattr(out_tf, "value", "") or "").strip() if out_tf else "",
-                    "json": json_path,
-                })
-        if len(entries) < 2:
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Add at least two datasets")]))
-            update_merge_placeholders(); await safe_update(page)
-            merge_busy_ring.visible = False
-            await safe_update(page)
-            return
-
-        out_path = merge_save_dir.value or "merged_dataset"
-        op = merge_op.value or "Concatenate"
-        fmt = (merge_output_format.value or "HF dataset dir").lower()
-        output_json = ("json" in fmt) or (out_path.lower().endswith(".json"))
-        # Auto-infer JSON output if all sources are JSON files and user didn't explicitly choose JSON
-        try:
-            if (not output_json) and all(ent.get("source") == "JSON file" for ent in entries):
-                output_json = True
-                if not out_path.lower().endswith(".json"):
-                    out_path = f"{out_path}.json"
-                # Reflect this choice in the UI so Preview button resolves correctly
-                try:
-                    merge_save_dir.value = out_path
-                    if merge_output_format is not None:
-                        merge_output_format.value = "JSON file"
-                    update_output_controls()
-                except Exception:
-                    pass
-                await safe_update(page)
-        except Exception:
-            pass
-
-        # Load and map each dataset
-        hf_prepped = []  # list[Dataset]
-        json_sources: list[list[dict]] = []  # list of lists for interleave/concat
-        for i, ent in enumerate(entries, start=1):
-            if merge_cancel.get("cancelled"):
-                break
-            src = ent.get("source", "Hugging Face")
-            label = ent['repo'] if src == "Hugging Face" else ent.get("json", "(json)")
-            split_lbl = ent['split'] if src == "Hugging Face" else "-"
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.DOWNLOAD, color=COLORS.BLUE), ft.Text(f"Loading {label} [{split_lbl}]…")]))
-            update_merge_placeholders(); await safe_update(page)
-            try:
-                if src == "Hugging Face":
-                    dss = await _load_and_prepare(ent["repo"], ent["split"], ent["config"], ent["in"], ent["out"])
-                    hf_prepped.extend(dss)
-                    merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {ent['repo']}")]))
-                else:
-                    # JSON file source
-                    path = ent.get("json")
-                    if not path:
-                        raise RuntimeError("JSON path required")
-                    try:
-                        records = await asyncio.to_thread(sd.load_records, path)
-                    except Exception as e:
-                        raise RuntimeError(f"Failed to read JSON: {e}")
-                    try:
-                        data = await asyncio.to_thread(sd.normalize_records, records, 1)
-                    except Exception:
-                        # Fallback: minimal normalization
-                        data = []
-                        for r in records or []:
-                            if isinstance(r, dict):
-                                a = str((r.get("input") or "")).strip()
-                                b = str((r.get("output") or "")).strip()
-                                if a and b:
-                                    data.append({"input": a, "output": b})
-                    if output_json:
-                        json_sources.append(data)
-                    else:
-                        if Dataset is None:
-                            raise RuntimeError("datasets library unavailable to convert JSON -> HF")
-                        ds = await asyncio.to_thread(lambda: Dataset.from_list(data))
-                        hf_prepped.append(ds)
-                    merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {os.path.basename(path)}")]))
-            except Exception as e:
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Failed {label}: {e}")]))
-                await safe_update(page)
-                merge_busy_ring.visible = False
-                update_merge_placeholders()
-                return
-            await safe_update(page)
-
-        if merge_cancel.get("cancelled"):
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Merge cancelled by user")]))
-            merge_busy_ring.visible = False
-            update_merge_placeholders(); await safe_update(page)
-            return
-
-        # Convert HF prepped to JSON if output is JSON
-        if output_json and hf_prepped:
-            for ds in hf_prepped:
-                try:
-                    exs = []
-                    for rec in ds:
-                        exs.append({"input": (rec.get("input", "") or ""), "output": (rec.get("output", "") or "")})
-                    json_sources.append(exs)
-                except Exception:
-                    pass
-
-        # Merge
-        try:
-            if output_json:
-                if not json_sources and not hf_prepped:
-                    raise RuntimeError("No datasets to merge after preparation")
-                # Interleave or concatenate JSON sources
-                merged_examples: list[dict] = []
-                if op == "Interleave" and len(json_sources) > 1:
-                    # Round-robin across sources
-                    indices = [0] * len(json_sources)
-                    total = sum(len(s) for s in json_sources)
-                    while len(merged_examples) < total:
-                        for i, s in enumerate(json_sources):
-                            if indices[i] < len(s):
-                                merged_examples.append(s[indices[i]])
-                                indices[i] += 1
-                    # no shuffle; deterministic RR
-                else:
-                    for s in json_sources:
-                        merged_examples.extend(s)
-                merged_len = len(merged_examples)
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=COLORS.BLUE), ft.Text(f"Merged rows: {merged_len}")]))
-                await safe_update(page)
-            else:
-                prepped_all = hf_prepped
-                if not prepped_all:
-                    raise RuntimeError("No datasets to merge after preparation")
-                if op == "Concatenate" or len(prepped_all) == 1:
-                    merged = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
-                else:
-                    if hf_interleave is not None:
-                        merged = await asyncio.to_thread(lambda: hf_interleave(prepped_all, probabilities=None, seed=42))
-                    else:
-                        # Fallback: concatenate + shuffle (approximate interleave)
-                        tmp = await asyncio.to_thread(lambda: concatenate_datasets(prepped_all))
-                        try:
-                            merged = await asyncio.to_thread(lambda: tmp.shuffle(seed=42))
-                            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SHUFFLE, color=COLORS.ORANGE), ft.Text("Interleave not available — using shuffle fallback")]))
-                        except Exception:
-                            merged = tmp
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=COLORS.BLUE), ft.Text(f"Merged rows: {len(merged)}")]))
-                await safe_update(page)
-        except Exception as e:
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Merge failed: {e}")]))
-            merge_busy_ring.visible = False
-            update_merge_placeholders(); await safe_update(page)
-            return
-
-        # Save to disk
-        try:
-            if output_json:
-                target = out_path
-                # ensure dir exists if nested
-                try:
-                    dname = os.path.dirname(target)
-                    if dname:
-                        await asyncio.to_thread(lambda: os.makedirs(dname, exist_ok=True))
-                except Exception:
-                    pass
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), ft.Text(f"Saving JSON to {target}")]))
-                await safe_update(page)
-                await asyncio.to_thread(lambda: open(target, "w", encoding="utf-8").write(json.dumps(merged_examples, ensure_ascii=False, indent=2)))
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
-                await safe_update(page)
-            else:
-                out_dir = out_path
-                dd = DatasetDict({"train": merged}) if DatasetDict is not None else {"train": merged}
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), ft.Text(f"Saving to {out_dir}")]))
-                await safe_update(page)
-                await asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
-                merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Save complete")]))
-                await safe_update(page)
-        except Exception as e:
-            merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Save failed: {e}")]))
-            merge_busy_ring.visible = False
-            update_merge_placeholders(); await safe_update(page)
-            return
-
-        # Preview first N rows in-place
-        try:
-            merge_preview_host.controls.clear()
-            pairs = []
-            if output_json:
-                head_n = min(12, len(merged_examples))
-                for rec in merged_examples[:head_n]:
-                    pairs.append(((rec.get("input", "") or ""), (rec.get("output", "") or "")))
-            else:
-                head_n = min(12, len(merged))
-                idxs = list(range(head_n))
-                head = await asyncio.to_thread(lambda: merged.select(idxs)) if head_n > 0 else None
-                if head is not None:
-                    for rec in head:
-                        pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
-            lfx, rfx = compute_two_col_flex(pairs)
-            merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-            for a, b in pairs:
-                merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-        except Exception:
-            pass
-
-        merge_busy_ring.visible = False
-        page.snack_bar = ft.SnackBar(ft.Text("Merge complete ✨"))
-        page.snack_bar.open = True
-        update_merge_placeholders(); await safe_update(page)
 
     def on_cancel_merge(_):
         merge_cancel["cancelled"] = True
@@ -3391,272 +1910,12 @@ Specify license and any restrictions.
         update_merge_placeholders(); page.update()
 
     async def on_preview_merged():
-        """Open a modal dialog showing the merged dataset saved to disk (DatasetDict or JSON)."""
-        # Immediate feedback
-        try:
-            page.snack_bar = ft.SnackBar(ft.Text("Opening merged dataset preview..."))
-            page.snack_bar.open = True
-            await safe_update(page)
-        except Exception:
-            pass
-
-        # Resolve save dir robustly
-        orig_dir = merge_save_dir.value or "merged_dataset"
-        fmt_now = (merge_output_format.value or "").lower()
-        wants_json = ("json" in fmt_now) or (str(orig_dir).lower().endswith(".json"))
-        candidates = []
-        if os.path.isabs(orig_dir):
-            candidates.append(orig_dir)
-        else:
-            candidates.extend([
-                orig_dir,
-                os.path.abspath(orig_dir),
-                os.path.join(os.getcwd(), orig_dir),
-                os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_dir),
-            ])
-        seen = set(); resolved_list = []
-        for pth in candidates:
-            ap = os.path.abspath(pth)
-            if ap not in seen:
-                seen.add(ap); resolved_list.append(ap)
-        existing = next((p for p in resolved_list if os.path.exists(p)), None)
-        if not existing:
-            page.snack_bar = ft.SnackBar(ft.Text(
-                "Merged dataset not found. Tried:\n" + "\n".join(resolved_list[:4])
-            ))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        if wants_json:
-            # Load JSON and preview
-            try:
-                data = await asyncio.to_thread(sd.load_records, existing)
-            except Exception as e:
-                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to read JSON: {e}"))
-                page.snack_bar.open = True
-                await safe_update(page)
-                return
-            try:
-                data = await asyncio.to_thread(sd.normalize_records, data, 1)
-            except Exception:
-                pass
-            total = len(data or [])
-            page_size = 100
-            total_pages = max(1, (total + page_size - 1) // page_size)
-            state = {"page": 0}
-
-            grid_list = ft.ListView(expand=1, auto_scroll=False)
-            info_text = ft.Text("")
-            prev_btn = ft.TextButton("Prev")
-            next_btn = ft.TextButton("Next")
-
-            def render_page_json():
-                start = state["page"] * page_size
-                end = min(start + page_size, total)
-                grid_list.controls.clear()
-                pairs = []
-                for rec in (data or [])[start:end]:
-                    pairs.append(((rec.get("input", "") or ""), (rec.get("output", "") or "")))
-                lfx, rfx = compute_two_col_flex(pairs)
-                grid_list.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-                for a, b in pairs:
-                    grid_list.controls.append(two_col_row(a, b, lfx, rfx))
-                info_text.value = f"Page {state['page']+1}/{total_pages} • Showing {start+1}-{end} of {total}"
-                prev_btn.disabled = state["page"] <= 0
-                next_btn.disabled = state["page"] >= (total_pages - 1)
-                page.update()
-
-            def on_prev_json(_):
-                if state["page"] > 0:
-                    state["page"] -= 1
-                    render_page_json()
-
-            def on_next_json(_):
-                if state["page"] < (total_pages - 1):
-                    state["page"] += 1
-                    render_page_json()
-
-            prev_btn.on_click = on_prev_json
-            next_btn.on_click = on_next_json
-
-            controls_bar = ft.Row([
-                prev_btn,
-                next_btn,
-                info_text,
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-
-            dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"Merged Dataset Viewer — {total} rows"),
-                content=ft.Container(
-                    width=900,
-                    height=600,
-                    content=ft.Column([
-                        controls_bar,
-                        ft.Container(grid_list, expand=True),
-                    ], expand=True),
-                ),
-                actions=[],
-            )
-
-            def close_dlg_json(_):
-                dlg.open = False
-                page.update()
-
-            dlg.actions = [ft.TextButton("Close", on_click=close_dlg_json)]
-            try:
-                dlg.on_dismiss = lambda e: page.update()
-            except Exception:
-                pass
-            render_page_json()
-            opened = False
-            try:
-                if hasattr(page, "open") and callable(getattr(page, "open")):
-                    page.open(dlg)
-                    opened = True
-            except Exception:
-                opened = False
-            if not opened:
-                page.dialog = dlg
-                dlg.open = True
-            await safe_update(page)
-            return
-
-        if load_from_disk is None:
-            page.snack_bar = ft.SnackBar(ft.Text("datasets.load_from_disk unavailable — cannot open preview"))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        # Load dataset from disk
-        try:
-            obj = await asyncio.to_thread(lambda: load_from_disk(existing))
-        except Exception as e:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to load dataset from {existing}: {e}"))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        # Extract a Dataset
-        ds = None
-        try:
-            if DatasetDict is not None and isinstance(obj, DatasetDict):
-                for k in ["train", "validation", "test"]:
-                    if k in obj:
-                        ds = obj[k]; break
-                if ds is None:
-                    # fallback: any split
-                    for k in getattr(obj, "keys", lambda: [])():
-                        ds = obj[k]; break
-            else:
-                ds = obj
-        except Exception:
-            ds = obj
-        if ds is None:
-            page.snack_bar = ft.SnackBar(ft.Text("No split found to preview"))
-            page.snack_bar.open = True
-            await safe_update(page)
-            return
-
-        # Pagination state
-        try:
-            total = len(ds)
-        except Exception:
-            try:
-                total = int(getattr(ds, "num_rows", 0))
-            except Exception:
-                total = 0
-        page_size = 100
-        total_pages = max(1, (total + page_size - 1) // page_size)
-        state = {"page": 0}
-
-        grid_list = ft.ListView(expand=1, auto_scroll=False)
-        info_text = ft.Text("")
-        prev_btn = ft.TextButton("Prev")
-        next_btn = ft.TextButton("Next")
-
-        def render_page():
-            start = state["page"] * page_size
-            end = min(start + page_size, total)
-            grid_list.controls.clear()
-            # Fetch a small slice efficiently
-            try:
-                idxs = list(range(start, end))
-                page_ds = ds.select(idxs)
-            except Exception:
-                page_ds = None
-            pairs = []
-            try:
-                if page_ds is not None:
-                    for rec in page_ds:
-                        pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
-            except Exception:
-                pass
-
-            lfx, rfx = compute_two_col_flex(pairs)
-            grid_list.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-            for a, b in pairs:
-                grid_list.controls.append(two_col_row(a, b, lfx, rfx))
-            info_text.value = f"Page {state['page']+1}/{total_pages} • Showing {start+1}-{end} of {total}"
-            prev_btn.disabled = state["page"] <= 0
-            next_btn.disabled = state["page"] >= (total_pages - 1)
-            page.update()
-
-        def on_prev(_):
-            if state["page"] > 0:
-                state["page"] -= 1
-                render_page()
-
-        def on_next(_):
-            if state["page"] < (total_pages - 1):
-                state["page"] += 1
-                render_page()
-
-        prev_btn.on_click = on_prev
-        next_btn.on_click = on_next
-
-        controls_bar = ft.Row([
-            prev_btn,
-            next_btn,
-            info_text,
-        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Merged Dataset Viewer — {total} rows"),
-            content=ft.Container(
-                width=900,
-                height=600,
-                content=ft.Column([
-                    controls_bar,
-                    ft.Container(grid_list, expand=True),
-                ], expand=True),
-            ),
-            actions=[],
+        # Delegate to helper preview
+        return await preview_merged_helper(
+            page=page,
+            merge_output_format=merge_output_format,
+            merge_save_dir=merge_save_dir,
         )
-
-        def close_dlg(_):
-            dlg.open = False
-            page.update()
-
-        dlg.actions = [ft.TextButton("Close", on_click=close_dlg)]
-        try:
-            dlg.on_dismiss = lambda e: page.update()
-        except Exception:
-            pass
-        render_page()
-        opened = False
-        try:
-            if hasattr(page, "open") and callable(getattr(page, "open")):
-                page.open(dlg)
-                opened = True
-        except Exception:
-            opened = False
-        if not opened:
-            page.dialog = dlg
-            dlg.open = True
-        await safe_update(page)
 
     def handle_merge_preview_click(_):
         try:
@@ -4604,718 +2863,197 @@ Specify license and any restrictions.
         pass
 
     def _build_hp() -> dict:
-        """Build train.py flags. Uses underscore keys matching script flags.
-        Only emits a safe whitelist of flags.
-        """
-        src = train_source.value or "Hugging Face"
-        repo = (train_hf_repo.value or "").strip()
-        split = (train_hf_split.value or "train").strip()
-        cfg = (train_hf_config.value or "").strip()
-        jpath = (train_json_path.value or "").strip()
-        model = (base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
-        out_dir = (out_dir_tf.value or "/data/outputs/runpod_run").strip()
-        # Core hparams
-        hp: dict = {
-            "base_model": model,
-            "epochs": (epochs_tf.value or "3").strip(),
-            "lr": (lr_tf.value or "2e-4").strip(),
-            "bsz": (batch_tf.value or "2").strip(),
-            "grad_accum": (grad_acc_tf.value or "4").strip(),
-            "max_steps": (max_steps_tf.value or "200").strip(),
-            "use_lora": bool(getattr(use_lora_cb, "value", False)),
-            "output_dir": out_dir,
-        }
-        # Dataset flags
-        if (src == "Hugging Face") and repo:
-            hp["hf_dataset_id"] = repo
-            hp["hf_dataset_split"] = split
-        elif jpath:
-            hp["json_path"] = jpath
-        # Optional HF dataset config (subset name)
-        if (src == "Hugging Face") and cfg:
-            hp["hf_dataset_config"] = cfg
-        # Add optional toggles
-        if bool(getattr(packing_cb, "value", False)):
-            hp["packing"] = True
-        if bool(getattr(auto_resume_cb, "value", False)):
-            hp["auto_resume"] = True
-        if bool(getattr(push_cb, "value", False)):
-            hp["push"] = True
-        _hf_repo_id = (hf_repo_id_tf.value or "").strip()
-        if _hf_repo_id:
-            hp["hf_repo_id"] = _hf_repo_id
-        _resume_from = (resume_from_tf.value or "").strip()
-        if _resume_from:
-            hp["resume_from"] = _resume_from
-        # Advanced parameters (Expert UI)
-        try:
-            _ws = (warmup_steps_tf.value or "").strip()
-            if _ws:
-                hp["warmup_steps"] = _ws
-        except Exception:
-            pass
-        try:
-            _wd = (weight_decay_tf.value or "").strip()
-            if _wd:
-                hp["weight_decay"] = _wd
-        except Exception:
-            pass
-        try:
-            _lrs = (lr_sched_dd.value or "").strip()
-            if _lrs:
-                hp["lr_scheduler"] = _lrs
-        except Exception:
-            pass
-        try:
-            _opt = (optim_dd.value or "").strip()
-            if _opt:
-                hp["optimizer"] = _opt
-        except Exception:
-            pass
-        try:
-            _ls = (logging_steps_tf.value or "").strip()
-            if _ls:
-                hp["logging_steps"] = _ls
-        except Exception:
-            pass
-        try:
-            if bool(getattr(logging_first_step_cb, "value", False)):
-                hp["logging_first_step"] = True
-        except Exception:
-            pass
-        try:
-            if bool(getattr(disable_tqdm_cb, "value", False)):
-                hp["disable_tqdm"] = True
-        except Exception:
-            pass
-        try:
-            _seed = (seed_tf.value or "").strip()
-            if _seed:
-                hp["seed"] = _seed
-        except Exception:
-            pass
-        try:
-            _ss = (save_strategy_dd.value or "").strip()
-            if _ss:
-                hp["save_strategy"] = _ss
-        except Exception:
-            pass
-        try:
-            _stl = (save_total_limit_tf.value or "").strip()
-            if _stl:
-                hp["save_total_limit"] = _stl
-        except Exception:
-            pass
-        try:
-            if bool(getattr(pin_memory_cb, "value", False)):
-                hp["pin_memory"] = True
-        except Exception:
-            pass
-        try:
-            _rt = (report_to_dd.value or "").strip()
-            if _rt:
-                hp["report_to"] = _rt
-        except Exception:
-            pass
-        try:
-            if bool(getattr(fp16_cb, "value", False)):
-                hp["fp16"] = True
-        except Exception:
-            pass
-        try:
-            if bool(getattr(bf16_cb, "value", False)):
-                hp["bf16"] = True
-        except Exception:
-            pass
-        # Map UI keys to train.py names
-        if "optimizer" in hp:
-            # train.py expects --optim
-            hp["optim"] = hp.pop("optimizer")
-        # Whitelist of flags supported by train.py (per usage message)
-        _allowed = {
-            "json_path",
-            "hf_dataset_id",
-            "hf_dataset_split",
-            "base_model",
-            "epochs",
-            "lr",
-            "bsz",
-            "grad_accum",
-            "max_seq_len",
-            "max_steps",
-            "packing",
-            "report_to",
-            "optim",
-            "eval_every_steps",
-            "save_every_steps",
-            "save_total_limit",
-            "use_lora",
-            "lora_r",
-            "lora_alpha",
-            "output_dir",
-            "resume_from",
-            "auto_resume",
-            "push",
-            "hf_repo_id",
-            "hf_private",
-        }
-        # Filter out unsupported keys to avoid argparse errors inside the image
-        hp = {k: v for k, v in hp.items() if k in _allowed}
-        return hp
+        """Build train.py flags via helper (delegated)."""
+        return build_hp_from_controls_helper(
+            train_source=train_source,
+            train_hf_repo=train_hf_repo,
+            train_hf_split=train_hf_split,
+            train_hf_config=train_hf_config,
+            train_json_path=train_json_path,
+            base_model=base_model,
+            out_dir_tf=out_dir_tf,
+            epochs_tf=epochs_tf,
+            lr_tf=lr_tf,
+            batch_tf=batch_tf,
+            grad_acc_tf=grad_acc_tf,
+            max_steps_tf=max_steps_tf,
+            use_lora_cb=use_lora_cb,
+            packing_cb=packing_cb,
+            auto_resume_cb=auto_resume_cb,
+            push_cb=push_cb,
+            hf_repo_id_tf=hf_repo_id_tf,
+            resume_from_tf=resume_from_tf,
+            warmup_steps_tf=warmup_steps_tf,
+            weight_decay_tf=weight_decay_tf,
+            lr_sched_dd=lr_sched_dd,
+            optim_dd=optim_dd,
+            logging_steps_tf=logging_steps_tf,
+            logging_first_step_cb=logging_first_step_cb,
+            disable_tqdm_cb=disable_tqdm_cb,
+            seed_tf=seed_tf,
+            save_strategy_dd=save_strategy_dd,
+            save_total_limit_tf=save_total_limit_tf,
+            pin_memory_cb=pin_memory_cb,
+            report_to_dd=report_to_dd,
+            fp16_cb=fp16_cb,
+            bf16_cb=bf16_cb,
+        )
 
-    async def on_start_training():
-        if train_state.get("running"):
-            return
-        cancel_train["cancelled"] = False
-        train_state["running"] = True
-
-        # Ensure infra and API key
-        infra = train_state.get("infra") or {}
-        tpl_id = ((infra.get("template") or {}).get("id") or "").strip()
-        vol_id = ((infra.get("volume") or {}).get("id") or "").strip()
-        if not tpl_id or not vol_id:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure not ready. Click Ensure Infrastructure first.")]))
-            train_state["running"] = False
-            # (removed: was incorrectly enabling restart/open before pod exists)
-            update_train_placeholders(); await safe_update(page)
-            return
-        saved_key = ((train_state.get("api_key") or (_runpod_cfg.get("api_key") if isinstance(_runpod_cfg, dict) else "") or "").strip())
-        temp_key = (rp_temp_key_tf.value or "").strip()
-        api_key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
-        if not api_key:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings or temp field.")]))
-            train_state["running"] = False
-            update_train_placeholders(); await safe_update(page)
-            return
-
-        # Persist key and set running UI state
+    async def _on_pod_created(data: dict):
         try:
-            train_state["api_key"] = api_key
-        except Exception:
-            pass
-        try:
-            start_train_btn.disabled = True
-            start_train_btn.visible = False
-            stop_train_btn.disabled = False
-            refresh_train_btn.disabled = False
-        except Exception:
-            pass
-        # Reset log de-duplication buffer for this session
-        train_state["log_seen"] = set()
-        # Initialize progress display
-        try:
-            train_progress.value = 0.0
-            train_prog_label.value = "Starting..."
-            train_state["progress"] = 0.0
-        except Exception:
-            pass
-        await safe_update(page)
+            hp = (data or {}).get("hp") or {}
+            chosen_gpu_type_id = (data or {}).get("chosen_gpu_type_id")
+            chosen_interruptible = bool((data or {}).get("chosen_interruptible"))
+            default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(hp.get('base_model','model')).replace('/', '_')}.json"
+            name_tf = ft.TextField(label="Save as", value=default_name, width=420)
 
-        # Build flags for train.py (honor Configuration mode if a config is loaded)
-        using_loaded_hp = False
-        hp = None
-        cfg = {}
-        try:
-            mode_val = (config_mode_dd.value or "Normal").lower()
-            if mode_val.startswith("config"):
-                cfg = train_state.get("loaded_config") or {}
-                cfg_hp = cfg.get("hp") if isinstance(cfg, dict) else None
-                # Lazy-load from the selected file if not already loaded
-                if not (isinstance(cfg_hp, dict) and cfg_hp):
-                    try:
-                        name = (config_files_dd.value or "").strip()
-                        if name:
-                            path = os.path.join(_saved_configs_dir(), name)
-                            tmp_conf = _read_json_file(path) or {}
-                            tmp_hp = tmp_conf.get("hp") if isinstance(tmp_conf, dict) else None
-                            if isinstance(tmp_hp, dict) and tmp_hp:
-                                cfg = tmp_conf
-                                cfg_hp = tmp_hp
-                                train_state["loaded_config"] = cfg
-                    except Exception:
-                        pass
-                if isinstance(cfg_hp, dict) and cfg_hp:
-                    hp = dict(cfg_hp)
-                    using_loaded_hp = True
-        except Exception:
-            pass
-        if not isinstance(hp, dict) or not hp:
-            hp = _build_hp()
-
-        # Ensure dataset flags are present in hp (Normal mode only). In Config mode, use hp as-is.
-        mode_now = (config_mode_dd.value or "Normal").lower()
-        if not mode_now.startswith("config"):
-            try:
-                if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-                    src_ui = train_source.value or "Hugging Face"
-                    repo_ui = (train_hf_repo.value or "").strip()
-                    split_ui = (train_hf_split.value or "train").strip()
-                    jpath_ui = (train_json_path.value or "").strip()
-                    if (src_ui == "Hugging Face") and repo_ui:
-                        hp["hf_dataset_id"] = repo_ui
-                        hp["hf_dataset_split"] = split_ui
-                    elif jpath_ui:
-                        hp["json_path"] = jpath_ui
-                if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-                    train_timeline.controls.append(ft.Row([
-                        ft.Icon(ICONS.WARNING, color=COLORS.RED),
-                        ft.Text("Dataset not set. Provide a Hugging Face dataset or JSON path before starting."),
-                    ]))
-                    train_state["running"] = False
-                    update_train_placeholders(); await safe_update(page)
-                    return
-            except Exception:
-                pass
-
-        # Beginner mode presets: choose GPU & adjust params
-        # If using a loaded config, prefer its saved meta for skill/mode
-        meta_cfg = (cfg.get("meta") or {}) if isinstance(cfg, dict) else {}
-        level_src = (meta_cfg.get("skill_level") or skill_level.value or "Beginner")
-        begin_src = (meta_cfg.get("beginner_mode") or beginner_mode_dd.value or "Fastest")
-        level = level_src.lower()
-        is_beginner = (level == "beginner")
-        beginner_mode = begin_src.lower() if is_beginner else ""
-
-        chosen_gpu_type_id = "AUTO"
-        chosen_interruptible = False
-        chosen_by = ""
-
-        # Beginner-mode hyperparameter tweaks only when not using loaded config HP
-        if is_beginner and (not using_loaded_hp):
-            if beginner_mode == "fastest":
-                # Aggressive for speed: rely on best GPU (secure), larger per-device batch, minimal GA
-                try:
-                    hp["epochs"] = (epochs_tf.value or "1").strip() or "1"
-                    hp["lr"] = "2e-4"
-                    hp["bsz"] = "4"
-                    hp["grad_accum"] = "1"
-                    hp["max_steps"] = (max_steps_tf.value or "200").strip() or "200"
-                except Exception:
-                    pass
-
-        # GPU selection: prefer Expert picker, else explicit config pod overrides, else derive from beginner mode
-        if not is_beginner:
-            try:
-                exp_val = (expert_gpu_dd.value or "AUTO").strip()
-                if exp_val and exp_val != "AUTO":
-                    chosen_gpu_type_id = exp_val
-                    chosen_interruptible = bool(getattr(expert_spot_cb, "value", False))
-                    chosen_by = "expert"
-            except Exception:
-                pass
-        pod_cfg = (cfg.get("pod") or {}) if using_loaded_hp else {}
-        if not chosen_by and isinstance(pod_cfg, dict) and pod_cfg:
-            try:
-                if pod_cfg.get("gpu_type_id"):
-                    chosen_gpu_type_id = pod_cfg.get("gpu_type_id")
-                if "interruptible" in pod_cfg:
-                    chosen_interruptible = bool(pod_cfg.get("interruptible"))
-                chosen_by = "config"
-            except Exception:
-                pass
-        elif is_beginner:
-            if beginner_mode == "fastest":
-                # Keep AUTO + secure (non-interruptible)
-                chosen_gpu_type_id = "AUTO"
-                chosen_interruptible = False
-            elif beginner_mode == "cheapest":
-                # Pick the lowest-cost GPU (spot preferred)
-                dc_id = (((infra.get("volume") or {}).get("dc") or "").strip()) or "US-NC-1"
-                try:
-                    cheapest_gpu, is_spot = await asyncio.to_thread(rp_pod.discover_cheapest_gpu, api_key, dc_id, 1)
-                    chosen_gpu_type_id = cheapest_gpu
-                    chosen_interruptible = bool(is_spot)
-                except Exception as e:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text(f"Cheapest GPU discovery failed, using AUTO: {e}")]))
-
-        # Logs
-        # Log dataset choice based on hp actually sent to the container
-        model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        if hp.get("hf_dataset_id"):
-            ds_desc = f"HF: {hp.get('hf_dataset_id')} [{hp.get('hf_dataset_split','train')}]"
-        elif hp.get("json_path"):
-            ds_desc = f"JSON: {hp.get('json_path')}"
-        else:
-            ds_desc = "Dataset: (unset)"
-        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Creating Runpod pod and starting training…")]))
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={hp.get('epochs')} • LR={hp.get('lr')} • BSZ={hp.get('bsz')} • GA={hp.get('grad_accum')}")]))
-        if is_beginner:
-            try:
-                if beginner_mode == "fastest":
-                    bm_text = "Beginner: Fastest — using best GPU (secure) with aggressive params"
-                else:
-                    bm_text = f"Beginner: Cheapest — selecting lowest-cost GPU ({'spot' if chosen_interruptible else 'secure'}) with conservative params"
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(bm_text)]))
-            except Exception:
-                pass
-        elif (chosen_by == "expert"):
-            try:
-                sel_id = chosen_gpu_type_id
-                mode_txt = "spot" if chosen_interruptible else "secure"
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Expert: Using GPU {sel_id} ({mode_txt})")]))
-            except Exception:
-                pass
-        update_train_placeholders(); await safe_update(page)
-
-        # Create pod
-        try:
-            def _mk_pod():
-                return rp_pod.create_pod(
-                    api_key=api_key,
-                    template_id=tpl_id,
-                    volume_id=vol_id,
-                    pod_name=f"ds-train-{int(time.time())}",
-                    hp=hp,
-                    gpu_type_id=chosen_gpu_type_id,
-                    gpu_count=1,
-                    interruptible=chosen_interruptible
-                )
-            pod = await asyncio.to_thread(_mk_pod)
-            pod_id = pod.get("id") or pod.get("podId") or pod.get("pod_id")
-            train_state["pod_id"] = pod_id
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=ACCENT_COLOR), ft.Text(f"Pod created: {pod_id}")]))
-            # Enable actions now that a pod exists
-            # Refresh teardown UI to expose Pod checkbox
-            try:
-                await _refresh_teardown_ui()
-            except Exception:
-                pass
-            try:
-                restart_container_btn.disabled = False
-                open_runpod_btn.disabled = False
-                open_web_terminal_btn.disabled = False
-                copy_ssh_btn.disabled = False
-            except Exception:
-                pass
-            # Offer to save setup immediately after successful start (always)
-            try:
-                def _collect_infra_ui_state() -> dict:
-                    return {
-                        "dc": (rp_dc_tf.value or "US-NC-1"),
-                        "vol_name": (rp_vol_name_tf.value or "unsloth-volume"),
-                        "vol_size": int(float(rp_vol_size_tf.value or "50")),
-                        "resize_if_smaller": bool(getattr(rp_resize_cb, "value", True)),
-                        "tpl_name": (rp_tpl_name_tf.value or "unsloth-trainer-template"),
-                        "image": (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest"),
-                        "container_disk": int(float(rp_container_disk_tf.value or "30")),
-                        "pod_volume_gb": int(float(rp_volume_in_gb_tf.value or "0")),
-                        "mount_path": (rp_mount_path_tf.value or "/data"),
-                        "category": (rp_category_tf.value or "NVIDIA"),
-                        "public": bool(getattr(rp_public_cb, "value", False)),
-                    }
-                default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(hp.get('base_model','model')).replace('/', '_')}.json"
-                name_tf = ft.TextField(label="Save as", value=default_name, width=420)
-
-                # Build payload for saving configuration
-                payload = {
-                    "hp": hp,
-                    "infra_ui": _collect_infra_ui_state(),
-                    "meta": {
-                        "skill_level": skill_level.value,
-                        "beginner_mode": beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else "",
-                    },
-                    "pod": {
-                        "gpu_type_id": chosen_gpu_type_id,
-                        "interruptible": bool(chosen_interruptible),
-                    },
+            def _collect_infra_ui_state() -> dict:
+                return {
+                    "dc": (rp_dc_tf.value or "US-NC-1"),
+                    "vol_name": (rp_vol_name_tf.value or "unsloth-volume"),
+                    "vol_size": int(float(rp_vol_size_tf.value or "50")),
+                    "resize_if_smaller": bool(getattr(rp_resize_cb, "value", True)),
+                    "tpl_name": (rp_tpl_name_tf.value or "unsloth-trainer-template"),
+                    "image": (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest"),
+                    "container_disk": int(float(rp_container_disk_tf.value or "30")),
+                    "pod_volume_gb": int(float(rp_volume_in_gb_tf.value or "0")),
+                    "mount_path": (rp_mount_path_tf.value or "/data"),
+                    "category": (rp_category_tf.value or "NVIDIA"),
+                    "public": bool(getattr(rp_public_cb, "value", False)),
                 }
 
-                def _do_save(_=None):
-                    name = (name_tf.value or default_name).strip()
-                    d = _saved_configs_dir()
-                    path = os.path.join(d, name if name.endswith('.json') else f"{name}.json")
-                    try:
-                        with open(path, "w", encoding="utf-8") as f:
-                            json.dump(payload, f, indent=2)
-                        page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
-                        page.snack_bar.open = True
-                        _refresh_config_list()
-                    except Exception as ex:
-                        page.snack_bar = ft.SnackBar(ft.Text(f"Failed to save config: {ex}"))
-                        page.snack_bar.open = True
-                    try:
-                        dlg.open = False
-                        page.update()
-                    except Exception:
-                        pass
+            payload = {
+                "hp": hp,
+                "infra_ui": _collect_infra_ui_state(),
+                "meta": {
+                    "skill_level": skill_level.value,
+                    "beginner_mode": beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else "",
+                },
+                "pod": {
+                    "gpu_type_id": chosen_gpu_type_id,
+                    "interruptible": bool(chosen_interruptible),
+                },
+            }
 
-                dlg = ft.AlertDialog(
-                    modal=True,
-                    title=ft.Row([
-                        ft.Icon(getattr(ICONS, "SAVE_ALT", ICONS.SAVE), color=ACCENT_COLOR),
-                        ft.Text("Save this training setup?"),
-                    ], alignment=ft.MainAxisAlignment.START),
-                    content=ft.Column([
-                        ft.Text("You can reuse this configuration later via Training → Configuration mode."),
-                        name_tf,
-                    ], tight=True, spacing=6),
-                    actions=[
-                        ft.TextButton("Skip", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
-                        ft.ElevatedButton("Save", icon=getattr(ICONS, "SAVE", ICONS.CHECK), on_click=_do_save),
-                    ],
-                )
+            def _do_save(_=None):
+                name = (name_tf.value or default_name).strip()
+                d = _saved_configs_dir()
+                path = os.path.join(d, name if name.endswith('.json') else f"{name}.json")
                 try:
-                    dlg.on_dismiss = lambda e: page.update()
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, indent=2)
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
+                    page.snack_bar.open = True
+                    _refresh_config_list()
+                except Exception as ex:
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Failed to save config: {ex}"))
+                    page.snack_bar.open = True
+                try:
+                    dlg.open = False
+                    page.update()
                 except Exception:
                     pass
-                # Open dialog using same pattern as dataset previews
+
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Row([
+                    ft.Icon(getattr(ICONS, "SAVE_ALT", ICONS.SAVE), color=ACCENT_COLOR),
+                    ft.Text("Save this training setup?"),
+                ], alignment=ft.MainAxisAlignment.START),
+                content=ft.Column([
+                    ft.Text("You can reuse this configuration later via Training → Configuration mode."),
+                    name_tf,
+                ], tight=True, spacing=6),
+                actions=[
+                    ft.TextButton("Skip", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
+                    ft.ElevatedButton("Save", icon=getattr(ICONS, "SAVE", ICONS.CHECK), on_click=_do_save),
+                ],
+            )
+            try:
+                dlg.on_dismiss = lambda e: page.update()
+            except Exception:
+                pass
+            opened = False
+            try:
+                if hasattr(page, "open") and callable(getattr(page, "open")):
+                    page.open(dlg)
+                    opened = True
+            except Exception:
                 opened = False
-                try:
-                    if hasattr(page, "open") and callable(getattr(page, "open")):
-                        page.open(dlg)
-                        opened = True
-                except Exception:
-                    opened = False
-                if not opened:
-                    page.dialog = dlg
-                    dlg.open = True
-                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SAVE", ICONS.SAVE_ALT), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Opened Save Configuration dialog")]))
-                update_train_placeholders(); await safe_update(page)
-                # Yield once to ensure modal renders before entering the polling loop
-                try:
-                    await asyncio.sleep(0.05)
-                except Exception:
-                    pass
-            except Exception as ex:
-                try:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Save dialog error: {ex}")]))
-                    update_train_placeholders(); await safe_update(page)
-                except Exception:
-                    pass
-            # Log exact GPU type selected
-            try:
-                gpu_id = None
-                # Try fields from create response
-                gpu_id = pod.get("gpuTypeId") or pod.get("gpu_type_id")
-                if not gpu_id:
-                    gids = pod.get("gpuTypeIds") or pod.get("gpu_type_ids")
-                    if isinstance(gids, list) and gids:
-                        gpu_id = gids[0]
-                # Fallback: fetch pod details
-                if not gpu_id and pod_id:
-                    try:
-                        info = await asyncio.to_thread(rp_pod.get_pod, api_key, pod_id)
-                    except Exception:
-                        info = None
-                    if isinstance(info, dict):
-                        gpu_id = info.get("gpuTypeId") or info.get("gpu_type_id")
-                        if not gpu_id:
-                            gids2 = info.get("gpuTypeIds") or info.get("gpu_type_ids")
-                            if isinstance(gids2, list) and gids2:
-                                gpu_id = gids2[0]
-                # Determine spot/secure
-                is_spot = None
-                cloud_type = (pod.get("cloudType") or pod.get("cloud_type") or "").upper()
-                if cloud_type:
-                    is_spot = (cloud_type == "COMMUNITY")
-                else:
-                    val = pod.get("interruptible")
-                    if val is None:
-                        val = pod.get("isInterruptible") or pod.get("spot")
-                    is_spot = bool(val) if val is not None else bool(chosen_interruptible)
-                # Fallback display if still unknown
-                if not gpu_id:
-                    gpu_id = chosen_gpu_type_id if chosen_gpu_type_id != "AUTO" else "(auto-best)"
-                txt = f"GPU type selected: {gpu_id} • {'spot' if is_spot else 'secure'}"
-                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, 'MEMORY', getattr(ICONS, 'COMPUTER', ICONS.SETTINGS)), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(txt)]))
-            except Exception:
-                pass
+            if not opened:
+                page.dialog = dlg
+                dlg.open = True
+            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "SAVE", ICONS.SAVE_ALT), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Opened Save Configuration dialog")]))
             update_train_placeholders(); await safe_update(page)
-        except Exception as e:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Pod create failed: {e}")]))
-            train_state["running"] = False
-            await safe_update(page)
-            return
-
-        # Poll status
-        try:
-            last_state = None
-            while True:
-                if cancel_train.get("cancelled"):
-                    try:
-                        await asyncio.to_thread(rp_pod.delete_pod, api_key, train_state.get("pod_id"))
-                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — pod termination sent")]))
-                    except Exception as ex:
-                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to terminate pod: {ex}")]))
-                    break
-                pod = await asyncio.to_thread(rp_pod.get_pod, api_key, train_state.get("pod_id"))
-                state = (rp_pod.state_of(pod) or "").upper()
-                if state != last_state:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.TASK_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod state: {state}")]))
-                    last_state = state
-                if state in rp_pod.TERMINAL_STATES:
-                    # Set progress to 100% on terminal states and optionally auto-terminate
-                    try:
-                        train_progress.value = 1.0
-                        train_prog_label.value = "Progress: 100%"
-                        train_state["progress"] = 1.0
-                    except Exception:
-                        pass
-                    try:
-                        await safe_update(page)
-                    except Exception:
-                        pass
-                    if bool(getattr(auto_terminate_cb, "value", False)):
-                        try:
-                            await asyncio.to_thread(rp_pod.delete_pod, api_key, train_state.get("pod_id"))
-                            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text("Auto-terminate enabled — pod deleted after training finished")]))
-                        except Exception as ex:
-                            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to auto-delete pod: {ex}")]))
-                    break
-                # Live log streaming: fetch recent logs and append only new lines
-                try:
-                    lines = await asyncio.to_thread(rp_pod.get_pod_logs, api_key, train_state.get("pod_id"), 200)
-                except Exception:
-                    lines = []
-                seen = train_state.get("log_seen") or set()
-                new_lines = []
-                for ln in (lines or []):
-                    s = str(ln)
-                    if s not in seen:
-                        new_lines.append(s)
-                        seen.add(s)
-                        if len(seen) > 5000:
-                            # shrink set to recent size to avoid unbounded growth
-                            seen = set(list(seen)[-2000:])
-                train_state["log_seen"] = seen
-                if new_lines:
-                    for s in new_lines:
-                        _log_icon = getattr(ICONS, "ARTICLE", getattr(ICONS, "TERMINAL", getattr(ICONS, "DESCRIPTION", ICONS.TASK_ALT)))
-                        train_timeline.controls.append(ft.Row([ft.Icon(_log_icon, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(s)]))
-                    update_train_placeholders()
-                    try:
-                        # keep UI list from growing unbounded
-                        if len(train_timeline.controls) > 1200:
-                            train_timeline.controls[:] = train_timeline.controls[-900:]
-                    except Exception:
-                        pass
-                    try:
-                        _update_progress_from_logs(new_lines)
-                    except Exception:
-                        pass
-                await safe_update(page)
-                await asyncio.sleep(3.0)
-
-            # Final state
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Training finished with state: {last_state}")]))
-        except Exception as e:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Polling error: {e}")]))
-        finally:
-            train_state["running"] = False
             try:
-                start_train_btn.visible = True
-                start_train_btn.disabled = False
-                stop_train_btn.disabled = True
-                refresh_train_btn.disabled = False
-                restart_container_btn.disabled = True
-                open_runpod_btn.disabled = True
-                open_web_terminal_btn.disabled = True
-                copy_ssh_btn.disabled = True
+                await asyncio.sleep(0.05)
             except Exception:
                 pass
-            await safe_update(page)
+        except Exception:
+            pass
+
+    async def on_start_training():
+        return await run_pod_training_helper(
+            page=page,
+            rp_pod_module=rp_pod,
+            train_state=train_state,
+            cancel_train=cancel_train,
+            _runpod_cfg=_runpod_cfg,
+            rp_temp_key_tf=rp_temp_key_tf,
+            config_mode_dd=config_mode_dd,
+            config_files_dd=config_files_dd,
+            skill_level=skill_level,
+            beginner_mode_dd=beginner_mode_dd,
+            expert_gpu_dd=expert_gpu_dd,
+            expert_spot_cb=expert_spot_cb,
+            base_model=base_model,
+            train_source=train_source,
+            train_hf_repo=train_hf_repo,
+            train_hf_split=train_hf_split,
+            train_json_path=train_json_path,
+            train_timeline=train_timeline,
+            train_progress=train_progress,
+            train_prog_label=train_prog_label,
+            start_train_btn=start_train_btn,
+            stop_train_btn=stop_train_btn,
+            refresh_train_btn=refresh_train_btn,
+            restart_container_btn=restart_container_btn,
+            open_runpod_btn=open_runpod_btn,
+            open_web_terminal_btn=open_web_terminal_btn,
+            copy_ssh_btn=copy_ssh_btn,
+            auto_terminate_cb=auto_terminate_cb,
+            update_train_placeholders=update_train_placeholders,
+            refresh_teardown_ui_fn=_refresh_teardown_ui,
+            update_progress_from_logs=_update_progress_from_logs,
+            build_hp_fn=_build_hp,
+            on_pod_created=_on_pod_created,
+        )
 
     async def on_restart_container():
-        try:
-            pod_id = (train_state.get("pod_id") or "").strip()
-            if not pod_id:
-                return
-            api_key = (train_state.get("api_key") or "").strip() or (os.environ.get("RUNPOD_API_KEY") or "").strip()
-            if not api_key:
-                return
-            # Honor Configuration mode if a config is loaded
-            hp = None
-            try:
-                mode_val = (config_mode_dd.value or "Normal").lower()
-                if mode_val.startswith("config"):
-                    cfg = train_state.get("loaded_config") or {}
-                    cfg_hp = cfg.get("hp") if isinstance(cfg, dict) else None
-                    if isinstance(cfg_hp, dict) and cfg_hp:
-                        hp = dict(cfg_hp)
-            except Exception:
-                pass
-            if not isinstance(hp, dict) or not hp:
-                hp = _build_hp()
-            cmd = rp_pod.build_cmd(hp)
-            await asyncio.to_thread(rp_pod.patch_pod_docker_start_cmd, api_key, pod_id, cmd)
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.RESTART_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Container restarting with new hyper-params…")]))
-            update_train_placeholders(); await safe_update(page)
-        except Exception as e:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Restart failed: {e}")]))
-            update_train_placeholders(); await safe_update(page)
+        return await restart_pod_container_helper(
+            page=page,
+            rp_pod_module=rp_pod,
+            train_state=train_state,
+            config_mode_dd=config_mode_dd,
+            config_files_dd=config_files_dd,
+            train_timeline=train_timeline,
+            update_train_placeholders=update_train_placeholders,
+            build_hp_fn=_build_hp,
+        )
 
     def on_open_runpod(_):
-        try:
-            pod_id = (train_state.get("pod_id") or "").strip()
-            if not pod_id:
-                return
-            url = f"https://www.runpod.io/console/pods/{pod_id}"
-            try:
-                page.launch_url(url)
-            except Exception:
-                # Fallback: log the URL
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
-                update_train_placeholders(); page.update()
-        except Exception:
-            pass
+        return open_runpod_helper(page, train_state, train_timeline)
 
     def on_open_web_terminal(_):
-        """Open the Runpod console for this pod; from there click Connect → Open Web Terminal."""
-        try:
-            pod_id = (train_state.get("pod_id") or "").strip()
-            if not pod_id:
-                return
-            url = f"https://console.runpod.io/pods/{pod_id}"
-            try:
-                page.launch_url(url)
-            except Exception:
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
-                update_train_placeholders(); page.update()
-        except Exception:
-            pass
+        return open_web_terminal_helper(page, train_state, train_timeline)
 
     async def on_copy_ssh_command(_):
-        """Copy an SSH command for this pod to clipboard.
-        Prefers public IP + port 22 mapping if available; otherwise falls back to proxy ssh.runpod.io.
-        """
-        pod_id = (train_state.get("pod_id") or "").strip()
-        if not pod_id:
-            return
-        api_key = (train_state.get("api_key") or os.environ.get("RUNPOD_API_KEY") or "").strip()
-        cmd = None
-        try:
-            info = await asyncio.to_thread(rp_pod.get_pod, api_key, pod_id)
-            port_map = info.get("portMappings") or {}
-            public_ip = info.get("publicIp") or ""
-            ssh_port = None
-            if isinstance(port_map, dict):
-                ssh_port = port_map.get("22")
-            if public_ip and ssh_port:
-                cmd = f"ssh root@{public_ip} -p {ssh_port} -i ~/.ssh/id_ed25519"
-        except Exception:
-            cmd = None
-        if cmd:
-            try:
-                page.set_clipboard(cmd)
-                page.snack_bar = ft.SnackBar(ft.Text("SSH command copied to clipboard"))
-                page.snack_bar.open = True
-                await safe_update(page)
-                return
-            except Exception:
-                # Fallback: print into timeline
-                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "CONTENT_COPY", ICONS.LINK), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(cmd)]))
-                update_train_placeholders(); await safe_update(page)
-                return
-        # If we couldn't compute a direct SSH command, open the console SSH tab for accurate proxy command
-        url = f"https://console.runpod.io/pods/{pod_id}"
-        try:
-            page.launch_url(url)
-        except Exception:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
-        page.snack_bar = ft.SnackBar(ft.Text("Open the pod → Connect → SSH tab to copy the proxy command."))
-        page.snack_bar.open = True
-        await safe_update(page)
+        return await copy_ssh_command_helper(
+            page=page,
+            rp_pod_module=rp_pod,
+            train_state=train_state,
+            train_timeline=train_timeline,
+        )
 
     def on_stop_training(_):
         if not train_state.get("running"):
@@ -5418,189 +3156,38 @@ Specify license and any restrictions.
     rp_infra_busy = ft.ProgressRing(visible=False)
 
     async def on_ensure_infra():
-        # Resolve API key: Settings > temp (this tab) > env
-        saved_key = ((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip()
-        temp_key = (rp_temp_key_tf.value or "").strip()
-        key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
-        if not key:
-            try:
-                train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
-                update_train_placeholders(); await safe_update(page)
-            except Exception:
-                pass
-            return
-
-        # Read params with defaults
-        dc = (rp_dc_tf.value or "US-NC-1").strip()
-        vol_name = (rp_vol_name_tf.value or "unsloth-volume").strip()
-        vol_size_s = (rp_vol_size_tf.value or "50").strip()
-        resize = bool(getattr(rp_resize_cb, "value", True))
-        tpl_name = (rp_tpl_name_tf.value or "unsloth-trainer-template").strip()
-        image = (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest").strip()
-        container_disk_s = (rp_container_disk_tf.value or "30").strip()
-        vol_in_gb_s = (rp_volume_in_gb_tf.value or "0").strip()
-        mount_path = (rp_mount_path_tf.value or "/data").strip()
-        category = (rp_category_tf.value or "NVIDIA").strip()
-        is_public = bool(getattr(rp_public_cb, "value", False))
-
-        # Coerce numbers safely
-        try:
-            vol_size = int(float(vol_size_s))
-        except Exception:
-            vol_size = 50
-        try:
-            container_disk = int(float(container_disk_s))
-        except Exception:
-            container_disk = 30
-        try:
-            vol_in_gb = int(float(vol_in_gb_s))
-        except Exception:
-            vol_in_gb = 0
-
-        # Log start
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD, color=ACCENT_COLOR), ft.Text("Ensuring Runpod infrastructure (volume + template)…")]))
-        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"DC={dc} • Vol={vol_name} ({vol_size}GB) • Tpl={tpl_name}")]))
-        update_train_placeholders(); await safe_update(page)
-
-        # Busy indicator
-        try:
-            rp_infra_busy.visible = True
-            await safe_update(page)
-        except Exception:
-            pass
-
-        # Call infra helper
-        try:
-            # Build env vars for the template (inject HF token if available)
-            hf_tok = ""
-            try:
-                hf_tok = (((_hf_cfg.get("token") or "") if isinstance(_hf_cfg, dict) else "").strip())
-            except Exception:
-                hf_tok = ""
-            if not hf_tok:
-                try:
-                    hf_tok = (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
-                except Exception:
-                    hf_tok = ""
-            if (not hf_tok) and (HfFolder is not None):
-                try:
-                    hf_tok = getattr(HfFolder, "get_token", lambda: "")() or ""
-                except Exception:
-                    pass
-
-            tpl_env = {"PYTHONUNBUFFERED": "1"}
-            if hf_tok:
-                tpl_env["HF_TOKEN"] = hf_tok
-                tpl_env["HUGGINGFACE_HUB_TOKEN"] = hf_tok
-                # Warn if template is public (exposes env vars)
-                if is_public:
-                    try:
-                        train_timeline.controls.append(ft.Row([
-                            ft.Icon(ICONS.WARNING, color=COLORS.ORANGE),
-                            ft.Text("Template is Public — environment variables (including HF token) may be visible to others."),
-                        ]))
-                        update_train_placeholders(); await safe_update(page)
-                    except Exception:
-                        pass
-
-            def do_call():
-                return rp_infra.ensure_infrastructure(
-                    api_key=key,
-                    datacenter_id=dc,
-                    volume_name=vol_name,
-                    volume_size_gb=vol_size,
-                    resize_if_smaller=resize,
-                    template_name=tpl_name,
-                    image_name=image,
-                    container_disk_gb=container_disk,
-                    volume_in_gb=vol_in_gb,
-                    volume_mount_path=mount_path,
-                    category=category,
-                    is_public=is_public,
-                    env_vars=tpl_env,
-                    ports=[],
-                )
-            result = await asyncio.to_thread(do_call)
-            vol = result.get("volume", {})
-            tpl = result.get("template", {})
-            # Persist infra and key for training handlers
-            try:
-                train_state["infra"] = result
-                train_state["api_key"] = key
-            except Exception:
-                pass
-            # Refresh Expert GPU list based on ensured volume datacenter
-            try:
-                schedule_task(refresh_expert_gpus)
-            except Exception:
-                pass
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Template {tpl.get('action')} — id={tpl.get('id')} image={tpl.get('image')}")]))
-            # Refresh teardown UI to show new infra immediately
-            try:
-                await _refresh_teardown_ui()
-            except Exception:
-                pass
-            # Beautiful success message (snack + dialog)
-            try:
-                success_title = "Runpod infrastructure ready!"
-                vol_line = f"Volume {vol.get('action')} • {vol.get('name')} ({vol.get('size')}GB) • DC {vol.get('dc')}"
-                tpl_line = f"Template {tpl.get('action')} • {tpl.get('name')} • {tpl.get('image')}"
-
-                # Quick celebratory snackbar
-                page.snack_bar = ft.SnackBar(
-                    ft.Row([
-                        ft.Icon(getattr(ICONS, "CHECK_CIRCLE", getattr(ICONS, "CHECK", getattr(ICONS, "DONE", None))), color=COLORS.GREEN),
-                        ft.Text(success_title),
-                    ])
-                )
-                page.snack_bar.open = True
-                await safe_update(page)
-
-                # Detailed dialog
-                dlg = ft.AlertDialog(
-                    modal=True,
-                    title=ft.Row([
-                        ft.Icon(getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)), color=COLORS.GREEN),
-                        ft.Text("Infrastructure ready"),
-                    ], alignment=ft.MainAxisAlignment.START),
-                    content=ft.Column([
-                        ft.Row([ft.Icon(getattr(ICONS, "DONE_ALL", getattr(ICONS, "DONE", getattr(ICONS, "CHECK", None))), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(vol_line)]),
-                        ft.Row([ft.Icon(getattr(ICONS, "DONE_ALL", getattr(ICONS, "DONE", getattr(ICONS, "CHECK", None))), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(tpl_line)]),
-                    ], tight=True, spacing=6),
-                    actions=[ft.TextButton("Great!", on_click=lambda e: (setattr(dlg, "open", False), page.update()))],
-                )
-                page.dialog = dlg
-                dlg.open = True
-                await safe_update(page)
-                try:
-                    dataset_section.visible = True
-                    train_params_section.visible = True
-                    # Enable training controls once infra is ready
-                    start_train_btn.disabled = False
-                    stop_train_btn.disabled = False
-                    refresh_train_btn.disabled = False
-                    # Respect Configuration mode visibility
-                    _update_mode_visibility()
-                except Exception:
-                    pass
-                await safe_update(page)
-            except Exception:
-                pass
-        except Exception as e:
-            msg = str(e)
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Infra setup failed: {msg}")]))
-        finally:
-            try:
-                rp_infra_busy.visible = False
-            except Exception:
-                pass
-            await safe_update(page)
+        return await ensure_infrastructure_helper(
+            page=page,
+            rp_infra_module=rp_infra,
+            _hf_cfg=_hf_cfg,
+            _runpod_cfg=_runpod_cfg,
+            rp_dc_tf=rp_dc_tf,
+            rp_vol_name_tf=rp_vol_name_tf,
+            rp_vol_size_tf=rp_vol_size_tf,
+            rp_resize_cb=rp_resize_cb,
+            rp_tpl_name_tf=rp_tpl_name_tf,
+            rp_image_tf=rp_image_tf,
+            rp_container_disk_tf=rp_container_disk_tf,
+            rp_volume_in_gb_tf=rp_volume_in_gb_tf,
+            rp_mount_path_tf=rp_mount_path_tf,
+            rp_category_tf=rp_category_tf,
+            rp_public_cb=rp_public_cb,
+            rp_temp_key_tf=rp_temp_key_tf,
+            rp_infra_busy=rp_infra_busy,
+            train_timeline=train_timeline,
+            refresh_expert_gpus_fn=lambda: page.run_task(refresh_expert_gpus),
+            refresh_teardown_ui_fn=_refresh_teardown_ui,
+            dataset_section=dataset_section,
+            train_params_section=train_params_section,
+            start_train_btn=start_train_btn,
+            stop_train_btn=stop_train_btn,
+            refresh_train_btn=refresh_train_btn,
+            _update_mode_visibility=_update_mode_visibility,
+        )
 
     def on_click_ensure_infra(e):
         # Immediate feedback to confirm click registered and show activity
         try:
-            print("EnsureInfra: click handler fired")
             page.snack_bar = ft.SnackBar(ft.Text("Ensuring Runpod infrastructure…"))
             page.snack_bar.open = True
             rp_infra_busy.visible = True
@@ -5609,146 +3196,47 @@ Specify license and any restrictions.
             pass
         schedule_task(on_ensure_infra)
 
+    ensure_infra_btn = ft.ElevatedButton(
+        "Ensure Infrastructure",
+        icon=getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)),
+        on_click=on_click_ensure_infra,
+    )
+    try:
+        if rp_infra is None:
+            ensure_infra_btn.disabled = True
+            ensure_infra_btn.tooltip = "Runpod infra helper unavailable. Install/enable runpod ensure_infra."
+    except Exception:
+        pass
     rp_infra_actions = ft.Row([
-        ft.ElevatedButton("Ensure Infrastructure", icon=getattr(ICONS, "CLOUD_DONE", getattr(ICONS, "CLOUD", ICONS.SETTINGS)), on_click=on_click_ensure_infra),
+        ensure_infra_btn,
         rp_infra_busy,
     ], spacing=10)
 
-    # Populate Expert GPU dropdown from Runpod based on datacenter
+    # Populate Expert GPU dropdown from Runpod based on datacenter (delegated)
     async def refresh_expert_gpus(_=None):
-        try:
-            # Resolve API key similar to Ensure Infra
-            saved_key = (((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip())
-            temp_key = (rp_temp_key_tf.value or "").strip()
-            key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
-            if not key:
-                page.snack_bar = ft.SnackBar(ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access."))
-                page.snack_bar.open = True
-                return
-            infra = train_state.get("infra") or {}
-            # Determine datacenter: prefer ensured volume's dc, else current field, else default
-            try:
-                dc_src = ((infra.get("volume") or {}).get("dc")) or (rp_dc_tf.value or "")
-                dc_id = (dc_src.strip() or "US-NC-1")
-            except Exception:
-                dc_id = "US-NC-1"
+        return await refresh_expert_gpus_helper(
+            page=page,
+            rp_pod_module=rp_pod,
+            train_state=train_state,
+            _runpod_cfg=_runpod_cfg,
+            rp_temp_key_tf=rp_temp_key_tf,
+            rp_dc_tf=rp_dc_tf,
+            expert_gpu_busy=expert_gpu_busy,
+            expert_gpu_dd=expert_gpu_dd,
+            expert_spot_cb=expert_spot_cb,
+            expert_gpu_avail=expert_gpu_avail,
+            _update_expert_spot_enabled=_update_expert_spot_enabled,
+        )
 
-            # Show busy while fetching
-            try:
-                expert_gpu_busy.visible = True
-                page.update()
-            except Exception:
-                pass
-
-            # Fetch GPUs
-            def _fetch():
-                return rp_pod.list_available_gpus(key, dc_id, 1)
-            gpus = await asyncio.to_thread(_fetch)
-            # Build options with de-duplication by GPU type id, merging flags
-            opts = [ft.dropdown.Option(text="AUTO (best secure)", key="AUTO")]
-            expert_gpu_avail.clear()
-            agg: dict = {}
-            for g in (gpus or []):
-                gid = str(g.get("id") or "").strip()
-                if not gid:
-                    continue
-                d = agg.get(gid) or {
-                    "displayName": str(g.get("displayName") or gid),
-                    "memoryInGb": g.get("memoryInGb"),
-                    "secureAvailable": False,
-                    "spotAvailable": False,
-                }
-                # Merge availability flags across duplicates
-                d["secureAvailable"] = bool(d.get("secureAvailable")) or bool(g.get("secureAvailable"))
-                d["spotAvailable"] = bool(d.get("spotAvailable")) or bool(g.get("spotAvailable"))
-                # Prefer max memory if multiple values appear
-                try:
-                    mem_prev = float(d.get("memoryInGb") or 0)
-                    mem_new = float(g.get("memoryInGb") or 0)
-                    d["memoryInGb"] = max(mem_prev, mem_new)
-                except Exception:
-                    pass
-                agg[gid] = d
-            # Emit unique options
-            for gid, d in agg.items():
-                name = str(d.get("displayName") or gid)
-                mem = d.get("memoryInGb")
-                sec = bool(d.get("secureAvailable"))
-                spot = bool(d.get("spotAvailable"))
-                tags = []
-                if sec: tags.append("secure")
-                if spot: tags.append("spot")
-                mem_txt = (f" {int(mem)}GB" if isinstance(mem, (int, float)) and mem else "")
-                label = f"{name}{mem_txt} [{'/'.join(tags) if tags else 'limited'}]"
-                opts.append(ft.dropdown.Option(text=label, key=gid))
-                expert_gpu_avail[gid] = {"secureAvailable": sec, "spotAvailable": spot}
-            # Preserve selection if still available
-            cur = (expert_gpu_dd.value or "AUTO")
-            keys = {getattr(o, 'key', None) or o.text for o in opts}
-            expert_gpu_dd.options = opts
-            if cur not in keys:
-                expert_gpu_dd.value = "AUTO"
-            _update_expert_spot_enabled()
-            try:
-                expert_gpu_dd.tooltip = "Pick a Runpod GPU type or AUTO (best secure). Use Spot for interruptible when available."
-            except Exception:
-                pass
-            try:
-                expert_gpu_busy.visible = False
-                page.update()
-            except Exception:
-                pass
-        except Exception as ex:
-            try:
-                expert_gpu_busy.visible = False
-                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to refresh GPUs: {ex}"))
-                page.snack_bar.open = True
-            except Exception:
-                pass
-
-    # Populate Expert GPU dropdown from LOCAL system GPUs
+    # Populate Expert GPU dropdown from LOCAL system GPUs (delegated)
     async def refresh_local_gpus(_=None):
-        try:
-            try:
-                expert_gpu_busy.visible = True
-                page.update()
-            except Exception:
-                pass
-            data = gather_local_specs()
-            gpus = list(data.get("gpus") or [])
-            opts = [ft.dropdown.Option(text="AUTO (all local GPUs)", key="AUTO")]
-            for g in gpus:
-                try:
-                    idx = g.get("index")
-                    name = str(g.get("name") or f"GPU {idx}")
-                    vram = g.get("vram_gb")
-                    mem_txt = (f" {vram}GB" if isinstance(vram, (int, float)) and vram is not None else "")
-                    if idx is not None:
-                        opts.append(ft.dropdown.Option(text=f"GPU {idx}: {name}{mem_txt}", key=str(idx)))
-                except Exception:
-                    pass
-            expert_gpu_avail.clear()
-            cur = (expert_gpu_dd.value or "AUTO")
-            keys = {getattr(o, 'key', None) or o.text for o in opts}
-            expert_gpu_dd.options = opts
-            expert_gpu_dd.value = "AUTO" if cur not in keys else cur
-            try:
-                expert_spot_cb.value = False
-                expert_spot_cb.disabled = True
-                expert_spot_cb.visible = False
-                expert_gpu_dd.tooltip = "Pick a local GPU index or AUTO to allow all local GPUs."
-            except Exception:
-                pass
-            try:
-                expert_gpu_busy.visible = False
-                page.update()
-            except Exception:
-                pass
-        except Exception:
-            try:
-                expert_gpu_busy.visible = False
-            except Exception:
-                pass
+        return await refresh_local_gpus_helper(
+            page=page,
+            expert_gpu_busy=expert_gpu_busy,
+            expert_gpu_dd=expert_gpu_dd,
+            expert_spot_cb=expert_spot_cb,
+            expert_gpu_avail=expert_gpu_avail,
+        )
 
     # Wire refresh button (dispatch based on training target)
     def on_click_expert_gpu_refresh(e):
@@ -5894,359 +3382,69 @@ Specify license and any restrictions.
     td_busy = ft.ProgressRing(visible=False)
 
     async def _refresh_teardown_ui(_=None):
-        try:
-            infra = train_state.get("infra") or {}
-        except Exception:
-            infra = {}
-        tpl = infra.get("template") or {}
-        vol = infra.get("volume") or {}
-        tpl_id = (str(tpl.get("id") or "").strip())
-        vol_id = (str(vol.get("id") or "").strip())
-        pod_id = str(train_state.get("pod_id") or "").strip()
-
-        # Reconcile pod presence with Runpod (handles external deletions)
-        try:
-            key = (((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip()) or (rp_temp_key_tf.value or "").strip() or (os.environ.get("RUNPOD_API_KEY") or "").strip()
-        except Exception:
-            key = (os.environ.get("RUNPOD_API_KEY") or "").strip()
-        if pod_id and key:
-            try:
-                await asyncio.to_thread(rp_pod.get_pod, key, pod_id)
-            except Exception as ex:
-                status = None
-                try:
-                    status = getattr(getattr(ex, "response", None), "status_code", None)
-                except Exception:
-                    status = None
-                if status == 404:
-                    # Pod no longer exists; clear and inform timeline
-                    try:
-                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Reconciled: Pod {pod_id} is already deleted on Runpod.")]))
-                    except Exception:
-                        pass
-                    try:
-                        train_state["pod_id"] = None
-                    except Exception:
-                        pass
-                    pod_id = ""
-
-        # Template checkbox
-        try:
-            if tpl_id:
-                name = tpl.get("name") or tpl_id
-                img = tpl.get("image") or ""
-                td_template_cb.label = f"Template: {name} (id={tpl_id}){f' • {img}' if img else ''}"
-                td_template_cb.visible = True
-            else:
-                td_template_cb.visible = False
-                td_template_cb.value = False
-        except Exception:
-            pass
-
-        # Volume checkbox
-        try:
-            if vol_id:
-                vname = vol.get("name") or vol_id
-                vsize = vol.get("size") or "?"
-                vdc = vol.get("dc") or vol.get("dataCenterId") or ""
-                td_volume_cb.label = f"Volume: {vname} ({vsize}GB){f' • DC {vdc}' if vdc else ''} (id={vol_id})"
-                td_volume_cb.visible = True
-            else:
-                td_volume_cb.visible = False
-                td_volume_cb.value = False
-        except Exception:
-            pass
-
-        # Pod checkbox (optional)
-        try:
-            if pod_id:
-                td_pod_cb.label = f"Pod: {pod_id}"
-                td_pod_cb.visible = True
-            else:
-                td_pod_cb.visible = False
-                td_pod_cb.value = False
-        except Exception:
-            pass
-
-        try:
-            teardown_section.visible = bool(tpl_id or vol_id or pod_id)
-            await safe_update(page)
-        except Exception:
-            pass
+        return await refresh_teardown_ui_helper(
+            page=page,
+            rp_pod_module=rp_pod,
+            train_state=train_state,
+            td_template_cb=td_template_cb,
+            td_volume_cb=td_volume_cb,
+            td_pod_cb=td_pod_cb,
+            teardown_section=teardown_section,
+            _runpod_cfg=_runpod_cfg,
+            rp_temp_key_tf=rp_temp_key_tf,
+        )
 
     async def _do_teardown(selected_all: bool = False):
-        # Resolve API key with same precedence: Settings > temp > env
-        saved_key = (((_runpod_cfg.get("api_key") or "") if isinstance(_runpod_cfg, dict) else "").strip())
-        temp_key = (rp_temp_key_tf.value or "").strip()
-        key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
-        if not key:
-            train_timeline.controls.append(ft.Row([ft.Icon(ICONS.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
-            update_train_placeholders(); await safe_update(page)
-            return
-
-        infra = train_state.get("infra") or {}
-        tpl_id = str(((infra.get("template") or {}).get("id") or "")).strip()
-        vol_id = str(((infra.get("volume") or {}).get("id") or "")).strip()
-        pod_id = str(train_state.get("pod_id") or "").strip()
-
-        # Reconcile pod existence before proceeding (avoid trying to delete a non-existent pod)
-        if pod_id:
-            try:
-                await asyncio.to_thread(rp_pod.get_pod, key, pod_id)
-            except Exception as ex:
-                status = getattr(getattr(ex, "response", None), "status_code", None)
-                if status == 404:
-                    try:
-                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already absent on Runpod: {pod_id}")]))
-                        update_train_placeholders(); await safe_update(page)
-                    except Exception:
-                        pass
-                    try:
-                        train_state["pod_id"] = None
-                    except Exception:
-                        pass
-                    pod_id = ""
-
-        sel_tpl = bool(td_template_cb.value) or (selected_all and bool(tpl_id))
-        sel_vol = bool(td_volume_cb.value) or (selected_all and bool(vol_id))
-        sel_pod = bool(td_pod_cb.value) or (selected_all and bool(pod_id))
-
-        if not (sel_tpl or sel_vol or sel_pod):
-            try:
-                page.snack_bar = ft.SnackBar(ft.Text("Select at least one item to teardown."))
-                page.snack_bar.open = True
-                await safe_update(page)
-            except Exception:
-                pass
-            return
-
-        # Busy on
-        try:
-            td_busy.visible = True
-            await safe_update(page)
-        except Exception:
-            pass
-
-        # Add timeline log to indicate start and selected targets
-        try:
-            actions = []
-            if sel_pod and pod_id:
-                actions.append(f"Pod {pod_id}")
-            if sel_tpl and tpl_id:
-                actions.append(f"Template {tpl_id}")
-            if sel_vol and vol_id:
-                actions.append(f"Volume {vol_id}")
-            if actions:
-                train_timeline.controls.append(ft.Row([
-                    ft.Icon(getattr(ICONS, "PLAY_CIRCLE", ICONS.PLAY_ARROW), color=ACCENT_COLOR),
-                    ft.Text("Starting teardown: " + ", ".join(actions))
-                ]))
-                update_train_placeholders(); await safe_update(page)
-        except Exception:
-            pass
-
-        # Perform deletions. Order: Pod → Template → Volume
-        try:
-            if sel_pod and pod_id:
-                try:
-                    # Log intent
-                    try:
-                        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "CLOUD_OFF", getattr(ICONS, "CLOUD", ICONS.CLOSE)), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Pod: {pod_id}...")]))
-                        await safe_update(page)
-                    except Exception:
-                        pass
-                    await asyncio.to_thread(rp_pod.delete_pod, key, pod_id)
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Pod deleted: {pod_id}")]))
-                    try:
-                        train_state["pod_id"] = None
-                    except Exception:
-                        pass
-                except Exception as ex:
-                    status = getattr(getattr(ex, "response", None), "status_code", None)
-                    if status == 404:
-                        # Already deleted; treat as success
-                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already deleted: {pod_id}")]))
-                        try:
-                            train_state["pod_id"] = None
-                        except Exception:
-                            pass
-                    else:
-                        train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete pod: {ex}")]))
-
-            if sel_tpl and tpl_id:
-                try:
-                    # Log intent
-                    try:
-                        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "DESCRIPTION", ICONS.ARTICLE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Template: {tpl_id}...")]))
-                        await safe_update(page)
-                    except Exception:
-                        pass
-                    await asyncio.to_thread(rp_infra.delete_template, tpl_id, key)
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Template deleted: {tpl_id}")]))
-                    try:
-                        if isinstance(train_state.get("infra"), dict):
-                            train_state["infra"]["template"] = {}
-                    except Exception:
-                        pass
-                except Exception as ex:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete template: {ex}")]))
-
-            if sel_vol and vol_id:
-                try:
-                    # Log intent
-                    try:
-                        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "STORAGE", ICONS.SAVE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Volume: {vol_id}...")]))
-                        await safe_update(page)
-                    except Exception:
-                        pass
-                    await asyncio.to_thread(rp_infra.delete_volume, vol_id, key)
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Volume deleted: {vol_id}")]))
-                    try:
-                        if isinstance(train_state.get("infra"), dict):
-                            train_state["infra"]["volume"] = {}
-                    except Exception:
-                        pass
-                except Exception as ex:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete volume: {ex}")]))
-
-            # If both infra items are gone, clear infra
-            try:
-                infra = train_state.get("infra") or {}
-                tpl_id2 = str(((infra.get("template") or {}).get("id") or "")).strip()
-                vol_id2 = str(((infra.get("volume") or {}).get("id") or "")).strip()
-                if not tpl_id2 and not vol_id2:
-                    train_state["infra"] = None
-            except Exception:
-                pass
-
-            # Disable training actions if infra missing
-            try:
-                has_infra = bool(train_state.get("infra"))
-                start_train_btn.disabled = not has_infra
-                stop_train_btn.disabled = not has_infra
-                refresh_train_btn.disabled = not has_infra
-                restart_container_btn.disabled = True
-                open_runpod_btn.disabled = True
-                open_web_terminal_btn.disabled = True
-                copy_ssh_btn.disabled = True
-            except Exception:
-                pass
-            # Completion log and refresh UI
-            try:
-                train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "CHECK_CIRCLE", ICONS.CHECK), color=COLORS.GREEN), ft.Text("Teardown complete")]))
-            except Exception:
-                pass
-            update_train_placeholders(); await _refresh_teardown_ui(); await safe_update(page)
-        finally:
-            try:
-                td_busy.visible = False
-                await safe_update(page)
-            except Exception:
-                pass
+        return await do_teardown_helper(
+            page=page,
+            rp_pod_module=rp_pod,
+            rp_infra_module=rp_infra,
+            train_state=train_state,
+            td_template_cb=td_template_cb,
+            td_volume_cb=td_volume_cb,
+            td_pod_cb=td_pod_cb,
+            td_busy=td_busy,
+            train_timeline=train_timeline,
+            update_train_placeholders=update_train_placeholders,
+            _runpod_cfg=_runpod_cfg,
+            rp_temp_key_tf=rp_temp_key_tf,
+            refresh_teardown_ui_fn=_refresh_teardown_ui,
+            selected_all=selected_all,
+        )
 
     async def on_teardown_selected(_=None):
-        # Immediate feedback (timeline + snackbar)
-        try:
-            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "WARNING_AMBER", ICONS.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown Selected clicked")]))
-            update_train_placeholders(); await safe_update(page)
-        except Exception:
-            pass
-        # Immediate feedback
-        try:
-            page.snack_bar = ft.SnackBar(ft.Text("Preparing teardown confirmation..."))
-            page.snack_bar.open = True
-            await safe_update(page)
-        except Exception:
-            pass
-        # Build confirmation dialog text
-        items = []
-        if bool(td_pod_cb.value):
-            items.append("Pod")
-        if bool(td_template_cb.value):
-            items.append("Template")
-        if bool(td_volume_cb.value):
-            items.append("Volume")
-        if not items:
-            try:
-                page.snack_bar = ft.SnackBar(ft.Text("Select at least one item to teardown."))
-                page.snack_bar.open = True
-                await safe_update(page)
-            except Exception:
-                pass
-            return
-        msg = "This will delete: " + ", ".join(items) + "."
-
-        confirm_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([
-                ft.Icon(getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)), color=COLORS.RED),
-                ft.Text("Confirm Teardown"),
-            ], alignment=ft.MainAxisAlignment.START),
-            content=ft.Text(msg),
-            actions=[
-                ft.TextButton("Cancel", on_click=lambda e: (setattr(confirm_dlg, "open", False), page.update())),
-                ft.ElevatedButton("Delete", icon=getattr(ICONS, "CHECK", ICONS.DELETE), on_click=lambda e: (setattr(confirm_dlg, "open", False), page.run_task(_do_teardown, False))),
-            ],
+        return await confirm_teardown_selected_helper(
+            page=page,
+            td_template_cb=td_template_cb,
+            td_volume_cb=td_volume_cb,
+            td_pod_cb=td_pod_cb,
+            td_busy=td_busy,
+            train_timeline=train_timeline,
+            update_train_placeholders=update_train_placeholders,
+            _runpod_cfg=_runpod_cfg,
+            rp_temp_key_tf=rp_temp_key_tf,
+            rp_pod_module=rp_pod,
+            rp_infra_module=rp_infra,
+            train_state=train_state,
+            refresh_teardown_ui_fn=_refresh_teardown_ui,
         )
-        try:
-            confirm_dlg.on_dismiss = lambda e: page.update()
-        except Exception:
-            pass
-        # Open confirm dialog using same pattern as dataset previews
-        opened = False
-        try:
-            if hasattr(page, "open") and callable(getattr(page, "open")):
-                page.open(confirm_dlg)
-                opened = True
-        except Exception:
-            opened = False
-        if not opened:
-            page.dialog = confirm_dlg
-            confirm_dlg.open = True
-        await safe_update(page)
 
     async def on_teardown_all(_=None):
-        # Immediate feedback (timeline + snackbar)
-        try:
-            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ICONS, "WARNING_AMBER", ICONS.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown All clicked")]))
-            update_train_placeholders(); await safe_update(page)
-        except Exception:
-            pass
-        # Immediate feedback
-        try:
-            page.snack_bar = ft.SnackBar(ft.Text("Preparing teardown confirmation..."))
-            page.snack_bar.open = True
-            await safe_update(page)
-        except Exception:
-            pass
-        confirm_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([
-                ft.Icon(getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)), color=COLORS.RED),
-                ft.Text("Teardown All infrastructure?"),
-            ], alignment=ft.MainAxisAlignment.START),
-            content=ft.Text("This will delete the Runpod Template and Network Volume. If a pod exists, it will be deleted first."),
-            actions=[
-                ft.TextButton("Cancel", on_click=lambda e: (setattr(confirm_dlg, "open", False), page.update())),
-                ft.ElevatedButton("Delete All", icon=getattr(ICONS, "CHECK", ICONS.DELETE), on_click=lambda e: (setattr(confirm_dlg, "open", False), page.run_task(_do_teardown, True))),
-            ],
+        return await confirm_teardown_all_helper(
+            page=page,
+            td_template_cb=td_template_cb,
+            td_volume_cb=td_volume_cb,
+            td_pod_cb=td_pod_cb,
+            td_busy=td_busy,
+            train_timeline=train_timeline,
+            update_train_placeholders=update_train_placeholders,
+            _runpod_cfg=_runpod_cfg,
+            rp_temp_key_tf=rp_temp_key_tf,
+            rp_pod_module=rp_pod,
+            rp_infra_module=rp_infra,
+            train_state=train_state,
+            refresh_teardown_ui_fn=_refresh_teardown_ui,
         )
-        try:
-            confirm_dlg.on_dismiss = lambda e: page.update()
-        except Exception:
-            pass
-        # Open confirm dialog using same pattern as dataset previews
-        opened = False
-        try:
-            if hasattr(page, "open") and callable(getattr(page, "open")):
-                page.open(confirm_dlg)
-                opened = True
-        except Exception:
-            opened = False
-        if not opened:
-            page.dialog = confirm_dlg
-            confirm_dlg.open = True
-        await safe_update(page)
 
     teardown_section = ft.Container(
         content=ft.Column([
@@ -6365,181 +3563,7 @@ Specify license and any restrictions.
     _update_mode_visibility()
 
     # -------- LOCAL TRAINING: System Specs --------
-    def _bytes_to_gb(b: int) -> float:
-        try:
-            return round(float(b) / (1024 ** 3), 1)
-        except Exception:
-            return 0.0
-
-    def _total_ram_bytes() -> Optional[int]:
-        # Try POSIX sysconf
-        try:
-            if hasattr(os, "sysconf") and hasattr(os, "sysconf_names") and "SC_PAGE_SIZE" in os.sysconf_names and "SC_PHYS_PAGES" in os.sysconf_names:
-                page_size = os.sysconf("SC_PAGE_SIZE")
-                phys_pages = os.sysconf("SC_PHYS_PAGES")
-                if isinstance(page_size, int) and isinstance(phys_pages, int):
-                    return int(page_size) * int(phys_pages)
-        except Exception:
-            pass
-        # Try Windows via ctypes
-        try:
-            if platform.system().lower().startswith("win"):
-                class MEMORYSTATUSEX(ctypes.Structure):
-                    _fields_ = [
-                        ("dwLength", ctypes.c_uint),
-                        ("dwMemoryLoad", ctypes.c_uint),
-                        ("ullTotalPhys", ctypes.c_ulonglong),
-                        ("ullAvailPhys", ctypes.c_ulonglong),
-                        ("ullTotalPageFile", ctypes.c_ulonglong),
-                        ("ullAvailPageFile", ctypes.c_ulonglong),
-                        ("ullTotalVirtual", ctypes.c_ulonglong),
-                        ("ullAvailVirtual", ctypes.c_ulonglong),
-                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
-                    ]
-                stat = MEMORYSTATUSEX()
-                stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-                if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "kernel32") and hasattr(ctypes.windll.kernel32, "GlobalMemoryStatusEx"):
-                    if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
-                        return int(stat.ullTotalPhys)
-        except Exception:
-            pass
-        # Optional psutil fallback if installed
-        try:
-            import psutil  # type: ignore
-            return int(getattr(psutil, "virtual_memory")().total)
-        except Exception:
-            return None
-
-    def _probe_gpus_via_torch():
-        gpus = []
-        cuda_ok = False
-        torch_ok = False
-        try:
-            import torch  # type: ignore
-            torch_ok = True
-            cuda_ok = bool(torch.cuda.is_available())
-            if cuda_ok:
-                cnt = int(torch.cuda.device_count())
-                for i in range(cnt):
-                    try:
-                        props = torch.cuda.get_device_properties(i)
-                        name = getattr(props, "name", f"GPU {i}")
-                        vram_b = int(getattr(props, "total_memory", 0))
-                        gpus.append({"index": i, "name": str(name), "vram_gb": _bytes_to_gb(vram_b)})
-                    except Exception:
-                        gpus.append({"index": i, "name": f"GPU {i}", "vram_gb": None})
-        except Exception:
-            pass
-        return torch_ok, cuda_ok, gpus
-
-    def _probe_gpus_via_nvidia_smi():
-        gpus = []
-        try:
-            if shutil.which("nvidia-smi"):
-                out = subprocess.check_output(
-                    ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                    stderr=subprocess.STDOUT,
-                    timeout=3,
-                ).decode("utf-8", errors="ignore").strip().splitlines()
-                for idx, line in enumerate(out):
-                    try:
-                        parts = [p.strip() for p in line.split(",")]
-                        name = parts[0]
-                        mem_part = parts[1] if len(parts) > 1 else ""
-                        # e.g., "8192 MiB"
-                        vram_gb = None
-                        m = re.search(r"(\d+)\s*MiB", mem_part, re.IGNORECASE)
-                        if m:
-                            vram_gb = round(int(m.group(1)) / 1024.0, 1)
-                        gpus.append({"index": idx, "name": name, "vram_gb": vram_gb})
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        return gpus
-
-    def gather_local_specs() -> dict:
-        try:
-            os_name = platform.platform()
-        except Exception:
-            os_name = platform.system()
-        py_ver = platform.python_version()
-        cpu_cores = os.cpu_count() or 0
-        ram_b = _total_ram_bytes()
-        ram_gb = _bytes_to_gb(ram_b) if ram_b else None
-        try:
-            du = shutil.disk_usage(os.path.abspath(os.sep))
-            disk_free_gb = _bytes_to_gb(du.free)
-        except Exception:
-            disk_free_gb = None
-
-        torch_ok, cuda_ok, gpus = _probe_gpus_via_torch()
-        if not gpus:
-            gpus = _probe_gpus_via_nvidia_smi()
-
-        # Simple capability heuristic based on max VRAM
-        capability = "Unknown"
-        try:
-            max_vram = max([g.get("vram_gb") or 0 for g in gpus]) if gpus else 0
-        except Exception:
-            max_vram = 0
-        if not torch_ok:
-            capability = "PyTorch not installed — GPU training unsupported."
-        elif not cuda_ok:
-            capability = "CUDA not available — GPU training unavailable (CPU-only)."
-        else:
-            if max_vram >= 20:
-                capability = "OK for LoRA on 7B–13B; 7B full FT may be possible with tweaks."
-            elif max_vram >= 12:
-                capability = "Good for 7B LoRA; full FT unlikely."
-            elif max_vram >= 8:
-                capability = "7B LoRA may work with 4-bit and small batch."
-            elif max_vram > 0:
-                capability = "Likely inference-only; tiny LoRA may work."
-
-        # Compute red flags (warnings) succinctly
-        red_flags: List[str] = []
-        if not torch_ok:
-            red_flags.append("PyTorch not installed — install a CUDA-enabled torch build for GPU acceleration.")
-        if torch_ok and not cuda_ok:
-            red_flags.append("CUDA not available — install NVIDIA drivers and a CUDA-enabled torch build.")
-        if not gpus:
-            red_flags.append("No NVIDIA GPUs detected — GPU fine-tuning will not be possible.")
-        # VRAM thresholds (if known)
-        try:
-            if gpus and max_vram is not None:
-                if max_vram < 8:
-                    red_flags.append("GPU VRAM < 8 GB — local fine-tuning of most 7B models may be infeasible.")
-                elif max_vram < 12:
-                    red_flags.append("GPU VRAM < 12 GB — expect heavy quantization/checkpointing and slower runs.")
-        except Exception:
-            pass
-        # RAM threshold
-        if ram_gb is not None and ram_gb < 16:
-            red_flags.append("System RAM < 16 GB — dataset preprocessing and training may be constrained.")
-        # Disk free threshold
-        if disk_free_gb is not None and disk_free_gb < 20:
-            red_flags.append("Disk free < 20 GB — checkpoints/datasets may fail or be truncated.")
-        # Python version suggestion
-        try:
-            py_major, py_minor = int(py_ver.split(".")[0]), int(py_ver.split(".")[1])
-            if (py_major, py_minor) < (3, 10):
-                red_flags.append("Python < 3.10 detected — some ML libraries may have limited support.")
-        except Exception:
-            pass
-
-        return {
-            "os": os_name,
-            "python": py_ver,
-            "cpu_cores": cpu_cores,
-            "ram_gb": ram_gb,
-            "disk_free_gb": disk_free_gb,
-            "torch_installed": torch_ok,
-            "cuda_available": cuda_ok,
-            "gpus": gpus,
-            "capability": capability,
-            "red_flags": red_flags,
-        }
+    # Delegated to helpers.local_specs (gather_local_specs, refresh_local_gpus)
 
     # Controls to show specs
     local_os_txt = ft.Text("", selectable=True)
@@ -6628,7 +3652,7 @@ Specify license and any restrictions.
             await safe_update(page)
         except Exception:
             pass
-        data = gather_local_specs()
+        data = gather_local_specs_helper()
         _render_local_specs(data)
         try:
             await safe_update(page)
@@ -6722,291 +3746,57 @@ Specify license and any restrictions.
 
     def _update_local_gpu_default_from_specs():
         try:
-            data = gather_local_specs()
+            data = gather_local_specs_helper()
             local_use_gpu_cb.value = bool(data.get("cuda_available"))
         except Exception:
             pass
 
     _update_local_gpu_default_from_specs()
 
-    async def _docker_daemon_ready() -> bool:
-        try:
-            if not shutil.which("docker"):
-                local_train_status.value = "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                await safe_update(page)
-                return False
-            info_res = await asyncio.to_thread(
-                lambda: subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=4)
-            )
-            if info_res.returncode != 0:
-                msg = (info_res.stderr or info_res.stdout or "").strip() or "Docker daemon not responding"
-                local_train_status.value = "Docker is not running. Start Docker Desktop, then retry.\n" + msg
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                await safe_update(page)
-                return False
-            return True
-        except Exception as ex:
-            local_train_status.value = f"Docker check failed: {ex}"
-            try:
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            except Exception:
-                pass
-            await safe_update(page)
-            return False
-
-    async def _append_local_log_line(txt: str, color=None):
-        try:
-            try:
-                local_train_timeline_placeholder.visible = False
-            except Exception:
-                pass
-            local_train_timeline.controls.append(
-                ft.Row([
-                    ft.Icon(getattr(ICONS, "TERMINAL", ICONS.CODE), color=color or ACCENT_COLOR, size=14),
-                    ft.Text(txt),
-                ])
-            )
-            # Keep a text buffer for downloads
-            try:
-                local_log_buffer.append(txt)
-                local_save_logs_btn.disabled = False
-            except Exception:
-                pass
-            try:
-                await safe_update(page)
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    async def _stream_local_logs(proc: subprocess.Popen):
-        try:
-            while True:
-                line = await asyncio.to_thread(proc.stdout.readline)
-                if not line:
-                    break
-                await _append_local_log_line(line.rstrip())
-        except Exception:
-            pass
-
     async def on_start_local_training(e=None):
-        if train_state.get("local", {}).get("running"):
-            return
-        # Basic validations
-        if not await _docker_daemon_ready():
-            return
-        img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
-        host_dir = (local_host_dir_tf.value or "").strip()
-        if not host_dir:
-            local_train_status.value = "Set Host data directory to mount at /data."
-            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            await safe_update(page)
-            return
-        if not os.path.isabs(host_dir) or (not os.path.exists(host_dir)):
-            local_train_status.value = "Host data directory must be an existing absolute path."
-            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            await safe_update(page)
-            return
-        # Ensure image exists (non-blocking pull hint if missing)
-        try:
-            insp = await asyncio.to_thread(lambda: subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True))
-            if insp.returncode != 0:
-                local_train_status.value = f"Image not found locally: {img}. Pull it first in the section above."
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                await safe_update(page)
-                return
-        except Exception:
-            pass
-
-        # Build HP and dataset flags similar to pod flow
-        hp = _build_hp()
-        # Local training always uses Normal mode semantics: ensure dataset flags from UI
-        try:
-            if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-                src_ui = train_source.value or "Hugging Face"
-                repo_ui = (train_hf_repo.value or "").strip()
-                split_ui = (train_hf_split.value or "train").strip()
-                jpath_ui = (train_json_path.value or "").strip()
-                if (src_ui == "Hugging Face") and repo_ui:
-                    hp["hf_dataset_id"] = repo_ui
-                    hp["hf_dataset_split"] = split_ui
-                elif jpath_ui:
-                    hp["json_path"] = jpath_ui
-            if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-                local_train_status.value = "Dataset not set. Provide HF dataset or JSON path."
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                await safe_update(page)
-                return
-        except Exception:
-            pass
-
-        # Show the hyperparameters to confirm what will be passed as --flags
-        try:
-            await _append_local_log_line("HP: " + json.dumps(hp, ensure_ascii=False))
-        except Exception:
-            pass
-
-        # Build docker run command
-        cont_name = (local_container_name_tf.value or f"ds-local-train-{int(time.time())}").strip()
-        run_args: List[str] = [
-            "docker", "run", "--rm",
-            "--name", cont_name,
-            "-v", f"{host_dir}:/data",
-        ]
-        # GPU selection: Beginner uses checkbox (all or none). Expert uses dropdown (AUTO=all or specific index)
-        try:
-            is_beginner = ((skill_level.value or "Beginner").lower() == "beginner")
-            if is_beginner:
-                if bool(getattr(local_use_gpu_cb, "value", False)):
-                    run_args += ["--gpus", "all"]
-            else:
-                sel = (expert_gpu_dd.value or "AUTO")
-                if str(sel).upper() == "AUTO":
-                    run_args += ["--gpus", "all"]
-                else:
-                    # Accept a single index string (e.g., "0"). Docker supports device filtering via --gpus device=<idx>
-                    run_args += ["--gpus", f"device={sel}"]
-        except Exception:
-            # Fallback: no GPU flag
-            pass
-        # Optional HF token passthrough
-        try:
-            _hf_tok = (hf_token_tf.value or "").strip()
-            if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
-                run_args += ["-e", f"HUGGING_FACE_HUB_TOKEN={_hf_tok}"]
-        except Exception:
-            pass
-        # Environment passthrough for proxy if enabled
-        try:
-            if bool(getattr(proxy_enable_cb, "value", False)):
-                if bool(getattr(use_env_cb, "value", False)):
-                    # Use system env; nothing to set explicitly
-                    pass
-                else:
-                    _purl = (proxy_url_tf.value or "").strip()
-                    if _purl:
-                        run_args += ["-e", f"http_proxy={_purl}", "-e", f"https_proxy={_purl}"]
-        except Exception:
-            pass
-
-        # Image
-        run_args += [img]
-        # Command inside container mirrors Runpod builder
-        try:
-            inner_cmd = rp_pod.build_cmd(hp)
-        except Exception as ex:
-            local_train_status.value = f"Failed building training command: {ex}"
-            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            await safe_update(page)
-            return
-        run_args += inner_cmd
-
-        # Launch process
-        try:
-            local_train_status.value = "Starting local Docker container…"
-            local_train_status.color = None
-            local_train_progress.value = 0.1
-            local_train_prog_label.value = "Starting…"
-            # Reset logs
-            local_train_timeline.controls.clear()
-            try:
-                local_train_timeline_placeholder.visible = True
-            except Exception:
-                pass
-            try:
-                local_log_buffer.clear()
-                local_save_logs_btn.disabled = True
-            except Exception:
-                pass
-            await safe_update(page)
-        except Exception:
-            pass
-
-        try:
-            proc = subprocess.Popen(
-                run_args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
-            train_state["local"] = {"running": True, "proc": proc, "container": cont_name}
-            try:
-                local_start_btn.disabled = True
-                local_stop_btn.disabled = False
-            except Exception:
-                pass
-            await safe_update(page)
-            # Stream logs while running
-            await _append_local_log_line("Command: " + " ".join(run_args), color=WITH_OPACITY(0.8, COLORS.BLUE))
-            await _stream_local_logs(proc)
-            rc = proc.wait()
-            if rc == 0:
-                local_train_status.value = "Training finished (container exited)."
-                local_train_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
-            elif rc == 137:
-                # 137 = SIGKILL, commonly due to OOM or manual stop
-                local_train_status.value = (
-                    "Container exited with code 137. Likely out-of-memory (OOM) or killed (SIGKILL).\n"
-                    "This happens when the container runs out of memory or is manually stopped."
-                )
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-                try:
-                    await _append_local_log_line(
-                        "Exit code 137 detected: OOM or manual kill (SIGKILL). Reduce memory usage or increase limits.",
-                        color=WITH_OPACITY(0.9, COLORS.RED),
-                    )
-                except Exception:
-                    pass
-            else:
-                local_train_status.value = f"Container exited with code {rc}."
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-        except Exception as ex:
-            local_train_status.value = f"Failed to start container: {ex}"
-            try:
-                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            except Exception:
-                pass
-        finally:
-            try:
-                train_state["local"]["running"] = False
-                local_start_btn.disabled = False
-                local_stop_btn.disabled = True
-                local_train_progress.value = 0.0
-                local_train_prog_label.value = "Idle"
-                await safe_update(page)
-            except Exception:
-                pass
+        return await run_local_training_helper(
+            page=page,
+            train_state=train_state,
+            hf_token_tf=hf_token_tf,
+            skill_level=skill_level,
+            expert_gpu_dd=expert_gpu_dd,
+            local_use_gpu_cb=local_use_gpu_cb,
+            local_pass_hf_token_cb=local_pass_hf_token_cb,
+            proxy_enable_cb=proxy_enable_cb,
+            use_env_cb=use_env_cb,
+            proxy_url_tf=proxy_url_tf,
+            docker_image_tf=docker_image_tf,
+            train_source=train_source,
+            train_hf_repo=train_hf_repo,
+            train_hf_split=train_hf_split,
+            train_json_path=train_json_path,
+            local_host_dir_tf=local_host_dir_tf,
+            local_container_name_tf=local_container_name_tf,
+            local_train_status=local_train_status,
+            local_train_progress=local_train_progress,
+            local_train_prog_label=local_train_prog_label,
+            local_train_timeline=local_train_timeline,
+            local_train_timeline_placeholder=local_train_timeline_placeholder,
+            local_log_buffer=local_log_buffer,
+            local_save_logs_btn=local_save_logs_btn,
+            local_start_btn=local_start_btn,
+            local_stop_btn=local_stop_btn,
+            build_hp_fn=_build_hp,
+            DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
+            rp_pod_module=rp_pod,
+            ICONS_module=ICONS,
+        )
 
     async def on_stop_local_training(e=None):
-        info = train_state.get("local") or {}
-        cont = (info.get("container") or "").strip()
-        proc: Optional[subprocess.Popen] = info.get("proc")  # type: ignore
-        if not cont and not proc:
-            return
-        await _append_local_log_line("Stopping container…", color=WITH_OPACITY(0.8, COLORS.ORANGE))
-        # Try docker stop by name first
-        try:
-            if cont:
-                await asyncio.to_thread(lambda: subprocess.run(["docker", "stop", cont], capture_output=True, text=True, timeout=10))
-        except Exception:
-            pass
-        # Ensure local process terminates
-        try:
-            if proc and (proc.poll() is None):
-                proc.terminate()
-        except Exception:
-            pass
-        try:
-            train_state["local"]["running"] = False
-            local_start_btn.disabled = False
-            local_stop_btn.disabled = True
-            local_train_status.value = "Stopped."
-            local_train_status.color = getattr(COLORS, "ORANGE_400", getattr(COLORS, "ORANGE", None))
-            await safe_update(page)
-        except Exception:
-            pass
+        return await stop_local_training_helper(
+            page=page,
+            train_state=train_state,
+            local_train_status=local_train_status,
+            local_start_btn=local_start_btn,
+            local_stop_btn=local_stop_btn,
+            local_train_progress=local_train_progress,
+            local_train_prog_label=local_train_prog_label,
+        )
 
     local_start_btn = ft.ElevatedButton(
         "Start Local Training",
@@ -7811,7 +4601,7 @@ Specify license and any restrictions.
                     names = list(getattr(ds, "column_names", []) or [])
                 except Exception:
                     names = []
-                inn, outn = _guess_cols(names)
+                inn, outn = guess_input_output_columns(names)
                 if not inn or not outn:
                     # If already in expected schema, allow it
                     if "input" in names and "output" in names:

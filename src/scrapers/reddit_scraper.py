@@ -25,7 +25,7 @@ import requests
 # =========================
 # CONFIG — CHANGE THESE
 # =========================
-DEFAULT_URL = "https://www.reddit.com/r/Conservative/"  # Subreddit front page or a specific post URL
+DEFAULT_URL = "https://www.reddit.com/r/LocalLLaMA/"  # Subreddit front page or a specific post URL
 MAX_POSTS = 100                 # Max posts to harvest from the subreddit
 REQUEST_DELAY = 1.0             # Base delay between requests (seconds)
 UA = "Mozilla/5.0 (compatible; reddit-scraper/2.0; +https://example.com/contact)"
