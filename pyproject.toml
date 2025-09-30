@@ -1,0 +1,38 @@
+[project]
+name = "finefoundry-core"
+version = "0.1.0"
+description = "FineFoundry Core Application"
+authors = [{ name = "SourceBox LLC" }]
+readme = "README.md"
+requires-python = ">=3.10"
+# Managed by uv; add libraries with `uv add <pkg>`
+dependencies = [
+    "datasets>=4.1.1",
+    # Flet will try to install desktop support with pip at runtime unless the extra is present.
+    # Pin to the exact version you use.
+    "flet[all]==0.28.3",
+    "httpx>=0.28.1",
+    "requests>=2.32.5",
+    "runpod>=1.7.13",
+]
+
+[tool.uv]
+package = true
+# uv will honor the requirements above and create a uv.lock when you run `uv lock` or `uv sync`.
+
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+# Tell hatchling how to package the src/ layout so uv can build/install the project
+[tool.hatch.build.sources]
+helpers = "src/helpers"
+ui = "src/ui"
+scrapers = "src/scrapers"
+runpod = "src/runpod"
+main = "src/main.py"
+save_dataset = "src/save_dataset.py"
+
+[tool.hatch.build.targets.wheel]
+# Include exactly these packages/modules in the wheel
+only-include = ["helpers", "ui", "scrapers", "runpod", "main", "save_dataset"]
