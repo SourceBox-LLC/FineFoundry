@@ -51,6 +51,9 @@ from helpers.ui import (
     make_wrap,
     make_selectable_pill,
     make_empty_placeholder,
+    compute_two_col_flex,
+    two_col_header,
+    two_col_row,
 )
 from helpers.training import (
     run_local_training as run_local_training_helper,
@@ -1056,7 +1059,7 @@ Tabs:
                 lambda: json.load(open(existing, "r", encoding="utf-8"))
             )
             if not isinstance(data, list):
-                raise ValueError("Expected a JSON list of {input,output} records")
+                raise ValueError("Expected a JSON list of records")
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to open {existing}: {e}"))
             page.snack_bar.open = True
@@ -1072,18 +1075,52 @@ Tabs:
         grid_list = ft.ListView(expand=1, auto_scroll=False)
         info_text = ft.Text("")
 
+        # Detect dataset type once (assumes uniform list)
+        try:
+            first = next((x for x in data if isinstance(x, dict)), {})
+            is_chatml_dataset = isinstance(first.get("messages"), list)
+        except Exception:
+            is_chatml_dataset = False
+
         # Navigation buttons
         prev_btn = ft.TextButton("Prev")
         next_btn = ft.TextButton("Next")
+
+        def _extract_pair(rec: dict) -> tuple[str, str]:
+            """Return (input, output) for either Standard pairs or ChatML messages."""
+            try:
+                # ChatML detection: record has a list under 'messages'
+                msgs = rec.get("messages")
+                if isinstance(msgs, list) and msgs:
+                    user_text = None
+                    assistant_text = None
+                    for m in msgs:
+                        if not isinstance(m, dict):
+                            continue
+                        role = m.get("role")
+                        text = m.get("content") or ""
+                        if role == "user" and user_text is None and text:
+                            user_text = text
+                        elif role == "assistant" and user_text is not None and text:
+                            assistant_text = text
+                            break
+                    if user_text and assistant_text:
+                        return (user_text, assistant_text)
+                # Fallback to Standard pairs
+                return (str(rec.get("input", "") or ""), str(rec.get("output", "") or ""))
+            except Exception:
+                return ("", "")
 
         def render_page():
             start = state["page"] * page_size
             end = min(start + page_size, total)
             grid_list.controls.clear()
             # Compute dynamic flex for current page
-            page_samples = [(r.get("input", "") or "", r.get("output", "") or "") for r in data[start:end]]
+            page_samples = [_extract_pair(r if isinstance(r, dict) else {}) for r in data[start:end]]
             lfx, rfx = compute_two_col_flex(page_samples)
-            grid_list.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+            hdr_left = "User" if is_chatml_dataset else "Input"
+            hdr_right = "Assistant" if is_chatml_dataset else "Output"
+            grid_list.controls.append(two_col_header(hdr_left, hdr_right, left_flex=lfx, right_flex=rfx))
             for a, b in page_samples:
                 grid_list.controls.append(two_col_row(a, b, lfx, rfx))
             info_text.value = f"Page {state['page']+1}/{total_pages} • Showing {start+1}-{end} of {total}"
@@ -1151,6 +1188,80 @@ Tabs:
             dlg.open = True
         await safe_update(page)
 
+    async def on_preview_raw_dataset():
+        """Open a modal dialog showing the raw JSON contents of the output path."""
+        # Resolve dataset path similarly to on_preview_dataset
+        orig_path = output_path.value or "scraped_training_data.json"
+        candidates = []
+        if os.path.isabs(orig_path):
+            candidates.append(orig_path)
+        else:
+            candidates.extend([
+                orig_path,
+                os.path.abspath(orig_path),
+                os.path.join(os.getcwd(), orig_path),
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_path),
+            ])
+        seen = set(); resolved_list = []
+        for pth in candidates:
+            ap = os.path.abspath(pth)
+            if ap not in seen:
+                seen.add(ap); resolved_list.append(ap)
+        existing = next((p for p in resolved_list if os.path.exists(p)), None)
+        if not existing:
+            page.snack_bar = ft.SnackBar(ft.Text(
+                "Dataset file not found. Tried:\n" + "\n".join(resolved_list[:4])
+            ))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        # Read raw text content
+        try:
+            raw_text = await asyncio.to_thread(lambda: open(existing, "r", encoding="utf-8").read())
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to read {existing}: {e}"))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        # Build a scrollable text area
+        text_ctl = ft.Text(raw_text, size=12, no_wrap=False, max_lines=None, selectable=True)
+        content_ctl = ft.Container(
+            content=ft.Column([text_ctl], expand=True, scroll=ft.ScrollMode.AUTO, spacing=0),
+            width=900,
+            height=600,
+        )
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Raw Dataset — {os.path.basename(existing)}"),
+            content=content_ctl,
+            actions=[],
+        )
+
+        def close_dlg(_):
+            dlg.open = False
+            page.update()
+
+        dlg.actions = [ft.TextButton("Close", on_click=close_dlg)]
+        try:
+            dlg.on_dismiss = lambda e: page.update()
+        except Exception:
+            pass
+
+        opened = False
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(dlg)
+                opened = True
+        except Exception:
+            opened = False
+        if not opened:
+            page.dialog = dlg
+            dlg.open = True
+        await safe_update(page)
+
     scrape_actions = ft.Row([
         start_button,
         ft.OutlinedButton("Cancel", icon=ICONS.CANCEL, on_click=on_cancel_scrape),
@@ -1180,6 +1291,15 @@ Tabs:
         except Exception:
             pass
         schedule_task(on_preview_dataset)
+
+    def handle_raw_preview_click(_):
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Opening raw dataset..."))
+            page.snack_bar.open = True
+            page.update()
+        except Exception:
+            pass
+        schedule_task(on_preview_raw_dataset)
 
     # Source selector for dataset preview/processing
     source_mode = ft.Dropdown(
@@ -1233,6 +1353,7 @@ Tabs:
         log_area=log_area,
         preview_area=preview_area,
         handle_preview_click=handle_preview_click,
+        handle_raw_preview_click=handle_raw_preview_click,
     )
     # Data source and processing controls
     data_file = ft.TextField(label="Data file (JSON)", value="scraped_training_data.json", width=360)

@@ -136,21 +136,69 @@ async def run_stackexchange_scrape(
             head = payload[:10]
             for c in head:
                 try:
-                    msgs = c.get("messages", [])
+                    msgs = c.get("messages", []) or []
+                    # Prefer user→assistant; fallback to first two non-empty messages
                     user_text = None
                     assistant_text = None
                     for m in msgs:
+                        if not isinstance(m, dict):
+                            continue
                         role = m.get("role")
-                        text = m.get("content") or ""
-                        if role == "user" and user_text is None and text:
+                        text = (m.get("content") or "").strip()
+                        if not text:
+                            continue
+                        if role == "user" and user_text is None:
                             user_text = text
-                        elif role == "assistant" and user_text is not None and text:
+                        elif role == "assistant" and user_text is not None:
                             assistant_text = text
                             break
-                    if user_text and assistant_text:
-                        preview_pairs.append((user_text, assistant_text))
+                    if not (user_text and assistant_text):
+                        texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                        if len(texts) >= 2:
+                            user_text, assistant_text = texts[0], texts[1]
+                        elif len(texts) == 1:
+                            user_text, assistant_text = texts[0], ""
+                    if user_text or assistant_text:
+                        preview_pairs.append((user_text or "", assistant_text or ""))
                 except Exception:
                     pass
+        if not preview_pairs:
+            # Fallback: read from saved file and derive a few pairs
+            try:
+                loaded = await asyncio.to_thread(lambda: json.load(open(output_path, "r", encoding="utf-8")))
+                if isinstance(loaded, list) and loaded:
+                    tmp: List[tuple[str, str]] = []
+                    if pairs_output:
+                        for ex in loaded[:10]:
+                            if isinstance(ex, dict):
+                                tmp.append(((ex.get("input", "") or ""), (ex.get("output", "") or "")))
+                    else:
+                        for rec in loaded[:10]:
+                            if not isinstance(rec, dict):
+                                continue
+                            msgs = rec.get("messages", []) or []
+                            u = None; a = None
+                            for m in msgs:
+                                if not isinstance(m, dict):
+                                    continue
+                                role = m.get("role"); text = (m.get("content") or "").strip()
+                                if not text:
+                                    continue
+                                if role == "user" and u is None:
+                                    u = text
+                                elif role == "assistant" and u is not None:
+                                    a = text; break
+                            if not (u and a):
+                                texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                                if len(texts) >= 2:
+                                    u, a = texts[0], texts[1]
+                                elif len(texts) == 1:
+                                    u, a = texts[0], ""
+                            if u or a:
+                                tmp.append((u or "", a or ""))
+                    preview_pairs = tmp or preview_pairs
+            except Exception:
+                pass
         if not preview_pairs:
             preview_pairs = [("(no preview)", "")]
     except Exception as e:
@@ -164,7 +212,10 @@ async def run_stackexchange_scrape(
     try:
         preview_host.controls.clear()
         lfx, rfx = compute_two_col_flex(preview_pairs)
-        preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+        # Header labels depend on dataset format
+        hdr_left = "Input" if pairs_output else "User"
+        hdr_right = "Output" if pairs_output else "Assistant"
+        preview_host.controls.append(two_col_header(hdr_left, hdr_right, left_flex=lfx, right_flex=rfx))
         for a, b in preview_pairs:
             preview_host.controls.append(two_col_row(a, b, lfx, rfx))
     except Exception as e:
@@ -404,21 +455,34 @@ async def run_reddit_scrape(
                 b = (ex.get("output", "") or "") if isinstance(ex, dict) else ""
                 sample_pairs.append((a, b))
         else:
-            # From ChatML: first user→assistant pair per conversation
+            # From ChatML: prefer user→assistant; fallback to first two non-empty messages
             for conv in chatml_convs[:10]:
-                msgs = conv.get("messages", []) or []
-                user_text = None
-                assistant_text = None
-                for m in msgs:
-                    role = m.get("role")
-                    text = m.get("content") or ""
-                    if role == "user" and user_text is None and text:
-                        user_text = text
-                    elif role == "assistant" and user_text is not None and text:
-                        assistant_text = text
-                        break
-                if user_text and assistant_text:
-                    sample_pairs.append((user_text, assistant_text))
+                try:
+                    msgs = conv.get("messages", []) or []
+                    user_text = None
+                    assistant_text = None
+                    for m in msgs:
+                        if not isinstance(m, dict):
+                            continue
+                        role = m.get("role")
+                        text = (m.get("content") or "").strip()
+                        if not text:
+                            continue
+                        if role == "user" and user_text is None:
+                            user_text = text
+                        elif role == "assistant" and user_text is not None:
+                            assistant_text = text
+                            break
+                    if not (user_text and assistant_text):
+                        texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                        if len(texts) >= 2:
+                            user_text, assistant_text = texts[0], texts[1]
+                        elif len(texts) == 1:
+                            user_text, assistant_text = texts[0], ""
+                    if user_text or assistant_text:
+                        sample_pairs.append((user_text or "", assistant_text or ""))
+                except Exception:
+                    pass
     except Exception as e:
         log(f"Failed to build output/write file: {e}")
     await safe_update(page)
@@ -441,9 +505,48 @@ async def run_reddit_scrape(
     try:
         preview_host.controls.clear()
         if not sample_pairs:
+            # Fallback: read from saved file
+            try:
+                loaded = await asyncio.to_thread(lambda: json.load(open(dest_abs, "r", encoding="utf-8")))
+                if isinstance(loaded, list) and loaded:
+                    tmp: List[tuple[str, str]] = []
+                    if pairs_output:
+                        for ex in loaded[:10]:
+                            if isinstance(ex, dict):
+                                tmp.append(((ex.get("input", "") or ""), (ex.get("output", "") or "")))
+                    else:
+                        for rec in loaded[:10]:
+                            if not isinstance(rec, dict):
+                                continue
+                            msgs = rec.get("messages", []) or []
+                            u = None; a = None
+                            for m in msgs:
+                                if not isinstance(m, dict):
+                                    continue
+                                role = m.get("role"); text = (m.get("content") or "").strip()
+                                if not text:
+                                    continue
+                                if role == "user" and u is None:
+                                    u = text
+                                elif role == "assistant" and u is not None:
+                                    a = text; break
+                            if not (u and a):
+                                texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                                if len(texts) >= 2:
+                                    u, a = texts[0], texts[1]
+                                elif len(texts) == 1:
+                                    u, a = texts[0], ""
+                            if u or a:
+                                tmp.append((u or "", a or ""))
+                    sample_pairs = tmp or sample_pairs
+            except Exception:
+                pass
+        if not sample_pairs:
             sample_pairs = [("(no preview)", "")]  # graceful empty state
         lfx, rfx = compute_two_col_flex(sample_pairs)
-        preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+        hdr_left = "Input" if pairs_output else "User"
+        hdr_right = "Output" if pairs_output else "Assistant"
+        preview_host.controls.append(two_col_header(hdr_left, hdr_right, left_flex=lfx, right_flex=rfx))
         for a, b in sample_pairs:
             preview_host.controls.append(two_col_row(a, b, lfx, rfx))
     except Exception as e:
@@ -610,7 +713,9 @@ async def run_real_scrape(
                 continue
 
             pairs_accum.extend(data)
-            labels.get("pairs").value = f"Pairs Found: {len(pairs_accum)}"
+            labels.get("pairs").value = (
+                f"Pairs Found: {len(pairs_accum)}" if pairs_output else f"Conversations Found: {len(pairs_accum)}"
+            )
             labels.get("threads").value = f"Boards processed: {idx}/{total_boards}"
             prog.value = idx / total_boards
             log(f"/{b}/ -> {len(data)} pairs (total {len(pairs_accum)})")
@@ -686,29 +791,88 @@ async def run_real_scrape(
             head = pairs_accum[:10]
         sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
         if not sample_pairs:
+            # Fallback: read from saved file
+            try:
+                loaded = await asyncio.to_thread(lambda: json.load(open(output_path, "r", encoding="utf-8")))
+                if isinstance(loaded, list) and loaded:
+                    tmp: List[tuple[str, str]] = []
+                    if pairs_output:
+                        for ex in loaded[:10]:
+                            if isinstance(ex, dict):
+                                tmp.append(((ex.get("input", "") or ""), (ex.get("output", "") or "")))
+                    else:
+                        for rec in loaded[:10]:
+                            if not isinstance(rec, dict):
+                                continue
+                            msgs = rec.get("messages", []) or []
+                            u = None; a = None
+                            for m in msgs:
+                                if not isinstance(m, dict):
+                                    continue
+                                role = m.get("role"); text = (m.get("content") or "").strip()
+                                if not text:
+                                    continue
+                                if role == "user" and u is None:
+                                    u = text
+                                elif role == "assistant" and u is not None:
+                                    a = text; break
+                            if not (u and a):
+                                texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                                if len(texts) >= 2:
+                                    u, a = texts[0], texts[1]
+                                elif len(texts) == 1:
+                                    u, a = texts[0], ""
+                            if u or a:
+                                tmp.append((u or "", a or ""))
+                    sample_pairs = tmp or sample_pairs
+            except Exception:
+                pass
+        if not sample_pairs:
             sample_pairs = [("(no preview)", "")]
     else:
-        # ChatML: derive preview from conversations
+        # ChatML selected: derive preview from conversations.
+        # If Multiturn was off, convert the accumulated pairs to single-turn ChatML first.
+        conv_src = conversations_accum
+        if not conv_src and pairs_accum:
+            try:
+                conv_src = pairs_to_chatml(pairs_accum)
+            except Exception:
+                conv_src = []
         sample_pairs = []
-        for conv in (conversations_accum or [])[:10]:
-            msgs = conv.get("messages", []) or []
-            user_text = None
-            assistant_text = None
-            for m in msgs:
-                role = m.get("role")
-                text = m.get("content") or ""
-                if role == "user" and user_text is None and text:
-                    user_text = text
-                elif role == "assistant" and user_text is not None and text:
-                    assistant_text = text
-                    break
-            if user_text and assistant_text:
-                sample_pairs.append((user_text, assistant_text))
+        for conv in (conv_src or [])[:10]:
+            try:
+                msgs = conv.get("messages", []) or []
+                user_text = None
+                assistant_text = None
+                for m in msgs:
+                    if not isinstance(m, dict):
+                        continue
+                    role = m.get("role")
+                    text = (m.get("content") or "").strip()
+                    if not text:
+                        continue
+                    if role == "user" and user_text is None:
+                        user_text = text
+                    elif role == "assistant" and user_text is not None:
+                        assistant_text = text
+                        break
+                if not (user_text and assistant_text):
+                    texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                    if len(texts) >= 2:
+                        user_text, assistant_text = texts[0], texts[1]
+                    elif len(texts) == 1:
+                        user_text, assistant_text = texts[0], ""
+                if user_text or assistant_text:
+                    sample_pairs.append((user_text or "", assistant_text or ""))
+            except Exception:
+                pass
         if not sample_pairs:
             sample_pairs = [("(no preview)", "")]
 
     lfx, rfx = compute_two_col_flex(sample_pairs)
-    preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+    hdr_left = "Input" if pairs_output else "User"
+    hdr_right = "Output" if pairs_output else "Assistant"
+    preview_host.controls.append(two_col_header(hdr_left, hdr_right, left_flex=lfx, right_flex=rfx))
     for a, b in sample_pairs:
         preview_host.controls.append(two_col_row(a, b, lfx, rfx))
     page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))

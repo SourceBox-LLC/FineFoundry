@@ -49,6 +49,7 @@ def build_scrape_tab(
     log_area,
     preview_area,
     handle_preview_click,
+    handle_raw_preview_click,
 ) -> ft.Container:
     source_section = build_source_section(
         section_title=section_title,
@@ -118,6 +119,7 @@ def build_scrape_tab(
         _mk_help_handler=_mk_help_handler,
         preview_area=preview_area,
         handle_preview_click=handle_preview_click,
+        handle_raw_preview_click=handle_raw_preview_click,
     )
 
     return ft.Container(

@@ -13,6 +13,7 @@ def build_preview_section(
     _mk_help_handler,
     preview_area,
     handle_preview_click,
+    handle_raw_preview_click,
 ) -> ft.Container:
     return ft.Container(
         content=ft.Column([
@@ -33,11 +34,16 @@ def build_preview_section(
                     ),
                     ft.Row([
                         ft.ElevatedButton(
+                            "Raw Preview",
+                            icon=getattr(ICONS, "CODE", getattr(ICONS, "TEXT_SNIPPET", ICONS.SEARCH)),
+                            on_click=handle_raw_preview_click,
+                        ),
+                        ft.ElevatedButton(
                             "Preview Dataset",
                             icon=getattr(ICONS, "PREVIEW", ICONS.SEARCH),
                             on_click=handle_preview_click,
-                        )
-                    ], alignment=ft.MainAxisAlignment.END),
+                        ),
+                    ], alignment=ft.MainAxisAlignment.END, spacing=8),
                 ], spacing=8),
                 width=1000,
                 border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
