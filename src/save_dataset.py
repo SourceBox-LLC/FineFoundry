@@ -47,20 +47,65 @@ def normalize_records(
     records: List[Dict[str, Any]],
     min_len: int = 1,
 ) -> List[Dict[str, str]]:
+    """Normalize a heterogeneous list of records into simple input/output pairs.
+
+    Supported formats:
+    - Standard: {"input": str, "output": str}
+    - ChatML: {"messages": [{"role": "user"|"assistant", "content": str}, ...]}
+      We emit one pair per user→assistant exchange, falling back to first two
+      non-empty messages if roles are missing or misordered.
+    """
     out: List[Dict[str, str]] = []
     for r in records:
         if not isinstance(r, dict):
             continue
-        inp = r.get("input", "")
-        outp = r.get("output", "")
-        if inp is None:
-            inp = ""
-        if outp is None:
-            outp = ""
-        inp = str(inp).strip()
-        outp = str(outp).strip()
-        if len(inp) >= min_len and len(outp) >= min_len:
-            out.append({"input": inp, "output": outp})
+        # 1) Standard pairs
+        if "input" in r or "output" in r:
+            inp = r.get("input", "")
+            outp = r.get("output", "")
+            if inp is None:
+                inp = ""
+            if outp is None:
+                outp = ""
+            a = str(inp).strip()
+            b = str(outp).strip()
+            if len(a) >= min_len and len(b) >= min_len:
+                out.append({"input": a, "output": b})
+            continue
+
+        # 2) ChatML-style conversations
+        msgs = r.get("messages")
+        if isinstance(msgs, list) and msgs:
+            # Try to extract sequential pairs of user -> assistant
+            pending_user: Optional[str] = None
+            for m in msgs:
+                if not isinstance(m, dict):
+                    continue
+                role = (m.get("role") or "").strip().lower()
+                text = str(m.get("content") or "").strip()
+                if not text:
+                    continue
+                if role == "user":
+                    # Start/replace pending user turn
+                    pending_user = text
+                elif role == "assistant" and pending_user is not None:
+                    if len(pending_user) >= min_len and len(text) >= min_len:
+                        out.append({"input": pending_user, "output": text})
+                    pending_user = None
+            # Fallback: if no pairs were produced, try first two non-empty messages
+            if all(k not in r for k in ("input", "output")):
+                if not any(True for _ in out):
+                    texts = [str((m.get("content") if isinstance(m, dict) else "") or "").strip() for m in msgs]
+                    texts = [t for t in texts if t]
+                    if len(texts) >= 2:
+                        a, b = texts[0], texts[1]
+                        if len(a) >= min_len and len(b) >= min_len:
+                            out.append({"input": a, "output": b})
+            continue
+
+        # 3) Unknown format -> skip
+        continue
+
     return out
 
 
