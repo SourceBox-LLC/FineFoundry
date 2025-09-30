@@ -332,6 +332,25 @@ async def run_merge(
             await asyncio.to_thread(lambda: open(out_abs, "w", encoding="utf-8").write(json.dumps(merged_examples, ensure_ascii=False, indent=4)))
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Saved JSON to {out_abs}")]))
             await safe_update(page)
+            # Populate inline preview with a small sample
+            try:
+                pairs = [
+                    (str(rec.get("input", "") or ""), str(rec.get("output", "") or ""))
+                    for rec in (merged_examples[:100] if merged_examples else [])
+                ]
+                merge_preview_host.controls.clear()
+                if pairs:
+                    lfx, rfx = compute_two_col_flex(pairs)
+                    merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+                    for a, b in pairs:
+                        merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
+                try:
+                    merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
+                except Exception:
+                    pass
+                await safe_update(page)
+            except Exception:
+                pass
         else:
             if Dataset is None or DatasetDict is None:
                 raise RuntimeError("datasets library unavailable for HF output")
@@ -348,6 +367,47 @@ async def run_merge(
             await asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Saved HF dataset to {out_dir}")]))
             await safe_update(page)
+            # Populate inline preview with a small sample from the merged HF dataset
+            try:
+                # Prefer the 'train' split when available
+                ds = None
+                try:
+                    ds = dd.get("train") if hasattr(dd, "get") else None
+                except Exception:
+                    ds = None
+                if ds is None:
+                    # Fallback to any available split
+                    try:
+                        for k in getattr(dd, "keys", lambda: [])():
+                            ds = dd[k]; break
+                    except Exception:
+                        ds = None
+                pairs = []
+                if ds is not None:
+                    try:
+                        k = min(100, len(ds))
+                    except Exception:
+                        k = 0
+                    try:
+                        idxs = list(range(k))
+                        page_ds = ds.select(idxs) if k > 0 else []
+                        for rec in page_ds:
+                            pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
+                    except Exception:
+                        pass
+                merge_preview_host.controls.clear()
+                if pairs:
+                    lfx, rfx = compute_two_col_flex(pairs)
+                    merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+                    for a, b in pairs:
+                        merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
+                try:
+                    merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
+                except Exception:
+                    pass
+                await safe_update(page)
+            except Exception:
+                pass
     except Exception as e:
         merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Merge failed: {e}")]))
         merge_busy_ring.visible = False

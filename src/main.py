@@ -5,6 +5,8 @@ import os
 from typing import List, Optional, Tuple
 import json
 import httpx
+import re
+from collections import Counter
 
 
 import flet as ft

@@ -4,8 +4,11 @@
       "filename": "data-00000-of-00001.arrow"
     }
   ],
-  "_fingerprint": "b8607fa5157c77bb",
-  "_format_columns": null,
+  "_fingerprint": "654c103be3d8d6bb",
+  "_format_columns": [
+    "input",
+    "output"
+  ],
   "_format_kwargs": {},
   "_format_type": null,
   "_output_all_columns": false,
