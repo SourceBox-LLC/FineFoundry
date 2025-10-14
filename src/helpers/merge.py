@@ -8,9 +8,13 @@ from typing import Optional, List, Tuple
 import flet as ft
 
 from helpers.common import safe_update
+from helpers.logging_config import get_logger
 from helpers.theme import COLORS, ICONS, ACCENT_COLOR
 from helpers.ui import WITH_OPACITY, compute_two_col_flex, two_col_header, two_col_row
 from helpers.datasets import guess_input_output_columns
+
+# Initialize logger
+logger = get_logger(__name__)
 
 try:
     import save_dataset as sd
@@ -161,7 +165,9 @@ async def run_merge(
     merge_preview_placeholder: ft.Control,
     merge_cancel: dict,
     merge_busy_ring: ft.ProgressRing,
+    download_button: ft.Control | None = None,
 ) -> None:
+    logger.info("Starting merge operation")
     merge_cancel["cancelled"] = False
     merge_timeline.controls.clear()
     merge_preview_host.controls.clear()
@@ -199,6 +205,7 @@ async def run_merge(
                 "json": json_path,
             })
     if len(entries) < 2:
+        logger.warning(f"Merge validation failed: Only {len(entries)} dataset(s) provided")
         merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Add at least two datasets")]))
         try:
             merge_timeline_placeholder.visible = len(merge_timeline.controls) == 0
@@ -213,6 +220,8 @@ async def run_merge(
     op = merge_op.value or "Concatenate"
     fmt = (merge_output_format.value or "HF dataset dir").lower()
     output_json = ("json" in fmt) or (out_path.lower().endswith(".json"))
+
+    logger.info(f"Merge config - Operation: {op}, Output: {out_path}, Format: {fmt}, Datasets: {len(entries)}")
 
     try:
         if (not output_json) and all(ent.get("source") == "JSON file" for ent in entries):
@@ -329,7 +338,9 @@ async def run_merge(
             # Save JSON
             out_abs = os.path.abspath(out_path)
             os.makedirs(os.path.dirname(out_abs) or ".", exist_ok=True)
+            logger.info(f"Saving {len(merged_examples)} merged records to JSON: {out_abs}")
             await asyncio.to_thread(lambda: open(out_abs, "w", encoding="utf-8").write(json.dumps(merged_examples, ensure_ascii=False, indent=4)))
+            logger.info(f"Successfully saved merged JSON dataset")
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Saved JSON to {out_abs}")]))
             await safe_update(page)
             # Populate inline preview with a small sample
@@ -409,6 +420,7 @@ async def run_merge(
             except Exception:
                 pass
     except Exception as e:
+        logger.error(f"Merge operation failed: {str(e)}", exc_info=True)
         merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Merge failed: {e}")]))
         merge_busy_ring.visible = False
         try:
@@ -418,11 +430,19 @@ async def run_merge(
         await safe_update(page)
         return
 
+    logger.info("Merge operation completed successfully")
     merge_busy_ring.visible = False
     try:
         merge_timeline_placeholder.visible = len(merge_timeline.controls) == 0
     except Exception:
         pass
+    # Show download button after successful merge
+    if download_button is not None:
+        try:
+            download_button.visible = True
+            logger.debug("Download button made visible after successful merge")
+        except Exception:
+            pass
     page.snack_bar = ft.SnackBar(ft.Text("Merge complete!"))
     page.snack_bar.open = True
     await safe_update(page)

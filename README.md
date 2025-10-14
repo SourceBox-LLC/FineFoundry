@@ -23,10 +23,9 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 
 <p align="center">
   <a href="#quick-start-gui">Quick Start</a> ·
-  <a href="#using-the-app">Using the App</a> ·
-  <a href="#proxy-configuration">Proxies</a> ·
-  <a href="#cli-build-and-push-without-the-gui">CLI</a> ·
-  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="docs/README.md">📚 Full Documentation</a> ·
+  <a href="docs/user-guide/troubleshooting.md">Troubleshooting</a> ·
+  <a href="docs/development/logging.md">Logging</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -120,8 +119,20 @@ Optional (for pushing to Hugging Face):
 
 The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Merge Datasets, Dataset Analysis, and Settings.
 
+## 📚 Documentation
+
+For comprehensive guides, tutorials, and API documentation, visit the **[docs/](docs/README.md)** directory:
+
+- **[Quick Start Guide](docs/user-guide/quick-start.md)** - Get started in minutes
+- **[User Guides](docs/README.md#-user-guides)** - Complete GUI and CLI documentation
+- **[Merge Datasets](docs/user-guide/merge-tab.md)** - Detailed merge tab guide with download feature
+- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Solutions to common issues
+- **[Logging System](docs/development/logging.md)** - Professional logging and debugging
+- **[Development Guides](docs/README.md#-development)** - For contributors
+- **[API Reference](docs/README.md#-api-reference)** - Programmatic usage
+
 <a id="using-the-app"></a>
-## 🖥️ Using the App
+## 🖥️ Using the App (Quick Reference)
 
 <a id="scrape-tab"></a>
 ### 🧭 Scrape tab
@@ -462,12 +473,14 @@ Reddit and Stack Exchange details are documented in their CLI/usage sections bel
 <a id="troubleshooting"></a>
 ## 🩺 Troubleshooting
 
+For comprehensive troubleshooting, see the **[Troubleshooting Guide](docs/user-guide/troubleshooting.md)**.
+
+Quick fixes:
 - **No data found**: Verify boards are selected and `Max Pairs` > 0; check network access to `a.4cdn.org`.
 - **Push fails (401/403)**: Ensure your token has write scope and is correctly provided.
 - **Large previews feel slow**: Use the dataset preview dialog (paginated) or open the saved dataset with Python.
-- **Windows SmartScreen warnings**: This is a Python app; run within your venv.
 - **SSL/Cert errors**: Update `certifi` or your system certificates.
-- **Too few pairs when using contextual**: try reducing `Last K`, unchecking "Require question", or increasing `Max Threads`/`Max Pairs`.
+- **Debug logging**: Set `FINEFOUNDRY_DEBUG=1` environment variable - see [Logging Guide](docs/development/logging.md)
 
 <a id="ethical-and-legal-notes"></a>
 ## ⚖️ Ethical and Legal Notes

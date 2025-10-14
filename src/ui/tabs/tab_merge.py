@@ -32,6 +32,7 @@ def build_merge_tab(
     merge_preview_placeholder: ft.Container,
     merge_timeline: ft.ListView,
     merge_timeline_placeholder: ft.Container,
+    download_button: ft.Control | None = None,
 ) -> ft.Container:
     op_section = build_operation_section(
         section_title=section_title,
@@ -82,6 +83,7 @@ def build_merge_tab(
         _mk_help_handler=_mk_help_handler,
         merge_timeline=merge_timeline,
         merge_timeline_placeholder=merge_timeline_placeholder,
+        download_button=download_button,
     )
 
     return ft.Container(

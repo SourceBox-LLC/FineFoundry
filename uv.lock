@@ -819,6 +819,7 @@ dependencies = [
     { name = "datasets" },
     { name = "flet", extra = ["all"] },
     { name = "httpx" },
+    { name = "huggingface-hub" },
     { name = "requests" },
     { name = "runpod" },
 ]
@@ -828,6 +829,7 @@ requires-dist = [
     { name = "datasets", specifier = ">=4.1.1" },
     { name = "flet", extras = ["all"], specifier = "==0.28.3" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "huggingface-hub", specifier = ">=0.25.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "runpod", specifier = ">=1.7.13" },
 ]

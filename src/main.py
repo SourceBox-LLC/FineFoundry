@@ -32,6 +32,7 @@ except Exception:
     get_dataset_config_names = None
 
 from helpers.common import safe_update, set_terminal_title
+from helpers.logging_config import get_logger
 from helpers.theme import (
     COLORS,
     ICONS,
@@ -39,6 +40,9 @@ from helpers.theme import (
     BORDER_BASE,
     REFRESH_ICON,
 )
+
+# Initialize logger for main module
+logger = get_logger(__name__)
 try:
     import save_dataset as sd
 except Exception:
@@ -2006,6 +2010,7 @@ Specify license and any restrictions.
             merge_preview_placeholder=merge_preview_placeholder,
             merge_cancel=merge_cancel,
             merge_busy_ring=merge_busy_ring,
+            download_button=download_merged_button,
         )
 
 
@@ -2022,6 +2027,7 @@ Specify license and any restrictions.
         merge_timeline.controls.clear()
         merge_preview_host.controls.clear()
         merge_busy_ring.visible = False
+        download_merged_button.visible = False
         update_merge_placeholders(); page.update()
 
     async def on_preview_merged():
@@ -2048,6 +2054,100 @@ Specify license and any restrictions.
         except Exception:
             asyncio.get_event_loop().run_in_executor(None, lambda: asyncio.run(on_preview_merged()))
 
+    async def on_download_merged(e: ft.FilePickerResultEvent):
+        """Handle downloading the merged dataset to a user-selected location."""
+        logger.info(f"Download merged dataset called with destination: {e.path}")
+
+        if e.path is None:
+            logger.warning("Download cancelled: No destination selected")
+            page.snack_bar = ft.SnackBar(ft.Text("No destination selected"))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        dest_dir = e.path
+        orig_dir = merge_save_dir.value or "merged_dataset"
+        fmt_now = (merge_output_format.value or "").lower()
+        wants_json = ("json" in fmt_now) or (str(orig_dir).lower().endswith(".json"))
+
+        logger.debug(f"Download params - dest_dir: {dest_dir}, orig_dir: {orig_dir}, wants_json: {wants_json}")
+
+        # Find the source file
+        candidates = []
+        if os.path.isabs(orig_dir):
+            candidates.append(orig_dir)
+        else:
+            candidates.extend([
+                orig_dir,
+                os.path.abspath(orig_dir),
+                os.path.join(os.getcwd(), orig_dir),
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_dir),
+            ])
+        seen = set()
+        resolved_list: List[str] = []
+        for pth in candidates:
+            ap = os.path.abspath(pth)
+            if ap not in seen:
+                seen.add(ap)
+                resolved_list.append(ap)
+        existing = next((p for p in resolved_list if os.path.exists(p)), None)
+
+        logger.debug(f"Source search candidates: {candidates}")
+        logger.debug(f"Found existing source: {existing}")
+
+        if not existing:
+            logger.error(f"Merged dataset not found. Searched: {orig_dir}")
+            page.snack_bar = ft.SnackBar(ft.Text(f"Merged dataset not found. Searched: {orig_dir}"))
+            page.snack_bar.open = True
+            await safe_update(page)
+            return
+
+        # Use the original filename from the merge output path
+        source_basename = os.path.basename(orig_dir)
+        dest_path = os.path.join(dest_dir, source_basename)
+
+        logger.info(f"Copying {source_basename} from {existing} to {dest_path}")
+
+        try:
+            import shutil
+            if wants_json or os.path.isfile(existing):
+                # Copy single file
+                logger.debug(f"Starting file copy operation")
+                await asyncio.to_thread(shutil.copy2, existing, dest_path)
+                msg = f"Downloaded to {dest_path}"
+                logger.info(f"File copy successful: {dest_path}")
+            else:
+                # Copy directory
+                logger.debug(f"Starting directory copy operation")
+                await asyncio.to_thread(shutil.copytree, existing, dest_path, dirs_exist_ok=True)
+                msg = f"Downloaded to {dest_path}"
+                logger.info(f"Directory copy successful: {dest_path}")
+
+            page.snack_bar = ft.SnackBar(ft.Text(msg))
+            page.snack_bar.open = True
+            await safe_update(page)
+        except Exception as e:
+            logger.error(f"Download failed - Source: {existing}, Dest: {dest_path}", exc_info=True)
+            error_details = f"Download failed: {str(e)}"
+            page.snack_bar = ft.SnackBar(ft.Text(error_details))
+            page.snack_bar.open = True
+            await safe_update(page)
+
+    async def handle_download_result(e: ft.FilePickerResultEvent):
+        await on_download_merged(e)
+
+    download_file_picker = ft.FilePicker(on_result=handle_download_result)
+    page.overlay.append(download_file_picker)
+
+    download_merged_button = ft.ElevatedButton(
+        "Download Merged Dataset",
+        icon=getattr(ICONS, "DOWNLOAD", ICONS.ARROW_DOWNWARD),
+        on_click=lambda _: download_file_picker.get_directory_path(
+            dialog_title="Select Download Location",
+        ),
+        visible=False,
+    )
+
     merge_actions = ft.Row([
         ft.ElevatedButton("Merge Datasets", icon=ICONS.TABLE_VIEW, on_click=lambda e: page.run_task(on_merge)),
         ft.OutlinedButton("Cancel", icon=ICONS.CANCEL, on_click=on_cancel_merge),
@@ -2073,6 +2173,7 @@ Specify license and any restrictions.
         merge_preview_placeholder=merge_preview_placeholder,
         merge_timeline=merge_timeline,
         merge_timeline_placeholder=merge_timeline_placeholder,
+        download_button=download_merged_button,
     )
 
 
