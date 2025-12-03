@@ -442,7 +442,11 @@ Tabs:
         return ft.TextButton(text_fallback or tooltip, on_click=lambda e: on_click_cb(e))
 
     page.appbar = ft.AppBar(
-        leading=ft.Icon(getattr(ICONS, "DATASET_LINKED_OUTLINED", getattr(ICONS, "DATASET", getattr(ICONS, "DESCRIPTION", None)))) ,
+        leading=ft.IconButton(
+            icon=getattr(ICONS, "DATASET_LINKED_OUTLINED", getattr(ICONS, "DATASET", getattr(ICONS, "DESCRIPTION", None))),
+            tooltip="Open FineFoundry website",
+            on_click=lambda e: page.launch_url("https://finefoundry.fly.dev/"),
+        ),
         title=ft.Text(APP_TITLE, weight=ft.FontWeight.BOLD),
         center_title=False,
         bgcolor=WITH_OPACITY(0.03, COLORS.AMBER),
@@ -3404,21 +3408,37 @@ Specify license and any restrictions.
         except Exception:
             pass
         suppress = bool(train_state.get("suppress_skill_defaults"))
-        # Set beginner defaults (depend on beginner mode)
+        # Set beginner defaults (depend on beginner mode and training target)
         if is_beginner and (not suppress):
             try:
                 mode = (beginner_mode_dd.value or "Fastest").lower()
+                tgt3 = (train_target_dd.value or "Runpod - Pod").lower()
+                is_runpod_target = tgt3.startswith("runpod - pod")
                 epochs_tf.value = epochs_tf.value or "1"
-                if mode == "fastest":
-                    lr_tf.value = "2e-4"
-                    batch_tf.value = "4"
-                    grad_acc_tf.value = "1"
-                    max_steps_tf.value = max_steps_tf.value or "200"
+                if is_runpod_target:
+                    # Existing Runpod-oriented presets
+                    if mode == "fastest":
+                        lr_tf.value = "2e-4"
+                        batch_tf.value = "4"
+                        grad_acc_tf.value = "1"
+                        max_steps_tf.value = max_steps_tf.value or "200"
+                    else:
+                        lr_tf.value = "2e-5"
+                        batch_tf.value = "2"
+                        grad_acc_tf.value = "4"
+                        max_steps_tf.value = "200"
                 else:
-                    lr_tf.value = "2e-5"
-                    batch_tf.value = "2"
-                    grad_acc_tf.value = "4"
-                    max_steps_tf.value = "200"
+                    # Local Docker presets: more conservative, shorter runs by default
+                    if mode == "fastest":
+                        lr_tf.value = "2e-4"
+                        batch_tf.value = "2"
+                        grad_acc_tf.value = "1"
+                        max_steps_tf.value = max_steps_tf.value or "50"
+                    else:
+                        lr_tf.value = "2e-5"
+                        batch_tf.value = "1"
+                        grad_acc_tf.value = "2"
+                        max_steps_tf.value = "50"
             except Exception:
                 pass
         # If switching to Expert for the first time, lazily refresh GPU list
