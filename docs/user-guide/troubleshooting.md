@@ -183,6 +183,14 @@ pip install --upgrade certifi urllib3 requests
 - Use 4-bit quantized models (e.g., models with `bnb-4bit`)
 - Disable packing if enabled
 
+On a single 12 GB GPU (e.g., RTX 3060), a conservative starting point for 8B 4-bit models is:
+
+- Batch size per device: 1–2
+- Grad accumulation: 2–4
+- Max steps: 50–200 for quick experiments
+
+If you still hit OOM, also reduce sequence length and/or disable evaluation during training.
+
 ### Training pod won't start
 
 **Problem**: Runpod pod fails to start or reach ready state
@@ -214,6 +222,39 @@ pip install --upgrade certifi urllib3 requests
 - Verify dataset is accessible
 - Check disk space on network volume
 - Monitor pod status in Runpod dashboard
+
+### Local training: container exits with code 137
+
+**Problem**: Local Docker training exits with status code 137.
+
+**Cause**: This usually means the container was killed by the OS (often an OOM killer) or manually stopped.
+
+**Solution**:
+- Treat it like a CUDA OOM: reduce per-device batch size, increase grad accumulation, or use a smaller model.
+- Make sure other heavy GPU/CPU workloads are closed while training.
+- Check local logs (Training → Local Docker section) for additional error messages.
+
+### Local training: Hugging Face auth errors inside container
+
+**Problem**: Training completes but fails at the end with a `huggingface_hub` error (e.g., around `api.whoami()`), especially when `--push` is enabled.
+
+**Causes**:
+- HF token not present inside the Docker container.
+- Token lacks required write permissions.
+
+**Solutions**:
+1. In **Settings → Hugging Face**, save a valid token with write access, or export `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` before launching the app.
+2. In the **Local Docker: Run Training** section, enable **"Pass HF token to container"** so the token is forwarded as env vars.
+3. If you don't need to push to the Hub for a given run, disable **Push to Hub** to avoid calling Hub APIs at the end.
+
+### Config‑related mistakes
+
+**Problem**: Training fails or behaves unexpectedly after manual changes to many fields.
+
+**Solution**:
+- Use the Training tab's **Save current setup** buttons (or Configuration mode) to snapshot known‑good setups.
+- Re‑load a saved config instead of re‑entering values manually, especially when switching between Runpod and local runs.
+- Config JSON files live under `src/saved_configs/`, and the last used config auto-loads on startup.
 - Enable DEBUG logging (see [Logging Guide](../development/logging.md))
 
 ---

@@ -33,6 +33,9 @@ def build_merge_tab(
     merge_timeline: ft.ListView,
     merge_timeline_placeholder: ft.Container,
     download_button: ft.Control | None = None,
+    # Optional refs for controlling section visibility from main.py
+    preview_section_ref=None,
+    status_section_ref=None,
 ) -> ft.Container:
     op_section = build_operation_section(
         section_title=section_title,
@@ -85,6 +88,18 @@ def build_merge_tab(
         merge_timeline_placeholder=merge_timeline_placeholder,
         download_button=download_button,
     )
+
+    # Expose section containers to caller (e.g., for visibility control)
+    try:
+        if preview_section_ref is not None:
+            preview_section_ref["control"] = preview_section
+    except Exception:
+        pass
+    try:
+        if status_section_ref is not None:
+            status_section_ref["control"] = status_section
+    except Exception:
+        pass
 
     return ft.Container(
         content=ft.Column([

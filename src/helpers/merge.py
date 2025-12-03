@@ -166,6 +166,7 @@ async def run_merge(
     merge_cancel: dict,
     merge_busy_ring: ft.ProgressRing,
     download_button: ft.Control | None = None,
+    update_merge_placeholders=None,
 ) -> None:
     logger.info("Starting merge operation")
     merge_cancel["cancelled"] = False
@@ -175,6 +176,11 @@ async def run_merge(
     try:
         merge_timeline_placeholder.visible = True
         merge_preview_placeholder.visible = True
+    except Exception:
+        pass
+    try:
+        if update_merge_placeholders is not None:
+            update_merge_placeholders()
     except Exception:
         pass
     await safe_update(page)
@@ -209,6 +215,11 @@ async def run_merge(
         merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text("Add at least two datasets")]))
         try:
             merge_timeline_placeholder.visible = len(merge_timeline.controls) == 0
+        except Exception:
+            pass
+        try:
+            if update_merge_placeholders is not None:
+                update_merge_placeholders()
         except Exception:
             pass
         await safe_update(page)
@@ -292,6 +303,11 @@ async def run_merge(
                 merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
             except Exception:
                 pass
+            try:
+                if update_merge_placeholders is not None:
+                    update_merge_placeholders()
+            except Exception:
+                pass
             await safe_update(page)
             return
         await safe_update(page)
@@ -302,6 +318,11 @@ async def run_merge(
         try:
             merge_timeline_placeholder.visible = len(merge_timeline.controls) == 0
             merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
+        except Exception:
+            pass
+        try:
+            if update_merge_placeholders is not None:
+                update_merge_placeholders()
         except Exception:
             pass
         await safe_update(page)
@@ -357,6 +378,11 @@ async def run_merge(
                         merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
                 try:
                     merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
+                except Exception:
+                    pass
+                try:
+                    if update_merge_placeholders is not None:
+                        update_merge_placeholders()
                 except Exception:
                     pass
                 await safe_update(page)
@@ -427,6 +453,11 @@ async def run_merge(
             merge_timeline_placeholder.visible = len(merge_timeline.controls) == 0
         except Exception:
             pass
+        try:
+            if update_merge_placeholders is not None:
+                update_merge_placeholders()
+        except Exception:
+            pass
         await safe_update(page)
         return
 
@@ -434,6 +465,11 @@ async def run_merge(
     merge_busy_ring.visible = False
     try:
         merge_timeline_placeholder.visible = len(merge_timeline.controls) == 0
+    except Exception:
+        pass
+    try:
+        if update_merge_placeholders is not None:
+            update_merge_placeholders()
     except Exception:
         pass
     # Show download button after successful merge
@@ -444,7 +480,7 @@ async def run_merge(
         except Exception:
             pass
     page.snack_bar = ft.SnackBar(ft.Text("Merge complete!"))
-    page.snack_bar.open = True
+    page.open(page.snack_bar)
     await safe_update(page)
 
 
@@ -456,7 +492,7 @@ async def preview_merged(
 ) -> None:
     try:
         page.snack_bar = ft.SnackBar(ft.Text("Opening merged dataset preview..."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
     except Exception:
         pass
@@ -484,7 +520,7 @@ async def preview_merged(
         page.snack_bar = ft.SnackBar(ft.Text(
             "Merged dataset not found. Tried:\n" + "\n".join(resolved_list[:4])
         ))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -493,7 +529,7 @@ async def preview_merged(
             data = await asyncio.to_thread(sd.load_records, existing)
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to read JSON: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
         try:
@@ -582,7 +618,7 @@ async def preview_merged(
 
     if load_from_disk is None:
         page.snack_bar = ft.SnackBar(ft.Text("datasets.load_from_disk unavailable — cannot open preview"))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -590,7 +626,7 @@ async def preview_merged(
         obj = await asyncio.to_thread(lambda: load_from_disk(existing))
     except Exception as e:
         page.snack_bar = ft.SnackBar(ft.Text(f"Failed to load dataset from {existing}: {e}"))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -609,7 +645,7 @@ async def preview_merged(
         ds = obj
     if ds is None:
         page.snack_bar = ft.SnackBar(ft.Text("No split found to preview"))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 

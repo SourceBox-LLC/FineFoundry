@@ -49,3 +49,27 @@ def validate_config(conf: dict) -> Tuple[bool, str]:
     if not (hp.get("hf_dataset_id") or hp.get("json_path")):
         return True, "Note: no dataset specified (hf_dataset_id/json_path)."
     return True, "OK"
+
+
+def _last_used_config_path(project_root: Optional[str] = None) -> str:
+    d = saved_configs_dir(project_root)
+    return os.path.join(d, ".last_used_config")
+
+
+def get_last_used_config_name(project_root: Optional[str] = None) -> Optional[str]:
+    path = _last_used_config_path(project_root)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            name = f.read().strip()
+            return name or None
+    except Exception:
+        return None
+
+
+def set_last_used_config_name(name: str, project_root: Optional[str] = None) -> None:
+    path = _last_used_config_path(project_root)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(name or "").strip())
+    except Exception:
+        pass

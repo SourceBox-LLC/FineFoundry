@@ -50,6 +50,11 @@ def build_scrape_tab(
     preview_area,
     handle_preview_click,
     handle_raw_preview_click,
+    # Optional refs the caller can use to toggle visibility of sections at runtime
+    boards_section_ref=None,
+    progress_section_ref=None,
+    log_section_ref=None,
+    preview_section_ref=None,
 ) -> ft.Container:
     source_section = build_source_section(
         section_title=section_title,
@@ -121,6 +126,28 @@ def build_scrape_tab(
         handle_preview_click=handle_preview_click,
         handle_raw_preview_click=handle_raw_preview_click,
     )
+
+    # Expose section containers to caller (e.g., to control visibility)
+    try:
+        if boards_section_ref is not None:
+            boards_section_ref["control"] = boards_section
+    except Exception:
+        pass
+    try:
+        if progress_section_ref is not None:
+            progress_section_ref["control"] = progress_section
+    except Exception:
+        pass
+    try:
+        if log_section_ref is not None:
+            log_section_ref["control"] = log_section
+    except Exception:
+        pass
+    try:
+        if preview_section_ref is not None:
+            preview_section_ref["control"] = preview_section
+    except Exception:
+        pass
 
     return ft.Container(
         content=ft.Row([

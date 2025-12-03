@@ -92,12 +92,12 @@ async def run_stackexchange_scrape(
     except Exception as e:
         if cancel_flag.get("cancelled"):
             log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
-            page.snack_bar.open = True
+            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled "))
+            page.open(page.snack_bar)
         else:
             log(f"StackExchange scrape failed: {e}")
             page.snack_bar = ft.SnackBar(ft.Text(f"StackExchange scrape failed: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
         await safe_update(page)
         try:
             pulse_task.cancel()
@@ -220,8 +220,8 @@ async def run_stackexchange_scrape(
             preview_host.controls.append(two_col_row(a, b, lfx, rfx))
     except Exception as e:
         log(f"Failed to render preview: {e}")
-    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
-    page.snack_bar.open = True
+    page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! "))
+    page.open(page.snack_bar)
     await safe_update(page)
 
 
@@ -254,6 +254,8 @@ async def run_reddit_scrape(
 
     if rdt is None:
         log("Reddit scraper module not available.")
+        page.snack_bar = ft.SnackBar(ft.Text("Reddit scraper module not available — please install or enable it."))
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -281,6 +283,8 @@ async def run_reddit_scrape(
         rdt.USE_TEMP_DUMP = True
     except Exception as e:
         log(f"Invalid Reddit configuration: {e}")
+        page.snack_bar = ft.SnackBar(ft.Text(f"Invalid Reddit configuration: {e}"))
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -331,11 +335,11 @@ async def run_reddit_scrape(
         if cancel_flag.get("cancelled"):
             log("Scrape cancelled by user.")
             page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled "))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
         else:
             log(f"Reddit scrape failed: {e}")
             page.snack_bar = ft.SnackBar(ft.Text(f"Reddit scrape failed: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
         await safe_update(page)
         try:
             pulse_task.cancel()
@@ -561,7 +565,7 @@ async def run_reddit_scrape(
     except Exception as e:
         log(f"Cleanup warning: {e}")
     page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! "))
-    page.snack_bar.open = True
+    page.open(page.snack_bar)
     await safe_update(page)
 
 
@@ -614,8 +618,8 @@ async def run_real_scrape(
     for idx, b in enumerate(boards, start=1):
         if cancel_flag.get("cancelled"):
             log("Scrape cancelled by user.")
-            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled ✋"))
-            page.snack_bar.open = True
+            page.snack_bar = ft.SnackBar(ft.Text("Scrape cancelled "))
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -876,5 +880,5 @@ async def run_real_scrape(
     for a, b in sample_pairs:
         preview_host.controls.append(two_col_row(a, b, lfx, rfx))
     page.snack_bar = ft.SnackBar(ft.Text("Scrape complete! 🎉"))
-    page.snack_bar.open = True
+    page.open(page.snack_bar)
     await safe_update(page)

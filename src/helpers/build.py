@@ -56,6 +56,7 @@ async def run_build(
     card_editor: ft.TextField,
     # Config
     hf_cfg_token: str,
+    update_status_placeholder=None,
 ) -> None:
     """Build dataset pipeline invoked from Build/Publish tab.
     Mirrors previous in-file logic from main.on_build.
@@ -64,7 +65,10 @@ async def run_build(
     def add_step(text: str, color, icon):
         timeline.controls.append(ft.Row([ft.Icon(icon, color=color), ft.Text(text)]))
         try:
-            timeline_placeholder.visible = len(timeline.controls) == 0
+            if update_status_placeholder is not None:
+                update_status_placeholder()
+            else:
+                timeline_placeholder.visible = len(timeline.controls) == 0
         except Exception:
             pass
 
@@ -116,7 +120,7 @@ async def run_build(
         except Exception as e:
             add_step(f"Failed loading merged dataset: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
             page.snack_bar = ft.SnackBar(ft.Text(f"Merged dataset not found or invalid at '{merged_path}'."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -246,7 +250,7 @@ async def run_build(
                 )
                 add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
                 page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
-                page.snack_bar.open = True
+                page.open(page.snack_bar)
                 await safe_update(page)
             except Exception as e:
                 add_step(f"Push failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
@@ -258,7 +262,7 @@ async def run_build(
     if val_frac + test_frac >= 1.0:
         add_step("Invalid split: val+test must be < 1.0", COLORS.RED, ICONS.ERROR_OUTLINE)
         page.snack_bar = ft.SnackBar(ft.Text("Invalid split: val+test must be < 1.0"))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -288,7 +292,7 @@ async def run_build(
     if not examples:
         add_step("No valid examples after normalization", COLORS.RED, ICONS.ERROR_OUTLINE)
         page.snack_bar = ft.SnackBar(ft.Text("No valid examples after normalization."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
     if cancel_build["cancelled"]:
@@ -424,7 +428,6 @@ async def run_build(
                 await asyncio.sleep(0.6)
             await up_task
 
-            # Add link to dataset on Hub
             _url = f"https://huggingface.co/datasets/{repo}"
             timeline.controls.append(
                 ft.Row([
@@ -434,12 +437,11 @@ async def run_build(
             )
             add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
             page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
         except Exception as e:
             add_step(f"Push failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
             await safe_update(page)
-
 
 async def run_push_async(
     *,
@@ -464,7 +466,7 @@ async def run_push_async(
     dd = dd_ref.get("dd")
     if dd is None:
         page.snack_bar = ft.SnackBar(ft.Text("Build the dataset first."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -477,7 +479,7 @@ async def run_push_async(
             tok = ""
     if not repo or not tok:
         page.snack_bar = ft.SnackBar(ft.Text("Repo ID and a valid HF token are required."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
         return
 
@@ -515,7 +517,7 @@ async def run_push_async(
         )
         timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Push complete!")]))
         page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
     except Exception as e:
         timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Push failed: {e}")]))

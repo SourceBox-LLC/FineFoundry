@@ -103,9 +103,11 @@ Your data is saved to `scraped_training_data.json` by default.
 
 Now that you have the basics:
 
+- **🧠 Training (Runpod or local Docker)**: Start [fine-tuning models](training-tab.md). You can run on Runpod pods or locally via Docker, using the same training script.
+- **⚙️ Reusable training configs**: Use the Training tab's **Configuration** section or "Save current setup" buttons to snapshot full training setups (dataset, hyperparameters, target, and infra). Configs are stored under `src/saved_configs/` and the last one auto-loads on startup.
+- **🧪 Quick Local Inference**: After a successful local run, try the Quick Local Inference panel to sanity-check your adapter with temperature/max token sliders and presets.
 - **📖 Learn More**: Read the [complete GUI guide](gui-overview.md)
 - **🔧 CLI Usage**: Automate workflows with [CLI tools](cli-usage.md)
-- **🧠 Training**: Start [fine-tuning models](training-tab.md)
 - **🔀 Merge**: [Combine multiple datasets](merge-tab.md)
 - **🔐 Authentication**: Set up [Hugging Face and Runpod access](authentication.md)
 

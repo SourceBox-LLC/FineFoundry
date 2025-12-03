@@ -63,7 +63,7 @@ Built with Flet for a fast, native-like UI. Includes:
 - Stack Exchange Q/A scraper (programmatic) for accepted answers.
 - Dataset builder for train/val/test splits with Hugging Face `datasets`, with optional push + dataset card.
 - Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
-- Training via Runpod (managed pods, network volume at /data) or local Docker, with LoRA, packing, auto‑resume, and Hub push.
+- Training via Runpod (managed pods, network volume at /data) or local Docker, with LoRA, packing, auto‑resume, Quick Local Inference, and reusable training configurations.
 
 <a id="contents"></a>
 ## 🧭 Contents
@@ -166,16 +166,24 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 <a id="training-tab"></a>
 ### 🧠 Training tab
 
-- **Dataset source**: select Hugging Face repo and split for training data.
-- **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, Learning rate, Per-device batch size, Grad accum steps, Max steps.
-- **Options**: Use LoRA, Packing, Auto-resume.
-- **Output**: `Output dir` defaults to `/data/outputs/runpod_run`. Optional `Resume from (path)` to continue from a checkpoint.
-- **Push to Hub**: toggle to upload trained weights/adapters; set HF repo id and ensure authentication.
+- **Training target**: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
+- **Dataset source**: select Hugging Face repo and split, or point to a JSON file.
+- **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, LR, Per-device batch size, Grad accum steps, Max steps, Packing, Auto-resume.
+- **Output**: `Output dir` is used inside the container (typically under `/data/outputs/...`) and mapped back into your host folder when using Runpod or local Docker.
+- **Push to Hub**: toggle to upload trained weights/adapters; set HF repo id and ensure authentication (HF token in Settings or env).
 - **Run on Runpod**:
-  - First, ensure infrastructure: create/reuse a Network Volume and a Pod Template. The default mount path is `/data`. Avoid `/workspace` to prevent hiding `train.py` inside the image.
-  - Start training on a pod from the template; checkpoints will appear under `/data/outputs/runpod_run`.
+  - First, ensure infrastructure: create/reuse a Network Volume and a Pod Template. The default mount path is `/data` (avoid `/workspace` to prevent hiding `train.py` baked into the image).
+  - Start training on a pod from the template; checkpoints will appear under `/data/outputs/...` on the volume.
 - **Run locally via Docker**:
-  - Choose a host data directory to mount as `/data`, select image and GPU, then launch. Outputs land in the mounted folder under `outputs/runpod_run`.
+  - Choose a host data directory to mount as `/data`, select image and GPU, optionally pass the HF token into the container, then launch.
+  - Outputs and the trained adapter are written under your mounted host folder (e.g. `.../outputs/local_run`).
+- **Quick Local Inference**:
+  - After a successful local run, a Quick Local Inference panel appears.
+  - Test the trained adapter with prompt input, temperature / max token sliders, presets (Deterministic / Balanced / Creative), and a clear-history button.
+- **Training configurations**:
+  - Save the current setup (dataset, hyperparameters, training target, Runpod infra or local Docker settings) as a JSON config.
+  - Load configs from the **Configuration** section to quickly restore full training setups.
+  - Config files live under `src/saved_configs/`, and the last used config auto-loads on startup.
 
 #### 💡 Training notes & tips
 

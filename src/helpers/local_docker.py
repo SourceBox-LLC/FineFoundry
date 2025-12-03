@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import subprocess
@@ -18,6 +19,8 @@ async def on_docker_pull(
     docker_image_tf: ft.TextField,
     docker_status: ft.Text,
     DEFAULT_DOCKER_IMAGE: str,
+    docker_log_timeline: ft.ListView,
+    docker_log_placeholder: ft.Text,
 ) -> None:
     """Pull a Docker image locally with friendly UX messaging.
 
@@ -25,8 +28,17 @@ async def on_docker_pull(
     """
     img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
     try:
+        try:
+            docker_log_timeline.controls.clear()
+            docker_log_placeholder.visible = True
+        except Exception:
+            pass
         if not shutil.which("docker"):
             docker_status.value = "Docker CLI not found. Please install Docker Desktop and ensure 'docker' is on PATH."
+            try:
+                docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            except Exception:
+                pass
             try:
                 docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
             except Exception:
@@ -55,7 +67,7 @@ async def on_docker_pull(
                     ], spacing=8),
                     bgcolor=getattr(COLORS, "RED_400", getattr(COLORS, "RED", None)),
                 )
-                page.snack_bar.open = True
+                page.open(page.snack_bar)
                 await safe_update(page)
             except Exception:
                 pass
@@ -80,27 +92,87 @@ async def on_docker_pull(
                     docker_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
                 except Exception:
                     pass
-                await safe_update(page)
+                try:
+                    page.snack_bar = ft.SnackBar(ft.Text("Docker image already present locally."))
+                    page.open(page.snack_bar)
+                    await safe_update(page)
+                except Exception:
+                    pass
                 return
         except Exception:
             pass
         # Proceed to pull
         page.snack_bar = ft.SnackBar(ft.Text(f"Pulling {img}..."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
     except Exception:
         pass
     try:
-        res = subprocess.run(["docker", "pull", img], capture_output=True, text=True)
-        if res.returncode == 0:
-            out = (res.stdout or "").strip()
-            docker_status.value = f"Pulled successfully: {img}\n" + (out[-800:] if out else "")
+        # Run the docker pull as an async subprocess and stream logs live into the UI.
+        proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "pull",
+            img,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        out_lines = []
+
+        async def _stream_lines(stream, color):
+            if stream is None:
+                return
             try:
-                docker_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    if isinstance(line, bytes):
+                        txt = line.decode(errors="ignore").rstrip("\n")
+                    else:
+                        txt = str(line).rstrip("\n")
+                    if not txt:
+                        continue
+                    out_lines.append(txt)
+                    try:
+                        docker_log_timeline.controls.append(ft.Text(txt, color=color))
+                        if len(docker_log_timeline.controls) > 200:
+                            docker_log_timeline.controls = docker_log_timeline.controls[-200:]
+                        docker_log_placeholder.visible = False
+                    except Exception:
+                        pass
+                    try:
+                        await safe_update(page)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        color_ok = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+        color_err = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+
+        await asyncio.gather(
+            _stream_lines(proc.stdout, color_ok),
+            _stream_lines(proc.stderr, color_err),
+        )
+        rc = await proc.wait()
+        out = "\n".join(out_lines)
+
+        if rc == 0:
+            docker_status.value = f"Pulled successfully: {img}"
+            try:
+                docker_status.color = color_ok
+            except Exception:
+                pass
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Docker image pulled successfully."))
+                page.open(page.snack_bar)
+                await safe_update(page)
             except Exception:
                 pass
         else:
-            out = (res.stdout or "") + "\n" + (res.stderr or "")
+            # Combine stdout/stderr for diagnostics and hints
+            out = out or ""
             # Friendly hints for common errors
             lower = out.lower()
             hints = []
@@ -144,18 +216,44 @@ async def on_docker_pull(
                     pass
             if "authentication required" in lower or "unauthorized" in lower:
                 hints.append("If this is a private repo, run 'docker login' first.")
-            msg = f"docker pull failed (exit {res.returncode}).\n" + out[-800:]
+            msg = f"docker pull failed (exit {rc}).\n" + out[-800:]
             if hints:
                 msg += "\n\nHints: " + "  •  ".join(hints)
-            docker_status.value = msg
+            docker_status.value = "Docker pull failed – see details in logs."
             try:
                 docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            except Exception:
+                pass
+            try:
+                lines = msg.splitlines()
+                color_err = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                docker_log_timeline.controls = [ft.Text(line, color=color_err) for line in lines[-200:]]
+                docker_log_placeholder.visible = len(docker_log_timeline.controls) == 0
+            except Exception:
+                pass
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Docker pull failed – see details below."))
+                page.open(page.snack_bar)
+                await safe_update(page)
             except Exception:
                 pass
     except Exception as ex:
         docker_status.value = f"Error pulling image: {ex}"
         try:
             docker_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+        except Exception:
+            pass
+        try:
+            lines = [str(ex)]
+            color_err = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            docker_log_timeline.controls = [ft.Text(line, color=color_err) for line in lines]
+            docker_log_placeholder.visible = len(docker_log_timeline.controls) == 0
+        except Exception:
+            pass
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text("Docker pull failed – see details below."))
+            page.open(page.snack_bar)
+            await safe_update(page)
         except Exception:
             pass
     try:

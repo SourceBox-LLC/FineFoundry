@@ -392,9 +392,20 @@ async def run_local_training(
         pass
 
     try:
-        _hf_tok = (hf_token_tf.value or "").strip()
+        # Prefer an explicit token from the text field; fall back to process env
+        _hf_tok = (
+            (hf_token_tf.value or "")
+            or os.environ.get("HF_TOKEN", "")
+            or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
+        ).strip()
         if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
-            run_args += ["-e", f"HUGGING_FACE_HUB_TOKEN={_hf_tok}"]
+            # Match the environment variable names used by huggingface_hub and the Runpod flow
+            run_args += [
+                "-e",
+                f"HF_TOKEN={_hf_tok}",
+                "-e",
+                f"HUGGINGFACE_HUB_TOKEN={_hf_tok}",
+            ]
     except Exception:
         pass
 
@@ -466,6 +477,28 @@ async def run_local_training(
         if rc == 0:
             local_train_status.value = "Training finished (container exited)."
             local_train_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
+            try:
+                out_dir = (hp.get("output_dir") or "").strip()
+                base_model_name = (hp.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
+                host_root = (local_host_dir_tf.value or "").strip()
+                abs_out_dir = ""
+                if out_dir:
+                    if out_dir.startswith("/data"):
+                        rel = out_dir[len("/data"):].lstrip("/")
+                        abs_out_dir = os.path.join(host_root, rel)
+                    else:
+                        abs_out_dir = os.path.join(host_root, out_dir.lstrip("/"))
+                if abs_out_dir:
+                    adapter_path = os.path.join(abs_out_dir, "adapter")
+                    try:
+                        train_state.setdefault("local_infer", {})
+                        train_state["local_infer"]["adapter_path"] = adapter_path
+                        train_state["local_infer"]["base_model"] = base_model_name
+                        train_state["local_infer"]["model_loaded"] = False
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         elif rc == 137:
             local_train_status.value = (
                 "Container exited with code 137. Likely out-of-memory (OOM) or killed (SIGKILL).\n"

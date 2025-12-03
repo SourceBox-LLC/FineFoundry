@@ -29,7 +29,10 @@ def build_local_specs_container(
     # Docker pull controls
     docker_image_tf: ft.TextField,
     docker_pull_btn: ft.ElevatedButton,
+    docker_pull_ring: ft.ProgressRing,
     docker_status: ft.Text,
+    docker_log_timeline: ft.ListView,
+    docker_log_placeholder: ft.Text,
     refresh_specs_click_cb,
     # Local docker run controls
     local_host_dir_tf: ft.TextField,
@@ -45,6 +48,8 @@ def build_local_specs_container(
     local_start_btn: ft.ElevatedButton,
     local_stop_btn: ft.OutlinedButton,
     local_train_status: ft.Text,
+    local_infer_group_container: ft.Container,
+    local_save_config_btn: ft.OutlinedButton,
     mk_help_handler,
 ) -> ft.Container:
     return ft.Container(
@@ -78,8 +83,16 @@ def build_local_specs_container(
                                 "Pull a Docker image locally for training tasks.",
                                 on_help_click=mk_help_handler("Use Docker Desktop. This pulls the image to your machine."),
                             ),
-                            ft.Row([docker_image_tf, docker_pull_btn], wrap=True, spacing=10),
+                            ft.Row([docker_image_tf, docker_pull_btn, docker_pull_ring], wrap=True, spacing=10),
                             docker_status,
+                            ft.Container(
+                                ft.Stack([docker_log_timeline, docker_log_placeholder], expand=True),
+                                height=180,
+                                width=1000,
+                                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                                border_radius=8,
+                                padding=10,
+                            ),
                             ft.Row([
                                 ft.OutlinedButton("Refresh specs", icon=REFRESH_ICON, on_click=refresh_specs_click_cb),
                             ], wrap=True),
@@ -101,8 +114,9 @@ def build_local_specs_container(
                                 border_radius=8,
                                 padding=10,
                             ),
-                            ft.Row([local_start_btn, local_stop_btn], spacing=10, wrap=True),
+                            ft.Row([local_start_btn, local_stop_btn, local_save_config_btn], spacing=10, wrap=True),
                             local_train_status,
+                            local_infer_group_container,
                         ], spacing=6),
                         width=1000,
                         border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),

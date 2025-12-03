@@ -52,6 +52,8 @@ def build_build_tab(
     # Status
     timeline,
     timeline_placeholder,
+    # Optional ref to Status section container for visibility control
+    status_section_ref=None,
 ) -> ft.Container:
     dataset_params = build_dataset_params_section(
         section_title=section_title,
@@ -112,14 +114,21 @@ def build_build_tab(
         timeline_placeholder=timeline_placeholder,
     )
 
+    # Expose status section container to caller (e.g., to control visibility)
+    try:
+        if status_section_ref is not None:
+            status_section_ref["control"] = status_section
+    except Exception:
+        pass
+
     return ft.Container(
         content=ft.Column([
             ft.Row([
                 ft.Container(
                     content=ft.Column([
                         dataset_params,
-                        push_section,
                         model_card_section,
+                        push_section,
                         status_section,
                     ], spacing=12),
                     width=1000,

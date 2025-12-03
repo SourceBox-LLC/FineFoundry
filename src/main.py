@@ -7,6 +7,7 @@ import json
 import httpx
 import re
 from collections import Counter
+from datetime import datetime
 
 
 import flet as ft
@@ -30,6 +31,12 @@ try:
 except Exception:
     load_dataset = None
     get_dataset_config_names = None
+
+# Hugging Face Hub client (used in Settings HF token test)
+try:  # pragma: no cover - optional dependency
+    from huggingface_hub import HfApi
+except Exception:  # pragma: no cover
+    HfApi = None  # type: ignore
 
 from helpers.common import safe_update, set_terminal_title
 from helpers.logging_config import get_logger
@@ -66,6 +73,7 @@ from helpers.training import (
     stop_local_training as stop_local_training_helper,
     build_hp_from_controls as build_hp_from_controls_helper,
 )
+from helpers.local_inference import generate_text as local_infer_generate_text_helper
 from helpers.training_pod import (
     run_pod_training as run_pod_training_helper,
     restart_pod_container as restart_pod_container_helper,
@@ -119,6 +127,8 @@ from helpers.training_config import (
     list_saved_configs as list_saved_configs_helper,
     read_json_file as read_json_file_helper,
     validate_config as validate_config_helper,
+    get_last_used_config_name as get_last_used_config_name_helper,
+    set_last_used_config_name as set_last_used_config_name_helper,
 )
 from helpers.settings_ollama import (
     load_config as load_ollama_config_helper,
@@ -169,25 +179,90 @@ def main(page: ft.Page):
         # Soft-refresh the app: clear overlays/controls and rebuild the UI
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Refreshing app..."))
-            page.snack_bar.open = True
-            page.update()
+            page.open(page.snack_bar)
         except Exception:
             pass
+
+    async def on_save_current_config():
         try:
-            page.dialog = None
-            page.overlay.clear()
-        except Exception:
-            pass
+            payload = _build_config_payload_from_ui()
+        except Exception as ex:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to build config from UI: {ex}"))
+                page.snack_bar.open = True
+                await safe_update(page)
+            except Exception:
+                pass
+            return
         try:
-            page.controls.clear()
-            page.appbar = None
-            page.update()
+            default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(payload.get('hp', {}).get('base_model','model')).replace('/', '_')}.json"
         except Exception:
-            pass
+            default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        name_tf = ft.TextField(label="Save as", value=default_name, width=420)
+
+        def _do_save(_=None):
+            try:
+                name = (name_tf.value or default_name).strip()
+                if not name:
+                    return
+                d = _saved_configs_dir()
+                path = os.path.join(d, name if name.endswith('.json') else f"{name}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=2, ensure_ascii=False)
+                    f.write("\n")
+                try:
+                    set_last_used_config_name_helper(os.path.basename(path))
+                except Exception:
+                    pass
+                try:
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
+                    page.snack_bar.open = True
+                except Exception:
+                    pass
+                try:
+                    _refresh_config_list()
+                except Exception:
+                    pass
+                try:
+                    dlg.open = False
+                    page.update()
+                except Exception:
+                    pass
+            except Exception as ex:
+                try:
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Failed to save config: {ex}"))
+                    page.snack_bar.open = True
+                except Exception:
+                    pass
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(getattr(ICONS, "SAVE_ALT", ICONS.SAVE), color=ACCENT_COLOR),
+                ft.Text("Save current training setup"),
+            ], alignment=ft.MainAxisAlignment.START),
+            content=ft.Column([
+                ft.Text("This will snapshot the current dataset, hyperparameters, target, and local/Runpod settings."),
+                name_tf,
+            ], tight=True, spacing=6),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (setattr(dlg, "open", False), page.update())),
+                ft.ElevatedButton("Save", icon=getattr(ICONS, "SAVE", ICONS.CHECK), on_click=_do_save),
+            ],
+        )
         try:
-            main(page)
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(dlg)
+            else:
+                page.dialog = dlg
+                dlg.open = True
         except Exception:
-            pass
+            try:
+                page.dialog = dlg
+                dlg.open = True
+            except Exception:
+                pass
+        await safe_update(page)
 
     # In-app User Guide (opens a detailed, scrollable modal)
     def open_user_guide(_):
@@ -195,8 +270,7 @@ def main(page: ft.Page):
             # Immediate feedback to verify click wiring
             try:
                 page.snack_bar = ft.SnackBar(ft.Text("Opening user guide..."))
-                page.snack_bar.open = True
-                page.update()
+                page.open(page.snack_bar)
             except Exception:
                 pass
 
@@ -235,14 +309,32 @@ Tabs:
 - Save merged JSON or build a `datasets.DatasetDict`.
 
 ## Training
-- Default base: `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`.
-- LoRA: parameter‑efficient fine‑tuning for consumer GPUs.
-- Packing: concatenate short samples to improve throughput.
-- Grad accumulation: lower per‑device batch, increase accumulation to fit memory.
-- Resume: Auto‑resume or explicit `Resume from (path)`.
-- Outputs & checkpoints: saved under Output dir. On Runpod, use `/data/...`.
-- Push to Hub: requires valid auth and repo permissions.
-- Alternative: use Hugging Face AutoTrain Web (independent of these settings).
+- Training target: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
+- Hyperparameters: base model, epochs, learning rate, batch size, grad accumulation, max steps, packing, resume.
+- Outputs & checkpoints: saved under **Output dir**. For containers, use paths under `/data/...` so they map back into your mounted host folder.
+- Hugging Face auth: save a token in **Settings → Hugging Face** or export `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN`. Required for pushing models or using private datasets.
+
+### Local Training (Docker)
+- Requires Docker Desktop / `docker` CLI available on your machine.
+- Set **Host data dir** to a folder on your machine; it will be mounted at `/data` inside the container.
+- Configure image, container name, GPU usage, and whether to **Pass HF token to container** (for private datasets / `--push`).
+- Click **Start Local Training** to run the same `train.py` command used for Runpod, but inside a local container.
+- After a successful local run, a **Quick Local Inference** panel appears so you can test the trained adapter immediately.
+
+### Quick Local Inference
+- Loads the base model and LoRA adapter from your last successful local training run.
+- Controls: prompt box, **Generate** button, temperature slider, max tokens slider, presets (Deterministic / Balanced / Creative), **Clear history**, and inline model info.
+- Useful for quick sanity checks of a new run without leaving the app.
+
+### Configuration (save / load setups)
+- Mode:
+  - **Normal**: edit dataset + hyperparameters directly.
+  - **Configuration**: pick a saved config and run with minimal inputs.
+- Use **Save current setup** (in the Configuration section or near the training controls) to snapshot:
+  - Dataset + hyperparameters
+  - Training target (Runpod or local)
+  - Runpod infrastructure or local Docker settings
+- Saved configs are simple JSON files under `src/saved_configs/`. The last used config auto‑loads on startup so you can continue where you left off.
 
 ## Dataset Analysis
 - Select dataset source (HF or JSON) and click **Analyze dataset**.
@@ -329,8 +421,7 @@ Tabs:
         except Exception as e:
             try:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Failed to open guide: {e}"))
-                page.snack_bar.open = True
-                page.update()
+                page.open(page.snack_bar)
             except Exception:
                 pass
 
@@ -397,8 +488,7 @@ Tabs:
             except Exception:
                 try:
                     page.snack_bar = ft.SnackBar(ft.Text(text))
-                    page.snack_bar.open = True
-                    page.update()
+                    page.open(page.snack_bar)
                 except Exception:
                     pass
         return _handler
@@ -484,9 +574,17 @@ Tabs:
         is_se = (src == "stackexchange")
         # Boards area (4chan only)
         try:
-            boards_wrap.visible = not (is_reddit or is_se)
-            board_actions.visible = not (is_reddit or is_se)
-            board_warning.visible = not (is_reddit or is_se)
+            is_4chan = not (is_reddit or is_se)
+            boards_wrap.visible = is_4chan
+            board_actions.visible = is_4chan
+            board_warning.visible = is_4chan
+            # Hide the entire 4chan Boards section when source is not 4chan
+            try:
+                ctl = boards_section_ref.get("control")
+                if ctl is not None:
+                    ctl.visible = is_4chan
+            except Exception:
+                pass
         except Exception:
             pass
         # Reddit params
@@ -555,21 +653,73 @@ Tabs:
     use_env_cb.on_change = update_proxy_controls
     update_proxy_controls()
 
+    # Shared unified settings file for Hugging Face, Runpod, and Ollama
+    SETTINGS_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ff_settings.json")
+    _HF_LEGACY_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "hf_config.json")
+    _RUNPOD_LEGACY_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "runpod_config.json")
+    _OLLAMA_LEGACY_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ollama_config.json")
+
+    def _load_settings_file() -> dict:
+        try:
+            with open(SETTINGS_CFG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f) or {}
+        except Exception:
+            data: dict = {}
+            # Best-effort migration from legacy per-service config files
+            try:
+                with open(_HF_LEGACY_CFG_PATH, "r", encoding="utf-8") as f:
+                    hf_cfg = json.load(f) or {}
+                tok = (hf_cfg.get("token") or "").strip()
+                if tok:
+                    data.setdefault("huggingface", {})["token"] = tok
+            except Exception:
+                pass
+            try:
+                with open(_RUNPOD_LEGACY_CFG_PATH, "r", encoding="utf-8") as f:
+                    rp_cfg = json.load(f) or {}
+                key = (rp_cfg.get("api_key") or "").strip()
+                if key:
+                    data.setdefault("runpod", {})["api_key"] = key
+            except Exception:
+                pass
+            try:
+                with open(_OLLAMA_LEGACY_CFG_PATH, "r", encoding="utf-8") as f:
+                    ollama_cfg = json.load(f) or {}
+                if isinstance(ollama_cfg, dict) and ollama_cfg:
+                    data["ollama"] = ollama_cfg
+            except Exception:
+                pass
+            return data
+
+    def _save_settings_file(data: dict) -> None:
+        try:
+            with open(SETTINGS_CFG_PATH, "w", encoding="utf-8") as f:
+                json.dump(data or {}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     # ---------- SETTINGS (Hugging Face) CONTROLS ----------
-    HF_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "hf_config.json")
 
     def _load_hf_config() -> dict:
         try:
-            with open(HF_CFG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f) or {}
+            all_cfg = _load_settings_file()
+            hf_cfg = all_cfg.get("huggingface") or {}
         except Exception:
-            cfg = {}
-        return {"token": (cfg.get("token") or "")}
+            hf_cfg = {}
+        return {"token": (hf_cfg.get("token") or "")}
 
     def _save_hf_config(cfg: dict):
         try:
-            with open(HF_CFG_PATH, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
+            all_cfg = _load_settings_file()
+            if not isinstance(all_cfg, dict):
+                all_cfg = {}
+            tok = (cfg.get("token") or "").strip()
+            section = all_cfg.get("huggingface") or {}
+            if not isinstance(section, dict):
+                section = {}
+            section["token"] = tok
+            all_cfg["huggingface"] = section
+            _save_settings_file(all_cfg)
         except Exception:
             pass
 
@@ -616,7 +766,7 @@ Tabs:
         if not tok:
             try:
                 page.snack_bar = ft.SnackBar(ft.Text("Enter a token to save"))
-                page.snack_bar.open = True
+                page.open(page.snack_bar)
             except Exception:
                 pass
             return
@@ -639,20 +789,27 @@ Tabs:
     hf_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_hf)
 
     # ---------- SETTINGS (Runpod) CONTROLS ----------
-    RUNPOD_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "runpod_config.json")
 
     def _load_runpod_config() -> dict:
         try:
-            with open(RUNPOD_CFG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f) or {}
+            all_cfg = _load_settings_file()
+            rp_cfg = all_cfg.get("runpod") or {}
         except Exception:
-            cfg = {}
-        return {"api_key": (cfg.get("api_key") or "")}
+            rp_cfg = {}
+        return {"api_key": (rp_cfg.get("api_key") or "")}
 
     def _save_runpod_config(cfg: dict):
         try:
-            with open(RUNPOD_CFG_PATH, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
+            all_cfg = _load_settings_file()
+            if not isinstance(all_cfg, dict):
+                all_cfg = {}
+            key = (cfg.get("api_key") or "").strip()
+            section = all_cfg.get("runpod") or {}
+            if not isinstance(section, dict):
+                section = {}
+            section["api_key"] = key
+            all_cfg["runpod"] = section
+            _save_settings_file(all_cfg)
         except Exception:
             pass
 
@@ -712,7 +869,7 @@ Tabs:
         if not key:
             try:
                 page.snack_bar = ft.SnackBar(ft.Text("Enter a key to save"))
-                page.snack_bar.open = True
+                page.open(page.snack_bar)
             except Exception:
                 pass
             return
@@ -788,7 +945,7 @@ Tabs:
         save_ollama_config_helper(cfg)
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Ollama settings saved"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
         except Exception:
             pass
         page.update()
@@ -813,6 +970,12 @@ Tabs:
         disabled=False,
     )
 
+    # Refs to top-level sections so we can toggle visibility from state helpers
+    boards_section_ref = {}
+    progress_section_ref = {}
+    log_section_ref = {}
+    preview_section_ref = {}
+
     def update_board_validation():
         # If scraping 4chan, enforce board selection; Reddit/StackExchange don't require boards
         if source_dd.value in ("reddit", "stackexchange"):
@@ -826,8 +989,34 @@ Tabs:
 
     def update_scrape_placeholders():
         try:
-            log_placeholder.visible = len(getattr(log_list, "controls", []) or []) == 0
-            preview_placeholder.visible = len(getattr(preview_host, "controls", []) or []) == 0
+            has_logs = len(getattr(log_list, "controls", []) or []) > 0
+            has_preview = len(getattr(preview_host, "controls", []) or []) > 0
+            has_progress = bool(working_ring.visible) or ((scrape_prog.value or 0) > 0)
+            # Stack-level placeholders inside sections
+            log_placeholder.visible = not has_logs
+            preview_placeholder.visible = not has_preview
+            # Section-level visibility via refs from tab_scrape
+            try:
+                ctl = progress_section_ref.get("control")
+                if ctl is not None:
+                    # Progress only needed once a scrape has started (and remains after)
+                    ctl.visible = has_progress
+            except Exception:
+                pass
+            try:
+                ctl = log_section_ref.get("control")
+                if ctl is not None:
+                    # Live Log only visible while a scrape is actively running
+                    ctl.visible = bool(working_ring.visible)
+            except Exception:
+                pass
+            try:
+                ctl = preview_section_ref.get("control")
+                if ctl is not None:
+                    # Preview visible only after run completes and we have something to show
+                    ctl.visible = (not bool(working_ring.visible)) and has_preview
+            except Exception:
+                pass
         except Exception:
             pass
         page.update()
@@ -850,7 +1039,7 @@ Tabs:
         selected_boards = [p.data.get("label") for p in board_pills if p.data and p.data.get("selected")]
         if source_dd.value == "4chan" and not selected_boards:
             page.snack_bar = ft.SnackBar(ft.Text("Select at least one board to scrape."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -903,6 +1092,8 @@ Tabs:
         except Exception:
             pass
         await safe_update(page)
+        # Now that we have at least one log entry, hide the 'No logs yet' placeholder
+        update_scrape_placeholders()
 
         # Disable Start while running
         start_button.disabled = True
@@ -982,6 +1173,14 @@ Tabs:
                     ui_use_env_proxies=bool(use_env_cb.value),
                     dataset_format=(dataset_format_dd.value or "ChatML"),
                 )
+        except Exception as e:
+            try:
+                log_list.controls.append(ft.Text(f"Scrape failed: {e}"))
+            except Exception:
+                pass
+            page.snack_bar = ft.SnackBar(ft.Text(f"Scrape failed: {e}"))
+            page.open(page.snack_bar)
+            await safe_update(page)
         finally:
             start_button.disabled = False
             start_button.text = "Start"
@@ -1030,7 +1229,7 @@ Tabs:
         """Open a modal dialog showing the full dataset from the output JSON path."""
         # Immediate feedback that the click was received
         page.snack_bar = ft.SnackBar(ft.Text("Opening dataset preview..."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
 
         # Resolve dataset path robustly (supports launching app from different CWDs)
@@ -1056,7 +1255,7 @@ Tabs:
             page.snack_bar = ft.SnackBar(ft.Text(
                 "Dataset file not found. Tried:\n" + "\n".join(resolved_list[:4])
             ))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -1068,7 +1267,7 @@ Tabs:
                 raise ValueError("Expected a JSON list of records")
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to open {existing}: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -1218,7 +1417,7 @@ Tabs:
             page.snack_bar = ft.SnackBar(ft.Text(
                 "Dataset file not found. Tried:\n" + "\n".join(resolved_list[:4])
             ))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -1227,7 +1426,7 @@ Tabs:
             raw_text = await asyncio.to_thread(lambda: open(existing, "r", encoding="utf-8").read())
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to read {existing}: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -1360,7 +1559,13 @@ Tabs:
         preview_area=preview_area,
         handle_preview_click=handle_preview_click,
         handle_raw_preview_click=handle_raw_preview_click,
+        boards_section_ref=boards_section_ref,
+        progress_section_ref=progress_section_ref,
+        log_section_ref=log_section_ref,
+        preview_section_ref=preview_section_ref,
     )
+    # Ensure initial visibility matches idle state (no logs or preview yet)
+    update_scrape_placeholders()
     # Data source and processing controls
     data_file = ft.TextField(label="Data file (JSON)", value="scraped_training_data.json", width=360)
     merged_dir = ft.TextField(label="Merged dataset dir", value="merged_dataset", width=240)
@@ -1428,6 +1633,7 @@ Tabs:
     # Timeline (scrollable)
     timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
     timeline_placeholder = make_empty_placeholder("No status yet", ICONS.TASK)
+    status_section_ref = {}
 
     cancel_build = {"cancelled": False}
     dd_ref = {"dd": None}
@@ -1605,18 +1811,18 @@ Specify license and any restrictions.
         _update_preview()
         page.update()
 
-    async def _on_generate_from_dataset(_):
+    async def _on_generate_from_dataset():
         # Generate using current built dataset (if available)
         dd = dd_ref.get("dd")
         if dd is None:
             page.snack_bar = ft.SnackBar(ft.Text("Build the dataset first to generate a default card."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
         rid = (repo_id.value or "").strip()
         if not rid:
             page.snack_bar = ft.SnackBar(ft.Text("Enter Repo ID to generate a default card."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
         try:
@@ -1628,17 +1834,17 @@ Specify license and any restrictions.
             await safe_update(page)
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to generate card: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
 
     ollama_gen_status = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
 
-    async def _on_generate_with_ollama(_):
+    async def _on_generate_with_ollama():
         # Generate using Ollama from the selected data file (JSON list of {input,output})
         try:
             if not bool(ollama_enable_cb.value):
                 page.snack_bar = ft.SnackBar(ft.Text("Enable Ollama in Settings first."))
-                page.snack_bar.open = True
+                page.open(page.snack_bar)
                 await safe_update(page)
                 return
         except Exception:
@@ -1649,7 +1855,7 @@ Specify license and any restrictions.
         model_name = (ollama_models_dd.value or cfg.get("selected_model") or cfg.get("default_model") or "").strip()
         if not model_name:
             page.snack_bar = ft.SnackBar(ft.Text("Select an Ollama model in Settings."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -1658,13 +1864,13 @@ Specify license and any restrictions.
             records = await asyncio.to_thread(sd.load_records, path)
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to load data file: {e}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
         if not isinstance(records, list) or len(records) == 0:
             page.snack_bar = ft.SnackBar(ft.Text("Data file is empty or invalid (expected list of records)."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -1727,7 +1933,7 @@ Specify license and any restrictions.
         except Exception as e:
             ollama_gen_status.value = f"Ollama generation failed: {e}"
             page.snack_bar = ft.SnackBar(ft.Text(ollama_gen_status.value))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
 
     load_template_btn = ft.TextButton("Load simple template", icon=ICONS.ARTICLE, on_click=_on_load_simple_template)
@@ -1737,7 +1943,14 @@ Specify license and any restrictions.
 
     def update_status_placeholder():
         try:
-            timeline_placeholder.visible = len(getattr(timeline, "controls", []) or []) == 0
+            has_entries = len(getattr(timeline, "controls", []) or []) > 0
+            timeline_placeholder.visible = not has_entries
+            try:
+                ctl = status_section_ref.get("control")
+                if ctl is not None:
+                    ctl.visible = has_entries
+            except Exception:
+                pass
         except Exception:
             pass
         page.update()
@@ -1783,6 +1996,7 @@ Specify license and any restrictions.
             use_custom_card=use_custom_card,
             card_editor=card_editor,
             hf_cfg_token=hf_cfg_token,
+            update_status_placeholder=update_status_placeholder,
         )
 
     async def on_push_async():
@@ -1854,7 +2068,9 @@ Specify license and any restrictions.
         card_preview_container=card_preview_container,
         timeline=timeline,
         timeline_placeholder=timeline_placeholder,
+        status_section_ref=status_section_ref,
     )
+    update_status_placeholder()
 
 
     # ---------- MERGE DATASETS TAB ----------
@@ -1982,14 +2198,32 @@ Specify license and any restrictions.
     merge_timeline_placeholder = make_empty_placeholder("No status yet", ICONS.TASK)
     merge_preview_host = ft.ListView(expand=1, auto_scroll=False)
     merge_preview_placeholder = make_empty_placeholder("Preview not available", ICONS.PREVIEW)
+    merge_status_section_ref = {}
+    merge_preview_section_ref = {}
 
     merge_cancel = {"cancelled": False}
     merge_busy_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
 
     def update_merge_placeholders():
         try:
-            merge_timeline_placeholder.visible = len(getattr(merge_timeline, "controls", []) or []) == 0
-            merge_preview_placeholder.visible = len(getattr(merge_preview_host, "controls", []) or []) == 0
+            has_status = len(getattr(merge_timeline, "controls", []) or []) > 0
+            has_preview = len(getattr(merge_preview_host, "controls", []) or []) > 0
+            # Stack-level placeholders
+            merge_timeline_placeholder.visible = not has_status
+            merge_preview_placeholder.visible = not has_preview
+            # Section-level visibility via refs from tab_merge
+            try:
+                ctl = merge_status_section_ref.get("control")
+                if ctl is not None:
+                    ctl.visible = has_status
+            except Exception:
+                pass
+            try:
+                ctl = merge_preview_section_ref.get("control")
+                if ctl is not None:
+                    ctl.visible = has_preview
+            except Exception:
+                pass
         except Exception:
             pass
         page.update()
@@ -2011,6 +2245,7 @@ Specify license and any restrictions.
             merge_cancel=merge_cancel,
             merge_busy_ring=merge_busy_ring,
             download_button=download_merged_button,
+            update_merge_placeholders=update_merge_placeholders,
         )
 
 
@@ -2041,8 +2276,14 @@ Specify license and any restrictions.
     def handle_merge_preview_click(_):
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Opening merged dataset preview..."))
-            page.snack_bar.open = True
-            page.update()
+            page.open(page.snack_bar)
+            await_safe = False
+            try:
+                await_safe = hasattr(page, "update")
+            except Exception:
+                await_safe = False
+            if await_safe:
+                page.update()
         except Exception:
             pass
         # Use scheduler utility for consistency
@@ -2098,7 +2339,7 @@ Specify license and any restrictions.
         if not existing:
             logger.error(f"Merged dataset not found. Searched: {orig_dir}")
             page.snack_bar = ft.SnackBar(ft.Text(f"Merged dataset not found. Searched: {orig_dir}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
 
@@ -2124,13 +2365,13 @@ Specify license and any restrictions.
                 logger.info(f"Directory copy successful: {dest_path}")
 
             page.snack_bar = ft.SnackBar(ft.Text(msg))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
         except Exception as e:
             logger.error(f"Download failed - Source: {existing}, Dest: {dest_path}", exc_info=True)
             error_details = f"Download failed: {str(e)}"
             page.snack_bar = ft.SnackBar(ft.Text(error_details))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
 
     async def handle_download_result(e: ft.FilePickerResultEvent):
@@ -2174,7 +2415,10 @@ Specify license and any restrictions.
         merge_timeline=merge_timeline,
         merge_timeline_placeholder=merge_timeline_placeholder,
         download_button=download_merged_button,
+        preview_section_ref=merge_preview_section_ref,
+        status_section_ref=merge_status_section_ref,
     )
+    update_merge_placeholders()
 
 
     # ---------- TRAINING TAB ----------
@@ -2418,6 +2662,11 @@ Specify license and any restrictions.
         "Load Config",
         icon=getattr(ICONS, "FILE_OPEN", getattr(ICONS, "FOLDER_OPEN", ICONS.UPLOAD)),
     )
+    config_save_current_btn = ft.ElevatedButton(
+        "Save Current",
+        icon=getattr(ICONS, "SAVE", ICONS.CHECK),
+        tooltip="Save the current training setup as a reusable config",
+    )
     config_edit_btn = ft.TextButton(
         "Edit",
         icon=getattr(ICONS, "EDIT", getattr(ICONS, "MODE_EDIT", ICONS.SETTINGS)),
@@ -2439,7 +2688,15 @@ Specify license and any restrictions.
     config_summary_txt = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
     # Container for file controls (visibility toggled by mode)
     config_files_row = ft.Row(
-        [config_files_dd, config_refresh_btn, load_config_btn, config_edit_btn, config_rename_btn, config_delete_btn],
+        [
+            config_files_dd,
+            config_refresh_btn,
+            load_config_btn,
+            config_save_current_btn,
+            config_edit_btn,
+            config_rename_btn,
+            config_delete_btn,
+        ],
         wrap=True,
     )
 
@@ -2448,6 +2705,31 @@ Specify license and any restrictions.
 
     def _list_saved_configs() -> List[str]:
         return list_saved_configs_helper(_saved_configs_dir())
+
+
+    def _collect_local_ui_state() -> dict:
+        data: dict = {}
+        try:
+            data["host_dir"] = (local_host_dir_tf.value or "")
+        except Exception:
+            data["host_dir"] = ""
+        try:
+            data["container_name"] = (local_container_name_tf.value or "")
+        except Exception:
+            data["container_name"] = ""
+        try:
+            data["docker_image"] = (docker_image_tf.value or "")
+        except Exception:
+            data["docker_image"] = ""
+        try:
+            data["use_gpu"] = bool(getattr(local_use_gpu_cb, "value", False))
+        except Exception:
+            data["use_gpu"] = False
+        try:
+            data["pass_hf_token"] = bool(getattr(local_pass_hf_token_cb, "value", False))
+        except Exception:
+            data["pass_hf_token"] = False
+        return data
 
     def _update_config_buttons_enabled(_=None):
         try:
@@ -2479,6 +2761,44 @@ Specify license and any restrictions.
 
     def _validate_config(conf: dict) -> Tuple[bool, str]:
         return validate_config_helper(conf)
+
+
+    def _build_config_payload_from_ui() -> dict:
+        hp = _build_hp() or {}
+        try:
+            tgt = train_target_dd.value or "Runpod - Pod"
+        except Exception:
+            tgt = "Runpod - Pod"
+        meta = {
+            "skill_level": skill_level.value,
+            "beginner_mode": beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else "",
+            "train_target": tgt,
+        }
+        payload: dict = {"hp": hp, "meta": meta}
+        # Include Runpod infra UI when on Runpod target
+        try:
+            if (tgt or "").lower().startswith("runpod - pod"):
+                payload["infra_ui"] = {
+                    "dc": (rp_dc_tf.value or "US-NC-1"),
+                    "vol_name": (rp_vol_name_tf.value or "unsloth-volume"),
+                    "vol_size": int(float(rp_vol_size_tf.value or "50")),
+                    "resize_if_smaller": bool(getattr(rp_resize_cb, "value", True)),
+                    "tpl_name": (rp_tpl_name_tf.value or "unsloth-trainer-template"),
+                    "image": (rp_image_tf.value or "docker.io/sbussiso/unsloth-trainer:latest"),
+                    "container_disk": int(float(rp_container_disk_tf.value or "30")),
+                    "pod_volume_gb": int(float(rp_volume_in_gb_tf.value or "0")),
+                    "mount_path": (rp_mount_path_tf.value or "/data"),
+                    "category": (rp_category_tf.value or "NVIDIA"),
+                    "public": bool(getattr(rp_public_cb, "value", False)),
+                }
+        except Exception:
+            pass
+        # Always include local UI so configs are reusable for local runs too
+        try:
+            payload["local_ui"] = _collect_local_ui_state()
+        except Exception:
+            pass
+        return payload
 
     def _apply_config_to_ui(conf: dict) -> None:
         if not isinstance(conf, dict):
@@ -2532,6 +2852,17 @@ Specify license and any restrictions.
                         train_state["suppress_skill_defaults"] = False
                     except Exception:
                         pass
+            # training target (Runpod vs local)
+            try:
+                tgt = str(meta.get("train_target") or "").strip()
+                if tgt:
+                    train_target_dd.value = tgt
+                    try:
+                        _update_training_target()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         except Exception:
             pass
         # infra UI
@@ -2548,6 +2879,31 @@ Specify license and any restrictions.
             rp_mount_path_tf.value = iu.get("mount_path", rp_mount_path_tf.value)
             rp_category_tf.value = iu.get("category", rp_category_tf.value)
             rp_public_cb.value = bool(iu.get("public", rp_public_cb.value))
+        except Exception:
+            pass
+        # local UI (local Docker training settings)
+        try:
+            lu = conf.get("local_ui") or {}
+            try:
+                local_host_dir_tf.value = lu.get("host_dir", local_host_dir_tf.value)
+            except Exception:
+                pass
+            try:
+                local_container_name_tf.value = lu.get("container_name", local_container_name_tf.value)
+            except Exception:
+                pass
+            try:
+                docker_image_tf.value = lu.get("docker_image", docker_image_tf.value)
+            except Exception:
+                pass
+            try:
+                local_use_gpu_cb.value = bool(lu.get("use_gpu", getattr(local_use_gpu_cb, "value", False)))
+            except Exception:
+                pass
+            try:
+                local_pass_hf_token_cb.value = bool(lu.get("pass_hf_token", getattr(local_pass_hf_token_cb, "value", False)))
+            except Exception:
+                pass
         except Exception:
             pass
         # summary
@@ -2596,6 +2952,10 @@ Specify license and any restrictions.
         train_state["loaded_config"] = conf
         try:
             train_state["loaded_config_name"] = name
+        except Exception:
+            pass
+        try:
+            set_last_used_config_name_helper(name)
         except Exception:
             pass
         _apply_config_to_ui(conf)
@@ -3528,6 +3888,12 @@ Specify license and any restrictions.
         disabled=True,
         tooltip="Copies an SSH command for this pod to your clipboard.",
     )
+    save_config_bottom_btn = ft.TextButton(
+        "Save current setup",
+        icon=getattr(ICONS, "SAVE", ICONS.CHECK),
+        tooltip="Save the current training setup (dataset, hyperparameters, target, and infra) as a reusable config.",
+        on_click=lambda e: page.run_task(on_save_current_config),
+    )
     train_actions = ft.Row([
         start_train_btn,
         stop_train_btn,
@@ -3537,6 +3903,7 @@ Specify license and any restrictions.
         open_web_terminal_btn,
         copy_ssh_btn,
         auto_terminate_cb,
+        save_config_bottom_btn,
     ], spacing=10)
 
     # ---------- Teardown Section (Volume/Template/Pod) ----------
@@ -3686,6 +4053,12 @@ Specify license and any restrictions.
     def _update_mode_visibility(_=None):
         mode = (config_mode_dd.value or "Normal").lower()
         is_cfg = mode.startswith("config")
+        # Determine whether the current training target is Runpod or local
+        try:
+            tgt_val = (train_target_dd.value or "Runpod - Pod").lower()
+            is_pod_target = tgt_val.startswith("runpod - pod")
+        except Exception:
+            is_pod_target = True
         try:
             config_files_row.visible = is_cfg
             # Keep rename/delete buttons in sync with selection when toggling mode
@@ -3696,8 +4069,9 @@ Specify license and any restrictions.
         try:
             dataset_section.visible = (not is_cfg)
             train_params_section.visible = (not is_cfg)
-            rp_infra_panel.visible = (not is_cfg)
-            rp_infra_compact_row.visible = is_cfg
+            # Runpod infrastructure UI is only meaningful for Runpod target
+            rp_infra_panel.visible = (not is_cfg) and is_pod_target
+            rp_infra_compact_row.visible = is_cfg and is_pod_target
             # Hide the grouped wrapper entirely in Config mode (Runpod)
             try:
                 ds_tp_group_container.visible = (not is_cfg)
@@ -3727,10 +4101,25 @@ Specify license and any restrictions.
     config_files_dd.on_change = _update_config_buttons_enabled
     config_refresh_btn.on_click = _refresh_config_list
     load_config_btn.on_click = lambda e: page.run_task(on_load_config)
+    config_save_current_btn.on_click = lambda e: page.run_task(on_save_current_config)
     config_edit_btn.on_click = lambda e: page.run_task(on_edit_config)
     config_rename_btn.on_click = lambda e: page.run_task(on_rename_config)
     config_delete_btn.on_click = lambda e: page.run_task(on_delete_config)
     _refresh_config_list()
+    # Auto-load last used config on startup if available
+    try:
+        last_name = get_last_used_config_name_helper()
+    except Exception:
+        last_name = None
+    try:
+        if last_name:
+            opts = getattr(config_files_dd, "options", []) or []
+            keys = {getattr(o, "key", None) or getattr(o, "text", "") for o in opts}
+            if last_name in keys:
+                config_files_dd.value = last_name
+                schedule_task(on_load_config)
+    except Exception:
+        pass
     # Ensure initial visibility matches the selected mode
     _update_mode_visibility()
 
@@ -3768,6 +4157,12 @@ Specify license and any restrictions.
         hint_text="e.g., repo/image:tag",
     )
     docker_status = ft.Text("")
+    docker_log_timeline = ft.ListView(expand=True, spacing=4, auto_scroll=True)
+    docker_log_placeholder = ft.Text(
+        "Docker pull logs will appear here after starting a pull.",
+        color=WITH_OPACITY(0.5, BORDER_BASE),
+    )
+    docker_pull_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
     docker_pull_btn = ft.ElevatedButton(
         "Pull image",
         icon=getattr(ICONS, "CLOUD_DOWNLOAD", getattr(ICONS, "DOWNLOAD", ICONS.CLOUD)),
@@ -3820,7 +4215,7 @@ Specify license and any restrictions.
     async def on_refresh_local_specs(e=None):
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Gathering local system specs..."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
         except Exception:
             pass
@@ -3867,8 +4262,14 @@ Specify license and any restrictions.
     )
     # Default GPU toggle based on quick capability probe when first rendered; will update on refresh
     local_use_gpu_cb = ft.Checkbox(label="Use NVIDIA GPU (adds --gpus all)", value=False)
-    local_pass_hf_token_cb = ft.Checkbox(label="Pass HF token to container (HUGGING_FACE_HUB_TOKEN)")
+    local_pass_hf_token_cb = ft.Checkbox(label="Pass HF token to container (HF_TOKEN / HUGGINGFACE_HUB_TOKEN)")
     local_train_status = ft.Text("")
+    local_save_config_btn = ft.OutlinedButton(
+        "Save current setup",
+        icon=getattr(ICONS, "SAVE", ICONS.CHECK),
+        tooltip="Save the current training setup (dataset, hyperparameters, target, and local Docker settings) as a reusable config.",
+        on_click=lambda e: page.run_task(on_save_current_config),
+    )
     local_train_progress = ft.ProgressBar(value=0.0, width=280)
     local_train_prog_label = ft.Text("Idle")
     local_train_timeline = ft.ListView(expand=True, spacing=4, auto_scroll=True)
@@ -3876,8 +4277,129 @@ Specify license and any restrictions.
         "Logs will appear here after starting local training.",
         color=WITH_OPACITY(0.5, BORDER_BASE),
     )
+    # Quick local inference controls (initially hidden until a local adapter is available)
+    local_infer_status = ft.Text(
+        "Quick local inference will be enabled after a successful local training run.",
+        color=WITH_OPACITY(0.6, BORDER_BASE),
+    )
+    local_infer_meta = ft.Text(
+        "",
+        size=12,
+        color=WITH_OPACITY(0.65, BORDER_BASE),
+    )
+    local_infer_prompt_tf = ft.TextField(
+        label="Quick local inference prompt",
+        multiline=True,
+        min_lines=3,
+        max_lines=6,
+        width=1000,
+        dense=True,
+    )
+    local_infer_preset_dd = ft.Dropdown(
+        label="Preset",
+        options=[
+            ft.dropdown.Option("Deterministic"),
+            ft.dropdown.Option("Balanced"),
+            ft.dropdown.Option("Creative"),
+        ],
+        value="Balanced",
+        width=220,
+    )
+    local_infer_temp_slider = ft.Slider(
+        label="Temperature: {value}",
+        min=0.1,
+        max=1.2,
+        divisions=11,
+        value=0.7,
+        width=320,
+    )
+    local_infer_max_tokens_slider = ft.Slider(
+        label="Max new tokens: {value}",
+        min=64,
+        max=512,
+        divisions=14,
+        value=256,
+        width=320,
+    )
+    local_infer_output = ft.ListView(expand=True, spacing=4, auto_scroll=True)
+    local_infer_output_placeholder = ft.Text(
+        "Responses will appear here after running inference.",
+        color=WITH_OPACITY(0.5, BORDER_BASE),
+    )
+    local_infer_btn = ft.ElevatedButton(
+        "Run Inference",
+        icon=getattr(ICONS, "PLAY_CIRCLE", ICONS.PLAY_ARROW),
+    )
+    local_infer_clear_btn = ft.TextButton(
+        "Clear history",
+        icon=getattr(ICONS, "DELETE_SWEEP", getattr(ICONS, "DELETE", ICONS.CLOSE)),
+    )
+    local_infer_group_container = ft.Container(
+        content=ft.Column(
+            [
+                section_title(
+                    "Quick Local Inference",
+                    getattr(ICONS, "PSYCHOLOGY", getattr(ICONS, "CHAT", ICONS.PLAY_CIRCLE)),
+                    "Test the latest local adapter with a prompt to verify its behavior.",
+                    on_help_click=_mk_help_handler(
+                        "Runs the fine-tuned adapter locally so you can sanity-check training results.",
+                    ),
+                ),
+                local_infer_status,
+                local_infer_meta,
+                local_infer_preset_dd,
+                local_infer_prompt_tf,
+                ft.Row([
+                    local_infer_temp_slider,
+                    local_infer_max_tokens_slider,
+                ], wrap=True, spacing=10),
+                ft.Row([local_infer_btn, local_infer_clear_btn], wrap=True, spacing=10),
+                ft.Container(
+                    ft.Stack([local_infer_output, local_infer_output_placeholder], expand=True),
+                    height=220,
+                    width=1000,
+                    border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                    border_radius=8,
+                    padding=10,
+                ),
+            ],
+            spacing=8,
+        ),
+        visible=False,
+    )
     # Buffer for saving logs
     local_log_buffer: List[str] = []
+    def on_local_infer_clear(e=None):
+        try:
+            local_infer_output.controls.clear()
+            try:
+                local_infer_output_placeholder.visible = True
+            except Exception:
+                pass
+            local_infer_status.value = "Idle — history cleared."
+            page.update()
+        except Exception:
+            pass
+    def on_local_infer_preset_change(e=None):
+        try:
+            name = (local_infer_preset_dd.value or "Balanced").lower()
+        except Exception:
+            name = "balanced"
+        if name.startswith("deterministic"):
+            t = 0.2
+            n = 128
+        elif name.startswith("creative"):
+            t = 1.0
+            n = 512
+        else:
+            t = 0.7
+            n = 256
+        try:
+            local_infer_temp_slider.value = t
+            local_infer_max_tokens_slider.value = n
+            page.update()
+        except Exception:
+            pass
     # File picker + button to save logs
     def _on_save_logs(e):
         try:
@@ -3900,6 +4422,10 @@ Specify license and any restrictions.
     local_logs_picker = ft.FilePicker(on_result=_on_save_logs)
     try:
         page.overlay.append(local_logs_picker)
+    except Exception:
+        pass
+    try:
+        local_infer_preset_dd.on_change = on_local_infer_preset_change
     except Exception:
         pass
     local_save_logs_btn = ft.OutlinedButton(
@@ -3926,7 +4452,7 @@ Specify license and any restrictions.
     _update_local_gpu_default_from_specs()
 
     async def on_start_local_training(e=None):
-        return await run_local_training_helper(
+        await run_local_training_helper(
             page=page,
             train_state=train_state,
             hf_token_tf=hf_token_tf,
@@ -3958,6 +4484,20 @@ Specify license and any restrictions.
             rp_pod_module=rp_pod,
             ICONS_module=ICONS,
         )
+        try:
+            info = train_state.get("local_infer") or {}
+            adapter_path = (info.get("adapter_path") or "").strip()
+            base_model_name = (info.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
+            if adapter_path and os.path.isdir(adapter_path):
+                local_infer_group_container.visible = True
+                local_infer_status.value = "Idle — ready for local inference."
+                local_infer_meta.value = f"Adapter: {adapter_path} • Base model: {base_model_name}"
+            else:
+                local_infer_status.value = "Quick local inference not available yet. Ensure training completed successfully."
+                local_infer_meta.value = ""
+            await safe_update(page)
+        except Exception:
+            pass
 
     async def on_stop_local_training(e=None):
         return await stop_local_training_helper(
@@ -3970,6 +4510,74 @@ Specify license and any restrictions.
             local_train_prog_label=local_train_prog_label,
         )
 
+    async def on_local_infer_generate(e=None):
+        prompt = (local_infer_prompt_tf.value or "").strip()
+        if not prompt:
+            local_infer_status.value = "Enter a prompt to test the latest local adapter."
+            await safe_update(page)
+            return
+        info = train_state.get("local_infer") or {}
+        adapter_path = (info.get("adapter_path") or "").strip()
+        base_model_name = (info.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
+        if (not adapter_path) or (not os.path.isdir(adapter_path)):
+            local_infer_status.value = "Quick local inference is not ready. Run a successful local training first."
+            await safe_update(page)
+            return
+        try:
+            max_tokens = int(getattr(local_infer_max_tokens_slider, "value", 256) or 256)
+        except Exception:
+            max_tokens = 256
+        try:
+            temperature = float(getattr(local_infer_temp_slider, "value", 0.7) or 0.7)
+        except Exception:
+            temperature = 0.7
+        if max_tokens <= 0:
+            max_tokens = 1
+        if temperature <= 0:
+            temperature = 0.1
+        loaded = bool(info.get("model_loaded"))
+        local_infer_btn.disabled = True
+        if not loaded:
+            local_infer_status.value = "Loading model and generating response..."
+        else:
+            local_infer_status.value = "Generating response..."
+        await safe_update(page)
+        try:
+            text = await asyncio.to_thread(
+                local_infer_generate_text_helper,
+                base_model_name,
+                adapter_path,
+                prompt,
+                max_tokens,
+                temperature,
+            )
+            try:
+                local_infer_output_placeholder.visible = False
+            except Exception:
+                pass
+            local_infer_output.controls.append(
+                ft.Column(
+                    [
+                        ft.Text("Prompt", weight=getattr(ft.FontWeight, "BOLD", None)),
+                        ft.Text(prompt),
+                        ft.Text("Response", weight=getattr(ft.FontWeight, "BOLD", None)),
+                        ft.Text(text),
+                    ],
+                    spacing=4,
+                )
+            )
+            try:
+                train_state.setdefault("local_infer", {})
+                train_state["local_infer"]["model_loaded"] = True
+            except Exception:
+                pass
+            local_infer_status.value = "Idle — last inference complete."
+        except Exception as ex:
+            local_infer_status.value = f"Inference failed: {ex}"
+        finally:
+            local_infer_btn.disabled = False
+            await safe_update(page)
+
     local_start_btn = ft.ElevatedButton(
         "Start Local Training",
         icon=getattr(ICONS, "PLAY_CIRCLE", ICONS.PLAY_ARROW),
@@ -3981,16 +4589,101 @@ Specify license and any restrictions.
         disabled=True,
         on_click=lambda e: page.run_task(on_stop_local_training),
     )
+    local_infer_btn.on_click = lambda e: page.run_task(on_local_infer_generate)
+    local_infer_clear_btn.on_click = on_local_infer_clear
 
     async def on_docker_pull(e=None):
-        return await on_docker_pull_helper(
-            page=page,
-            ICONS=ICONS,
-            COLORS=COLORS,
-            docker_image_tf=docker_image_tf,
-            docker_status=docker_status,
-            DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
-        )
+        logger.info("Docker pull button clicked")
+        try:
+            logger.info(
+                "Docker pull UI before update: disabled=%s text=%r ring_visible=%s",
+                getattr(docker_pull_btn, "disabled", None),
+                getattr(docker_pull_btn, "text", None),
+                getattr(docker_pull_ring, "visible", None),
+            )
+            docker_pull_btn.disabled = True
+            docker_pull_btn.text = "Pulling..."
+            docker_pull_ring.visible = True
+            await safe_update(page)
+            logger.info(
+                "Docker pull UI after set busy: disabled=%s text=%r ring_visible=%s",
+                docker_pull_btn.disabled,
+                getattr(docker_pull_btn, "text", None),
+                docker_pull_ring.visible,
+            )
+        except Exception:
+            logger.exception("Failed to update Docker pull UI state before pull")
+        try:
+            logger.info("Starting on_docker_pull_helper (Docker CLI pull)")
+            await on_docker_pull_helper(
+                page=page,
+                ICONS=ICONS,
+                COLORS=COLORS,
+                docker_image_tf=docker_image_tf,
+                docker_status=docker_status,
+                DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
+                docker_log_timeline=docker_log_timeline,
+                docker_log_placeholder=docker_log_placeholder,
+            )
+            logger.info("on_docker_pull_helper completed")
+        except Exception:
+            logger.exception("on_docker_pull_helper raised an error")
+        finally:
+            try:
+                docker_pull_btn.disabled = False
+                docker_pull_btn.text = "Pull image"
+                docker_pull_ring.visible = False
+                await safe_update(page)
+                logger.info(
+                    "Docker pull UI after reset: disabled=%s text=%r ring_visible=%s",
+                    docker_pull_btn.disabled,
+                    getattr(docker_pull_btn, "text", None),
+                    docker_pull_ring.visible,
+                )
+            except Exception:
+                logger.exception("Failed to reset Docker pull UI state after pull")
+
+    # Local specs + Docker pull / local training container (delegated layout)
+    local_specs_container = build_local_specs_container(
+        section_title=section_title,
+        ICONS=ICONS,
+        BORDER_BASE=BORDER_BASE,
+        WITH_OPACITY=WITH_OPACITY,
+        REFRESH_ICON=REFRESH_ICON,
+        local_os_txt=local_os_txt,
+        local_py_txt=local_py_txt,
+        local_cpu_txt=local_cpu_txt,
+        local_ram_txt=local_ram_txt,
+        local_disk_txt=local_disk_txt,
+        local_torch_txt=local_torch_txt,
+        local_cuda_txt=local_cuda_txt,
+        local_gpus_txt=local_gpus_txt,
+        local_flags_box=local_flags_box,
+        local_capability_txt=local_capability_txt,
+        docker_image_tf=docker_image_tf,
+        docker_pull_btn=docker_pull_btn,
+        docker_pull_ring=docker_pull_ring,
+        docker_status=docker_status,
+        docker_log_timeline=docker_log_timeline,
+        docker_log_placeholder=docker_log_placeholder,
+        refresh_specs_click_cb=lambda e: page.run_task(on_refresh_local_specs),
+        local_host_dir_tf=local_host_dir_tf,
+        local_browse_btn=local_browse_btn,
+        local_container_name_tf=local_container_name_tf,
+        local_use_gpu_cb=local_use_gpu_cb,
+        local_pass_hf_token_cb=local_pass_hf_token_cb,
+        local_train_progress=local_train_progress,
+        local_train_prog_label=local_train_prog_label,
+        local_save_logs_btn=local_save_logs_btn,
+        local_train_timeline=local_train_timeline,
+        local_train_timeline_placeholder=local_train_timeline_placeholder,
+        local_start_btn=local_start_btn,
+        local_stop_btn=local_stop_btn,
+        local_train_status=local_train_status,
+        local_infer_group_container=local_infer_group_container,
+        local_save_config_btn=local_save_config_btn,
+        mk_help_handler=_mk_help_handler,
+    )
 
     # Pod logs section (delegated)
     pod_logs_section = build_pod_logs_section(
@@ -4015,46 +4708,168 @@ Specify license and any restrictions.
         train_actions=train_actions,
     )
 
-    # Local specs content (delegated; hidden by default)
-    local_specs_container = build_local_specs_container(
-        section_title=section_title,
-        ICONS=ICONS,
-        BORDER_BASE=BORDER_BASE,
-        WITH_OPACITY=WITH_OPACITY,
-        REFRESH_ICON=REFRESH_ICON,
-        local_os_txt=local_os_txt,
-        local_py_txt=local_py_txt,
-        local_cpu_txt=local_cpu_txt,
-        local_ram_txt=local_ram_txt,
-        local_disk_txt=local_disk_txt,
-        local_torch_txt=local_torch_txt,
-        local_cuda_txt=local_cuda_txt,
-        local_gpus_txt=local_gpus_txt,
-        local_flags_box=local_flags_box,
-        local_capability_txt=local_capability_txt,
-        docker_image_tf=docker_image_tf,
-        docker_pull_btn=docker_pull_btn,
-        docker_status=docker_status,
-        refresh_specs_click_cb=lambda e: page.run_task(on_refresh_local_specs),
-        local_host_dir_tf=local_host_dir_tf,
-        local_browse_btn=local_browse_btn,
-        local_container_name_tf=local_container_name_tf,
-        local_use_gpu_cb=local_use_gpu_cb,
-        local_pass_hf_token_cb=local_pass_hf_token_cb,
-        local_train_progress=local_train_progress,
-        local_train_prog_label=local_train_prog_label,
-        local_save_logs_btn=local_save_logs_btn,
-        local_train_timeline=local_train_timeline,
-        local_train_timeline_placeholder=local_train_timeline_placeholder,
-        local_start_btn=local_start_btn,
-        local_stop_btn=local_stop_btn,
-        local_train_status=local_train_status,
-        mk_help_handler=_mk_help_handler,
-    )
+    train_target_profiles = {"runpod": {}, "local": {}}
+    train_target_state = {"current": "runpod"}
 
-    # Toggle Training content visibility based on selected target
+    def _target_key_from_value(val: str) -> str:
+        v = (val or "").lower()
+        if v.startswith("runpod - pod"):
+            return "runpod"
+        return "local"
+
+    def _snapshot_hp_for_target(target_key: str):
+        prof = train_target_profiles.get(target_key)
+        if prof is None:
+            prof = {}
+            train_target_profiles[target_key] = prof
+        prof["train_source"] = train_source.value
+        prof["train_hf_repo"] = train_hf_repo.value
+        prof["train_hf_split"] = train_hf_split.value
+        prof["train_hf_config"] = train_hf_config.value
+        prof["train_json_path"] = train_json_path.value
+        prof["base_model"] = base_model.value
+        prof["epochs"] = epochs_tf.value
+        prof["lr"] = lr_tf.value
+        prof["batch"] = batch_tf.value
+        prof["grad_acc"] = grad_acc_tf.value
+        prof["max_steps"] = max_steps_tf.value
+        prof["use_lora"] = bool(getattr(use_lora_cb, "value", False))
+        prof["out_dir"] = out_dir_tf.value
+        prof["packing"] = bool(getattr(packing_cb, "value", False))
+        prof["auto_resume"] = bool(getattr(auto_resume_cb, "value", False))
+        prof["push"] = bool(getattr(push_cb, "value", False))
+        prof["hf_repo_id"] = hf_repo_id_tf.value
+        prof["resume_from"] = resume_from_tf.value
+        prof["warmup_steps"] = warmup_steps_tf.value
+        prof["weight_decay"] = weight_decay_tf.value
+        prof["lr_sched"] = lr_sched_dd.value
+        prof["optim"] = optim_dd.value
+        prof["logging_steps"] = logging_steps_tf.value
+        prof["logging_first_step"] = bool(getattr(logging_first_step_cb, "value", False))
+        prof["disable_tqdm"] = bool(getattr(disable_tqdm_cb, "value", False))
+        prof["seed"] = seed_tf.value
+        prof["save_strategy"] = save_strategy_dd.value
+        prof["save_total_limit"] = save_total_limit_tf.value
+        prof["pin_memory"] = bool(getattr(pin_memory_cb, "value", False))
+        prof["report_to"] = report_to_dd.value
+        prof["fp16"] = bool(getattr(fp16_cb, "value", False))
+        prof["bf16"] = bool(getattr(bf16_cb, "value", False))
+
+    def _apply_hp_for_target(target_key: str):
+        prof = train_target_profiles.get(target_key) or {}
+        if (not prof) and (target_key == "local"):
+            base_prof = train_target_profiles.get("runpod") or {}
+            prof = dict(base_prof)
+            out_dir_val = (prof.get("out_dir") or "").strip()
+            if (not out_dir_val) or (out_dir_val == "/data/outputs/runpod_run"):
+                prof["out_dir"] = "/data/outputs/local_run"
+            train_target_profiles["local"] = prof
+        v = prof.get("train_source")
+        if v is not None:
+            train_source.value = v
+        v = prof.get("train_hf_repo")
+        if v is not None:
+            train_hf_repo.value = v
+        v = prof.get("train_hf_split")
+        if v is not None:
+            train_hf_split.value = v
+        v = prof.get("train_hf_config")
+        if v is not None:
+            train_hf_config.value = v
+        v = prof.get("train_json_path")
+        if v is not None:
+            train_json_path.value = v
+        v = prof.get("base_model")
+        if v is not None:
+            base_model.value = v
+        v = prof.get("epochs")
+        if v is not None:
+            epochs_tf.value = v
+        v = prof.get("lr")
+        if v is not None:
+            lr_tf.value = v
+        v = prof.get("batch")
+        if v is not None:
+            batch_tf.value = v
+        v = prof.get("grad_acc")
+        if v is not None:
+            grad_acc_tf.value = v
+        v = prof.get("max_steps")
+        if v is not None:
+            max_steps_tf.value = v
+        if "use_lora" in prof:
+            use_lora_cb.value = bool(prof.get("use_lora"))
+        v = prof.get("out_dir")
+        if v is not None:
+            out_dir_tf.value = v
+        if "packing" in prof:
+            packing_cb.value = bool(prof.get("packing"))
+        if "auto_resume" in prof:
+            auto_resume_cb.value = bool(prof.get("auto_resume"))
+        if "push" in prof:
+            push_cb.value = bool(prof.get("push"))
+        v = prof.get("hf_repo_id")
+        if v is not None:
+            hf_repo_id_tf.value = v
+        v = prof.get("resume_from")
+        if v is not None:
+            resume_from_tf.value = v
+        v = prof.get("warmup_steps")
+        if v is not None:
+            warmup_steps_tf.value = v
+        v = prof.get("weight_decay")
+        if v is not None:
+            weight_decay_tf.value = v
+        v = prof.get("lr_sched")
+        if v is not None:
+            lr_sched_dd.value = v
+        v = prof.get("optim")
+        if v is not None:
+            optim_dd.value = v
+        v = prof.get("logging_steps")
+        if v is not None:
+            logging_steps_tf.value = v
+        if "logging_first_step" in prof:
+            logging_first_step_cb.value = bool(prof.get("logging_first_step"))
+        if "disable_tqdm" in prof:
+            disable_tqdm_cb.value = bool(prof.get("disable_tqdm"))
+        v = prof.get("seed")
+        if v is not None:
+            seed_tf.value = v
+        v = prof.get("save_strategy")
+        if v is not None:
+            save_strategy_dd.value = v
+        v = prof.get("save_total_limit")
+        if v is not None:
+            save_total_limit_tf.value = v
+        if "pin_memory" in prof:
+            pin_memory_cb.value = bool(prof.get("pin_memory"))
+        v = prof.get("report_to")
+        if v is not None:
+            report_to_dd.value = v
+        if "fp16" in prof:
+            fp16_cb.value = bool(prof.get("fp16"))
+        if "bf16" in prof:
+            bf16_cb.value = bool(prof.get("bf16"))
+
     def _update_training_target(_=None):
-        target = (train_target_dd.value or "Runpod - Pod").lower()
+        val = train_target_dd.value or "Runpod - Pod"
+        try:
+            new_key = _target_key_from_value(val)
+            prev_key = train_target_state.get("current") or "runpod"
+            if new_key != prev_key:
+                try:
+                    _snapshot_hp_for_target(prev_key)
+                except Exception:
+                    pass
+                try:
+                    _apply_hp_for_target(new_key)
+                except Exception:
+                    pass
+                train_target_state["current"] = new_key
+        except Exception:
+            pass
+        target = (val or "").lower()
         is_pod = target.startswith("runpod - pod")
         try:
             # Always show the wrapper; toggle inner sections as needed
@@ -4085,9 +4900,9 @@ Specify license and any restrictions.
                 train_actions.visible = is_pod
             except Exception:
                 pass
-            # Configuration section is Runpod-only; hide entirely for local
+            # Configuration section is available for managing configs; keep it visible for all targets
             try:
-                config_section.visible = is_pod
+                config_section.visible = True
             except Exception:
                 pass
             # Recompose the Dataset + Training Params grouping depending on target
@@ -4136,12 +4951,12 @@ Specify license and any restrictions.
                 pass
         except Exception:
             pass
+        # Ensure normal/config mode visibility still applies for both targets
+        try:
+            _update_mode_visibility()
+        except Exception:
+            pass
         if is_pod:
-            # Ensure normal/config mode visibility still applies
-            try:
-                _update_mode_visibility()
-            except Exception:
-                pass
             # Restore Runpod spot visibility depending on skill
             try:
                 expert_spot_cb.disabled = False
@@ -5235,9 +6050,9 @@ Specify license and any restrictions.
         tabs=[
             ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
             ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab),
-            ft.Tab(text="Training", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), content=training_tab),
-            ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
             ft.Tab(text="Dataset Analysis", icon=getattr(ICONS, "INSIGHTS", ICONS.ANALYTICS), content=analysis_tab),
+            ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
+            ft.Tab(text="Training", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), content=training_tab),
             ft.Tab(text="Settings", icon=ICONS.SETTINGS, content=settings_tab),
         ],
         expand=1,

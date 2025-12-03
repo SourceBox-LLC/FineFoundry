@@ -34,7 +34,7 @@ async def refresh_expert_gpus(
         key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
         if not key:
             page.snack_bar = ft.SnackBar(ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             return
         infra = train_state.get("infra") or {}
         # Determine datacenter: prefer ensured volume's dc, else current field, else default
@@ -113,7 +113,7 @@ async def refresh_expert_gpus(
         try:
             expert_gpu_busy.visible = False
             page.snack_bar = ft.SnackBar(ft.Text(f"Failed to refresh GPUs: {ex}"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
         except Exception:
             pass
 
@@ -227,7 +227,7 @@ async def do_teardown(
     temp_key = (rp_temp_key_tf.value or "").strip()
     key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
     if not key:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
         update_train_placeholders(); await safe_update(page)
         return
 
@@ -244,7 +244,7 @@ async def do_teardown(
             status = getattr(getattr(ex, "response", None), "status_code", None)
             if status == 404:
                 try:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already absent on Runpod: {pod_id}")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already absent on Runpod: {pod_id}")]))
                     update_train_placeholders(); await safe_update(page)
                 except Exception:
                     pass
@@ -261,7 +261,7 @@ async def do_teardown(
     if not (sel_tpl or sel_vol or sel_pod):
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Select at least one item to teardown."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
         except Exception:
             pass
@@ -285,7 +285,7 @@ async def do_teardown(
             actions.append(f"Volume {vol_id}")
         if actions:
             train_timeline.controls.append(ft.Row([
-                ft.Icon(getattr(ft.icons, "PLAY_CIRCLE", ft.icons.PLAY_ARROW), color=ACCENT_COLOR),
+                ft.Icon(getattr(ft.Icons, "PLAY_CIRCLE", ft.Icons.PLAY_ARROW), color=ACCENT_COLOR),
                 ft.Text("Starting teardown: " + ", ".join(actions))
             ]))
             update_train_placeholders(); await safe_update(page)
@@ -297,12 +297,12 @@ async def do_teardown(
         if sel_pod and pod_id:
             try:
                 try:
-                    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "CLOUD_OFF", getattr(ft.icons, "CLOUD", ft.icons.CLOSE)), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Pod: {pod_id}...")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "CLOUD_OFF", getattr(ft.Icons, "CLOUD", ft.Icons.CLOSE)), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Pod: {pod_id}...")]))
                     await safe_update(page)
                 except Exception:
                     pass
                 await asyncio.to_thread(rp_pod_module.delete_pod, key, pod_id)
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Pod deleted: {pod_id}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Pod deleted: {pod_id}")]))
                 try:
                     train_state["pod_id"] = None
                 except Exception:
@@ -310,53 +310,53 @@ async def do_teardown(
             except Exception as ex:
                 status = getattr(getattr(ex, "response", None), "status_code", None)
                 if status == 404:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already deleted: {pod_id}")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already deleted: {pod_id}")]))
                     try:
                         train_state["pod_id"] = None
                     except Exception:
                         pass
                 else:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete pod: {ex}")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete pod: {ex}")]))
 
         if sel_tpl and tpl_id:
             try:
                 try:
-                    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "DESCRIPTION", ft.icons.ARTICLE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Template: {tpl_id}...")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "DESCRIPTION", ft.Icons.ARTICLE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Template: {tpl_id}...")]))
                     await safe_update(page)
                 except Exception:
                     pass
                 await asyncio.to_thread(rp_infra_module.delete_template, tpl_id, key)
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Template deleted: {tpl_id}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Template deleted: {tpl_id}")]))
                 try:
                     if isinstance(train_state.get("infra"), dict):
                         train_state["infra"]["template"] = {}
                 except Exception:
                     pass
             except Exception as ex:
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete template: {ex}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete template: {ex}")]))
 
         if sel_vol and vol_id:
             try:
                 try:
-                    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "STORAGE", ft.icons.SAVE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Volume: {vol_id}...")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "STORAGE", ft.Icons.SAVE), color=WITH_OPACITY(0.9, COLORS.RED)), ft.Text(f"Deleting Volume: {vol_id}...")]))
                     await safe_update(page)
                 except Exception:
                     pass
                 await asyncio.to_thread(rp_infra_module.delete_volume, vol_id, key)
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Volume deleted: {vol_id}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.DELETE_FOREVER, color=COLORS.RED), ft.Text(f"Volume deleted: {vol_id}")]))
                 try:
                     if isinstance(train_state.get("infra"), dict):
                         train_state["infra"]["volume"] = {}
                 except Exception:
                     pass
             except Exception as ex:
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete volume: {ex}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to delete volume: {ex}")]))
 
         # If both infra items are gone, clear infra
         try:
             infra = train_state.get("infra") or {}
-            tpl_id2 = str(((infra.get("template") or {}).get("id") or "")).strip()
-            vol_id2 = str(((infra.get("volume") or {}).get("id") or "")).strip()
+            tpl_id2 = str(((infra.get("template") or {}).get("id") or "").strip())
+            vol_id2 = str(((infra.get("volume") or {}).get("id") or "").strip())
             if not tpl_id2 and not vol_id2:
                 train_state["infra"] = None
         except Exception:
@@ -370,7 +370,7 @@ async def do_teardown(
             pass
         # Completion log and refresh UI
         try:
-            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "CHECK_CIRCLE", ft.icons.CHECK), color=COLORS.GREEN), ft.Text("Teardown complete")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "CHECK_CIRCLE", ft.Icons.CHECK), color=COLORS.GREEN), ft.Text("Teardown complete")]))
         except Exception:
             pass
         update_train_placeholders(); await refresh_teardown_ui_fn(); await safe_update(page)
@@ -427,7 +427,7 @@ async def run_pod_training(
     tpl_id = ((infra.get("template") or {}).get("id") or "").strip()
     vol_id = ((infra.get("volume") or {}).get("id") or "").strip()
     if not tpl_id or not vol_id:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure not ready. Click Ensure Infrastructure first.")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure not ready. Click Ensure Infrastructure first.")]))
         train_state["running"] = False
         update_train_placeholders(); await safe_update(page)
         return
@@ -436,7 +436,7 @@ async def run_pod_training(
     temp_key = (rp_temp_key_tf.value or "").strip()
     api_key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
     if not api_key:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings or temp field.")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings or temp field.")]))
         train_state["running"] = False
         update_train_placeholders(); await safe_update(page)
         return
@@ -535,7 +535,7 @@ async def run_pod_training(
                     hp["json_path"] = jpath_ui
             if not (hp.get("hf_dataset_id") or hp.get("json_path")):
                 train_timeline.controls.append(ft.Row([
-                    ft.Icon(ft.icons.WARNING, color=COLORS.RED),
+                    ft.Icon(ft.Icons.WARNING, color=COLORS.RED),
                     ft.Text("Dataset not set. Provide a Hugging Face dataset or JSON path before starting."),
                 ]))
                 train_state["running"] = False
@@ -586,7 +586,7 @@ async def run_pod_training(
                 chosen_gpu_type_id = cheapest_gpu
                 chosen_interruptible = bool(is_spot)
             except Exception as e:
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.WARNING, color=COLORS.RED), ft.Text(f"Cheapest GPU discovery failed, using AUTO: {e}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text(f"Cheapest GPU discovery failed, using AUTO: {e}")]))
 
     model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
     if hp.get("hf_dataset_id"):
@@ -595,23 +595,23 @@ async def run_pod_training(
         ds_desc = f"JSON: {hp.get('json_path')}"
     else:
         ds_desc = "Dataset: (unset)"
-    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "SCIENCE", ft.icons.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Creating Runpod pod and starting training…")]))
-    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
-    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={hp.get('epochs')} • LR={hp.get('lr')} • BSZ={hp.get('bsz')} • GA={hp.get('grad_accum')}")]))
+    train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "SCIENCE", ft.Icons.PLAY_CIRCLE), color=ACCENT_COLOR), ft.Text("Creating Runpod pod and starting training…")]))
+    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.TABLE_VIEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Dataset: {ds_desc}")]))
+    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Model={model} • Epochs={hp.get('epochs')} • LR={hp.get('lr')} • BSZ={hp.get('bsz')} • GA={hp.get('grad_accum')}")]))
     if is_beginner:
         try:
             if beginner_mode == "fastest":
                 bm_text = "Beginner: Fastest — using best GPU (secure) with aggressive params"
             else:
                 bm_text = f"Beginner: Cheapest — selecting lowest-cost GPU ({'spot' if chosen_interruptible else 'secure'}) with conservative params"
-            train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(bm_text)]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(bm_text)]))
         except Exception:
             pass
     elif (chosen_by == "expert"):
         try:
             sel_id = chosen_gpu_type_id
             mode_txt = "spot" if chosen_interruptible else "secure"
-            train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Expert: Using GPU {sel_id} ({mode_txt})")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Expert: Using GPU {sel_id} ({mode_txt})")]))
         except Exception:
             pass
     update_train_placeholders(); await safe_update(page)
@@ -632,7 +632,7 @@ async def run_pod_training(
         pod = await asyncio.to_thread(_mk_pod)
         pod_id = pod.get("id") or pod.get("podId") or pod.get("pod_id")
         train_state["pod_id"] = pod_id
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.CLOUD, color=ACCENT_COLOR), ft.Text(f"Pod created: {pod_id}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.CLOUD, color=ACCENT_COLOR), ft.Text(f"Pod created: {pod_id}")]))
         try:
             await refresh_teardown_ui_fn()
         except Exception:
@@ -659,7 +659,7 @@ async def run_pod_training(
             except Exception:
                 pass
     except Exception as e:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Pod create failed: {e}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Pod create failed: {e}")]))
         train_state["running"] = False
         await safe_update(page)
         return
@@ -671,14 +671,14 @@ async def run_pod_training(
             if cancel_train.get("cancelled"):
                 try:
                     await asyncio.to_thread(rp_pod_module.delete_pod, api_key, train_state.get("pod_id"))
-                    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — pod termination sent")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.CANCEL, color=COLORS.RED), ft.Text("Cancel requested — pod termination sent")]))
                 except Exception as ex:
-                    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to terminate pod: {ex}")]))
+                    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to terminate pod: {ex}")]))
                 break
             pod = await asyncio.to_thread(rp_pod_module.get_pod, api_key, train_state.get("pod_id"))
             state = (rp_pod_module.state_of(pod) or "").upper()
             if state != last_state:
-                train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.TASK_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod state: {state}")]))
+                train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.TASK_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod state: {state}")]))
                 last_state = state
             if state in rp_pod_module.TERMINAL_STATES:
                 try:
@@ -694,9 +694,9 @@ async def run_pod_training(
                 if bool(getattr(auto_terminate_cb, "value", False)):
                     try:
                         await asyncio.to_thread(rp_pod_module.delete_pod, api_key, train_state.get("pod_id"))
-                        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.DELETE_FOREVER, color=COLORS.RED), ft.Text("Auto-terminate enabled — pod deleted after training finished")]))
+                        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.DELETE_FOREVER, color=COLORS.RED), ft.Text("Auto-terminate enabled — pod deleted after training finished")]))
                     except Exception as ex:
-                        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to auto-delete pod: {ex}")]))
+                        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to auto-delete pod: {ex}")]))
                 break
             try:
                 lines = await asyncio.to_thread(rp_pod_module.get_pod_logs, api_key, train_state.get("pod_id"), 200)
@@ -714,7 +714,7 @@ async def run_pod_training(
             train_state["log_seen"] = seen
             if new_lines:
                 for s in new_lines:
-                    _log_icon = getattr(ft.icons, "ARTICLE", getattr(ft.icons, "TERMINAL", getattr(ft.icons, "DESCRIPTION", ft.icons.TASK_ALT)))
+                    _log_icon = getattr(ft.Icons, "ARTICLE", getattr(ft.Icons, "TERMINAL", getattr(ft.Icons, "DESCRIPTION", ft.Icons.TASK_ALT)))
                     train_timeline.controls.append(ft.Row([ft.Icon(_log_icon, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(s)]))
                 update_train_placeholders()
                 try:
@@ -729,9 +729,9 @@ async def run_pod_training(
             await safe_update(page)
             await asyncio.sleep(3.0)
 
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Training finished with state: {last_state}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Training finished with state: {last_state}")]))
     except Exception as e:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Polling error: {e}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Polling error: {e}")]))
     finally:
         train_state["running"] = False
         try:
@@ -780,10 +780,10 @@ async def restart_pod_container(
             hp = build_hp_fn()
         cmd = rp_pod_module.build_cmd(hp)
         await asyncio.to_thread(rp_pod_module.patch_pod_docker_start_cmd, api_key, pod_id, cmd)
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.RESTART_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Container restarting with new hyper-params…")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.RESTART_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Container restarting with new hyper-params…")]))
         update_train_placeholders(); await safe_update(page)
     except Exception as e:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Restart failed: {e}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Restart failed: {e}")]))
         update_train_placeholders(); await safe_update(page)
 
 
@@ -796,7 +796,7 @@ def open_runpod(page: ft.Page, train_state: dict, train_timeline: ft.ListView) -
         try:
             page.launch_url(url)
         except Exception:
-            train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
             try:
                 page.update()
             except Exception:
@@ -814,7 +814,7 @@ def open_web_terminal(page: ft.Page, train_state: dict, train_timeline: ft.ListV
         try:
             page.launch_url(url)
         except Exception:
-            train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
             page.update()
     except Exception:
         pass
@@ -847,20 +847,20 @@ async def copy_ssh_command(
         try:
             page.set_clipboard(cmd)
             page.snack_bar = ft.SnackBar(ft.Text("SSH command copied to clipboard"))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
             return
         except Exception:
-            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "CONTENT_COPY", ft.icons.LINK), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(cmd)]))
+            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "CONTENT_COPY", ft.Icons.LINK), color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(cmd)]))
             await safe_update(page)
             return
     url = f"https://console.runpod.io/pods/{pod_id}"
     try:
         page.launch_url(url)
     except Exception:
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.OPEN_IN_NEW, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(url)]))
     page.snack_bar = ft.SnackBar(ft.Text("Open the pod → Connect → SSH tab to copy the proxy command."))
-    page.snack_bar.open = True
+    page.open(page.snack_bar)
     await safe_update(page)
 
 
@@ -896,7 +896,7 @@ async def ensure_infrastructure(
     # Validate infra module early
     if (rp_infra_module is None) or (not hasattr(rp_infra_module, "ensure_infrastructure")):
         try:
-            train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure module unavailable. Please install or update Runpod helpers.")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure module unavailable. Please install or update Runpod helpers.")]))
             await safe_update(page)
         except Exception:
             pass
@@ -907,7 +907,7 @@ async def ensure_infrastructure(
     key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
     if not key:
         try:
-            train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
             await safe_update(page)
         except Exception:
             pass
@@ -939,8 +939,8 @@ async def ensure_infrastructure(
     except Exception:
         vol_in_gb = 0
 
-    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.CLOUD, color=ACCENT_COLOR), ft.Text("Ensuring Runpod infrastructure (volume + template)…")]))
-    train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"DC={dc} • Vol={vol_name} ({vol_size}GB) • Tpl={tpl_name}")]))
+    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.CLOUD, color=ACCENT_COLOR), ft.Text("Ensuring Runpod infrastructure (volume + template)…")]))
+    train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"DC={dc} • Vol={vol_name} ({vol_size}GB) • Tpl={tpl_name}")]))
     await safe_update(page)
 
     try:
@@ -974,7 +974,7 @@ async def ensure_infrastructure(
         if is_public:
             try:
                 train_timeline.controls.append(ft.Row([
-                    ft.Icon(ft.icons.WARNING, color=COLORS.ORANGE),
+                    ft.Icon(ft.Icons.WARNING, color=COLORS.ORANGE),
                     ft.Text("Template is Public — environment variables (including HF token) may be visible to others."),
                 ]))
                 await safe_update(page)
@@ -1012,8 +1012,8 @@ async def ensure_infrastructure(
             refresh_expert_gpus_fn()
         except Exception:
             pass
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Template {tpl.get('action')} — id={tpl.get('id')} image={tpl.get('image')}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Volume {vol.get('action')} — id={vol.get('id')} size={vol.get('size')}GB")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.DONE_ALL, color=COLORS.GREEN), ft.Text(f"Template {tpl.get('action')} — id={tpl.get('id')} image={tpl.get('image')}")]))
         try:
             await refresh_teardown_ui_fn()
         except Exception:
@@ -1031,7 +1031,7 @@ async def ensure_infrastructure(
         await safe_update(page)
     except Exception as e:
         msg = str(e)
-        train_timeline.controls.append(ft.Row([ft.Icon(ft.icons.ERROR, color=COLORS.RED), ft.Text(f"Infra setup failed: {msg}")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Infra setup failed: {msg}")]))
     finally:
         try:
             rp_infra_busy.visible = False
@@ -1058,13 +1058,13 @@ async def confirm_teardown_selected(
 ) -> None:
     # Timeline + snackbar feedback
     try:
-        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "WARNING_AMBER", ft.icons.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown Selected clicked")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "WARNING_AMBER", ft.Icons.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown Selected clicked")]))
         update_train_placeholders(); await safe_update(page)
     except Exception:
         pass
     try:
         page.snack_bar = ft.SnackBar(ft.Text("Preparing teardown confirmation..."))
-        page.snack_bar.open = True
+        page.open(page.snack_bar)
         await safe_update(page)
     except Exception:
         pass
@@ -1081,7 +1081,7 @@ async def confirm_teardown_selected(
     if not items:
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Select at least one item to teardown."))
-            page.snack_bar.open = True
+            page.open(page.snack_bar)
             await safe_update(page)
         except Exception:
             pass
@@ -1092,7 +1092,7 @@ async def confirm_teardown_selected(
     confirm_dlg = ft.AlertDialog(
         modal=True,
         title=ft.Row([
-            ft.Icon(getattr(ft.icons, "DELETE_FOREVER", getattr(ft.icons, "DELETE", ft.icons.CLOSE)), color=COLORS.RED),
+            ft.Icon(getattr(ft.Icons, "DELETE_FOREVER", getattr(ft.Icons, "DELETE", ft.Icons.CLOSE)), color=COLORS.RED),
             ft.Text("Confirm Teardown"),
         ], alignment=ft.MainAxisAlignment.START),
         content=ft.Text(msg),
@@ -1132,7 +1132,7 @@ async def confirm_teardown_selected(
     try:
         confirm_dlg.actions = [
             ft.TextButton("Cancel", on_click=lambda e: _close()),
-            ft.ElevatedButton("Delete", icon=getattr(ft.icons, "CHECK", ft.icons.DELETE), on_click=_on_delete),
+            ft.ElevatedButton("Delete", icon=getattr(ft.Icons, "CHECK", ft.Icons.DELETE), on_click=_on_delete),
         ]
     except Exception:
         pass
@@ -1171,7 +1171,7 @@ async def confirm_teardown_all(
 ) -> None:
     # Timeline + snackbar feedback
     try:
-        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.icons, "WARNING_AMBER", ft.icons.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown All clicked")]))
+        train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "WARNING_AMBER", ft.Icons.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown All clicked")]))
         update_train_placeholders(); await safe_update(page)
     except Exception:
         pass
@@ -1185,7 +1185,7 @@ async def confirm_teardown_all(
     confirm_dlg = ft.AlertDialog(
         modal=True,
         title=ft.Row([
-            ft.Icon(getattr(ft.icons, "DELETE_FOREVER", getattr(ft.icons, "DELETE", ft.icons.CLOSE)), color=COLORS.RED),
+            ft.Icon(getattr(ft.Icons, "DELETE_FOREVER", getattr(ft.Icons, "DELETE", ft.Icons.CLOSE)), color=COLORS.RED),
             ft.Text("Teardown All infrastructure?"),
         ], alignment=ft.MainAxisAlignment.START),
         content=ft.Text("This will delete the Runpod Template and Network Volume. If a pod exists, it will be deleted first."),
@@ -1225,7 +1225,7 @@ async def confirm_teardown_all(
     try:
         confirm_dlg.actions = [
             ft.TextButton("Cancel", on_click=lambda e: _close()),
-            ft.ElevatedButton("Delete All", icon=getattr(ft.icons, "CHECK", ft.icons.DELETE), on_click=_on_delete_all),
+            ft.ElevatedButton("Delete All", icon=getattr(ft.Icons, "CHECK", ft.Icons.DELETE), on_click=_on_delete_all),
         ]
     except Exception:
         pass

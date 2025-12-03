@@ -19,8 +19,10 @@ FineFoundry-Core/
 │   │   ├── logging_config.py # Logging configuration
 │   │   ├── merge.py          # Dataset merging logic
 │   │   ├── scrape.py         # Scraping helpers
-│   │   ├── training.py       # Training helpers
+│   │   ├── training.py       # Training helpers (local + shared hyperparam builder)
 │   │   ├── training_pod.py   # Runpod training helpers
+│   │   ├── training_config.py# Training configuration helpers (saved_configs)
+│   │   ├── local_inference.py# Quick Local Inference helpers (adapter loading)
 │   │   ├── build.py          # Dataset building helpers
 │   │   ├── boards.py         # Board listing
 │   │   ├── datasets.py       # Dataset utilities
@@ -100,10 +102,18 @@ Business logic separated from UI:
 - UI update helpers for scraping progress
 
 #### `training.py`
-- `run_local_training()` - Local Docker training
-- `stop_local_training()` - Stop training
-- `build_hp_from_controls()` - Hyperparameter extraction
-- Training configuration management
+- `run_local_training()` - Local Docker training (mirrors Runpod command builder inside a container)
+- `stop_local_training()` - Stop local training and clean up Docker state
+- `build_hp_from_controls()` - Hyperparameter extraction shared between Runpod and local
+
+#### `training_config.py`
+- `saved_configs_dir()` / `list_saved_configs()` - Manage the `src/saved_configs/` directory
+- `validate_config()` - Lightweight schema validation for training configs
+- `get_last_used_config_name()` / `set_last_used_config_name()` - Track last-used config for auto-load on startup
+
+#### `local_inference.py`
+- Helpers for loading a base model + LoRA adapter locally (used by Quick Local Inference)
+- Caches loaded models to speed up repeated generations
 
 #### `training_pod.py`
 - `run_pod_training()` - Runpod training orchestration

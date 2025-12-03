@@ -2,9 +2,8 @@ venv
 .venv
 __pycache__
 hf_dataset
-hf_config.json
-ollama_config.json
 .env
 runpod tests/
-runpod_config.json
 saved_configs/
+logs/
+ff_settings.json
