@@ -1,9 +1,11 @@
 venv
 .venv
 __pycache__
-hf_dataset
+hf_dataset/
 .env
 runpod tests/
 saved_configs/
 logs/
 ff_settings.json
+merged_dataset/
+scraped_training_data.json
