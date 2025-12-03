@@ -2745,9 +2745,47 @@ Specify license and any restrictions.
             pass
 
     def _refresh_config_list(_=None):
+        """Refresh saved config dropdown, filtered by current training target.
+
+        Configs without an explicit meta.train_target are shown for all targets
+        (backward compatibility)."""
         try:
-            files = _list_saved_configs()
+            all_files = _list_saved_configs()
+        except Exception:
+            all_files = []
+        files: List[str] = []
+        try:
+            cur_target = (train_target_dd.value or "Runpod - Pod").strip().lower()
+        except Exception:
+            cur_target = "runpod - pod"
+        for name in all_files:
+            tgt_val = ""
+            try:
+                path = os.path.join(_saved_configs_dir(), name)
+                conf = _read_json_file(path) or {}
+                meta = conf.get("meta") or {}
+                tgt_val = str(meta.get("train_target") or "").strip().lower()
+            except Exception:
+                tgt_val = ""
+            # No target recorded: show for all targets
+            if not tgt_val:
+                files.append(name)
+                continue
+            # Target-aware filtering
+            if cur_target.startswith("runpod - pod"):
+                if tgt_val.startswith("runpod - pod") or tgt_val == "runpod":
+                    files.append(name)
+            elif cur_target.startswith("local"):
+                if tgt_val.startswith("local"):
+                    files.append(name)
+            else:
+                # Unknown target label; do not hide config
+                files.append(name)
+        try:
             config_files_dd.options = [ft.dropdown.Option(f) for f in files]
+            cur_val = (config_files_dd.value or "").strip()
+            if cur_val and (cur_val not in files):
+                config_files_dd.value = files[0] if files else None
             if files and not config_files_dd.value:
                 config_files_dd.value = files[0]
             if not files:
@@ -4105,21 +4143,49 @@ Specify license and any restrictions.
     config_edit_btn.on_click = lambda e: page.run_task(on_edit_config)
     config_rename_btn.on_click = lambda e: page.run_task(on_rename_config)
     config_delete_btn.on_click = lambda e: page.run_task(on_delete_config)
-    _refresh_config_list()
-    # Auto-load last used config on startup if available
+    # Auto-load last used config on startup if available, and set training target from it
     try:
         last_name = get_last_used_config_name_helper()
     except Exception:
         last_name = None
-    try:
-        if last_name:
+    if last_name:
+        conf_for_last: dict = {}
+        try:
+            d = _saved_configs_dir()
+            path = os.path.join(d, last_name)
+            conf_for_last = _read_json_file(path) or {}
+        except Exception:
+            conf_for_last = {}
+        # Try to set training target from config meta before refreshing list
+        try:
+            meta = conf_for_last.get("meta") or {}
+        except Exception:
+            meta = {}
+        try:
+            tgt = str(meta.get("train_target") or "").strip() or "Runpod - Pod"
+        except Exception:
+            tgt = "Runpod - Pod"
+        try:
+            train_target_dd.value = tgt
+        except Exception:
+            pass
+        try:
+            _refresh_config_list()
+        except Exception:
+            pass
+        try:
             opts = getattr(config_files_dd, "options", []) or []
             keys = {getattr(o, "key", None) or getattr(o, "text", "") for o in opts}
             if last_name in keys:
                 config_files_dd.value = last_name
                 schedule_task(on_load_config)
-    except Exception:
-        pass
+        except Exception:
+            pass
+    else:
+        try:
+            _refresh_config_list()
+        except Exception:
+            pass
     # Ensure initial visibility matches the selected mode
     _update_mode_visibility()
 
@@ -4867,6 +4933,11 @@ Specify license and any restrictions.
                 except Exception:
                     pass
                 train_target_state["current"] = new_key
+        except Exception:
+            pass
+        # Refresh config list when target changes so Runpod/local configs are separated
+        try:
+            _refresh_config_list()
         except Exception:
             pass
         target = (val or "").lower()
