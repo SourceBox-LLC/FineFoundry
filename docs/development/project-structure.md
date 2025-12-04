@@ -22,7 +22,7 @@ FineFoundry-Core/
 │   │   ├── training.py       # Training helpers (local + shared hyperparam builder)
 │   │   ├── training_pod.py   # Runpod training helpers
 │   │   ├── training_config.py# Training configuration helpers (saved_configs)
-│   │   ├── local_inference.py# Quick Local Inference helpers (adapter loading)
+│   │   ├── local_inference.py# Local inference helpers (Quick Local Inference + Inference tab)
 │   │   ├── build.py          # Dataset building helpers
 │   │   ├── boards.py         # Board listing
 │   │   ├── datasets.py       # Dataset utilities
@@ -38,6 +38,7 @@ FineFoundry-Core/
 │   │       ├── tab_scrape.py
 │   │       ├── tab_build.py
 │   │       ├── tab_training.py
+│   │       ├── tab_inference.py
 │   │       ├── tab_merge.py
 │   │       ├── tab_analysis.py
 │   │       ├── tab_settings.py
@@ -114,6 +115,7 @@ Business logic separated from UI:
 #### `local_inference.py`
 - Helpers for loading a base model + LoRA adapter locally (used by Quick Local Inference)
 - Caches loaded models to speed up repeated generations
+- Inference tab helpers for global inference over fine-tuned adapters
 
 #### `training_pod.py`
 - `run_pod_training()` - Runpod training orchestration
@@ -186,6 +188,7 @@ Organized by tab and section for modularity:
 - `tab_scrape.py` - Composes scrape tab sections
 - `tab_build.py` - Composes build/publish sections
 - `tab_training.py` - Composes training sections
+- `tab_inference.py` - Composes the Inference tab (global inference over fine-tuned adapters)
 - `tab_merge.py` - Composes merge sections
 - `tab_analysis.py` - Composes analysis sections
 - `tab_settings.py` - Composes settings sections

@@ -87,7 +87,7 @@ Visible when Training target = **local**:
 
 ### 6. Quick Local Inference
 
-Appears after a **successful local Docker run** with a valid adapter path:
+Quick Local Inference is your **instant demo station** for freshly trained adapters. It appears after a **successful local Docker run** with a valid adapter path:
 
 - **Status & meta**
   - Status line (idle/loading/generating, errors).
@@ -102,6 +102,10 @@ Appears after a **successful local Docker run** with a valid adapter path:
 - **Output**
   - Scrollable list of prompt/response pairs.
   - Placeholder text when there are no responses yet.
+
+> 💡 **Where to see it:** The Quick Local Inference panel is visible near the bottom of the Training tab UI (see the Training tab screenshot in the main README and at the top of this guide).
+
+For deeper prompting and a dedicated chat experience after you have a good adapter, see the [Inference Tab](inference-tab.md), which lets you select any adapter directory and includes a Full Chat View dialog.
 
 When you click **Run Inference**:
 
@@ -271,6 +275,7 @@ Highlights:
 ## Related Topics
 
 - [Quick Start Guide](quick-start.md) – overall workflow.
+- [Inference Tab](inference-tab.md) – run inference on trained adapters with Prompt & responses and Full Chat View.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple datasets.
 - [Troubleshooting](troubleshooting.md) – common training issues.
 - [Logging Guide](../development/logging.md) – debugging training runs.

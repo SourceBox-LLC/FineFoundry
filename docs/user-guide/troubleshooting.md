@@ -193,6 +193,27 @@ If you still hit OOM, also reduce sequence length and/or disable evaluation duri
 
 For local Docker training, the Training tab's Beginner preset **Auto Set (local)** automatically picks conservative batch size, grad accumulation, and max steps based on your detected GPU VRAM. Use this preset for first runs on consumer GPUs if you're unsure what values to choose.
 
+### Inference tab: "Adapter directory doesn't look like a valid LoRA adapter"
+
+**Problem**: The Inference tab refuses to validate an adapter directory and shows a red error like:
+
+- *"Adapter directory is missing or invalid"*, or
+- *"Adapter directory doesn't look like a valid LoRA adapter"*.
+
+**Causes**:
+
+- The path points to the **parent run folder** instead of the adapter subfolder.
+- The directory is empty or missing key adapter files.
+
+**Solution**:
+
+1. Make sure you're selecting the **adapter subdirectory** from a completed fine-tuning run (often named `adapter/`).
+2. Verify the folder contains at least one of:
+   - `adapter_config.json`
+   - LoRA weight files such as `*.safetensors` or `*.bin`
+3. If you're unsure, click **Use latest local training** in the Inference tab to automatically populate the adapter path and base model from your most recent local run.
+4. After fixing the path, wait for the Inference tab to re-run validation (spinner + snackbar) before trying to generate.
+
 ### Training pod won't start
 
 **Problem**: Runpod pod fails to start or reach ready state

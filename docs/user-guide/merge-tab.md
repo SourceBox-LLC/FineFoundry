@@ -7,6 +7,8 @@ The Merge Datasets tab allows you to combine multiple datasets from different so
 - Creating larger, more diverse training datasets
 - Consolidating datasets from different sources
 
+![Merge Datasets Tab](../../img/ff_merge.png)
+
 ## Overview
 
 The merge process:

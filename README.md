@@ -117,7 +117,7 @@ Optional (for pushing to Hugging Face):
    flet run src/main.py
    ```
 
-The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Merge Datasets, Dataset Analysis, and Settings.
+The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Inference, Merge Datasets, Dataset Analysis, and Settings.
 
 ## 📚 Documentation
 
@@ -257,6 +257,21 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - **Packing**: Mostly short outputs? Enable packing in Training to improve throughput.
 - **Splits**: Any leakage flags? Rebuild with different shuffle/seed or adjust split sizes.
 - **Curriculum**: Skewed length distribution? Consider mixing datasets or weighting sampling.
+
+<a id="settings-tab"></a>
+<a id="inference-tab"></a>
+### 💬 Inference tab
+
+![Inference tab](img/ff_inferance.png)
+
+- Pick a **base model** and **adapter directory**, or import from your **latest local training** run.
+- The adapter directory is **validated immediately** when selected; invalid folders show a red status message and a snackbar, and the prompt controls remain locked.
+- Once validated, the **Prompt & responses** section unlocks, with:
+  - Prompt box, **Preset** dropdown (Deterministic / Balanced / Creative), Temperature and Max new tokens sliders.
+  - **Generate** button that uses the same local inference helpers as Quick Local Inference, with a small progress ring and status text while the model loads and responds.
+  - **Clear history** button to reset the shared conversation.
+- **Full Chat View** button opens a focused chat dialog where you can have multi‑turn conversations with the same adapter/base model pair.
+  - The main Prompt & responses history and Full Chat View share a single conversation history, so you can switch back and forth without losing context.
 
 <a id="settings-tab"></a>
 ### ⚙️ Settings tab
