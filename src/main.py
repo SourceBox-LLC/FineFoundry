@@ -2465,13 +2465,22 @@ Specify license and any restrictions.
         value="Beginner",
         width=160,
     )
+    # Beginner presets use stable keys ("fastest" / "cheapest"); labels change
+    # depending on Training target (Runpod vs local) via
+    # _update_beginner_mode_labels_for_target.
     beginner_mode_dd = ft.Dropdown(
-        label="Beginner mode",
-        options=[ft.dropdown.Option("Fastest"), ft.dropdown.Option("Cheapest")],
-        value="Fastest",
-        width=160,
+        label="Beginner preset",
+        options=[
+            ft.dropdown.Option(text="Fastest (Runpod)", key="fastest"),
+            ft.dropdown.Option(text="Cheapest (Runpod)", key="cheapest"),
+        ],
+        value="fastest",
+        width=220,
         visible=True,
-        tooltip="For Beginner: Fastest uses best GPU with aggressive params; Cheapest uses lowest-cost GPU with conservative params.",
+        tooltip=(
+            "Beginner presets. For Runpod, Fastest favors throughput and Cheapest favors lower cost. "
+            "For local training, labels change to Quick local test / Longer local run."
+        ),
     )
     # Expert-mode GPU picker (hidden by default)
     expert_gpu_dd = ft.Dropdown(
@@ -2885,7 +2894,10 @@ Specify license and any restrictions.
                 try:
                     skill_level.value = "Beginner" if skill == "beginner" else "Expert"
                     if skill == "beginner" and mode in ("fastest", "cheapest"):
-                        beginner_mode_dd.value = "Fastest" if mode == "fastest" else "Cheapest"
+                        # Map legacy values ("Fastest" / "Cheapest") and new
+                        # key-based values ("fastest" / "cheapest") onto the
+                        # stable keys used by the dropdown.
+                        beginner_mode_dd.value = "fastest" if mode == "fastest" else "cheapest"
                     _update_skill_controls()
                 except Exception:
                     pass
@@ -3428,17 +3440,64 @@ Specify license and any restrictions.
                         grad_acc_tf.value = "4"
                         max_steps_tf.value = "200"
                 else:
-                    # Local Docker presets: more conservative, shorter runs by default
+                    # Local Docker presets
                     if mode == "fastest":
+                        # Quick local test: short run, small-ish batch for a fast sanity check
                         lr_tf.value = "2e-4"
                         batch_tf.value = "2"
                         grad_acc_tf.value = "1"
                         max_steps_tf.value = max_steps_tf.value or "50"
                     else:
-                        lr_tf.value = "2e-5"
-                        batch_tf.value = "1"
-                        grad_acc_tf.value = "2"
-                        max_steps_tf.value = "50"
+                        # Auto Set (local): use detected GPU VRAM to choose a config that
+                        # pushes the system reasonably hard without being reckless.
+                        try:
+                            data = gather_local_specs_helper()
+                        except Exception:
+                            data = {}
+                        try:
+                            gpus = list(data.get("gpus") or [])
+                            max_vram = 0.0
+                            for g in gpus:
+                                try:
+                                    v = g.get("vram_gb")
+                                    if isinstance(v, (int, float)) and v is not None:
+                                        max_vram = max(max_vram, float(v))
+                                except Exception:
+                                    pass
+                        except Exception:
+                            max_vram = 0.0
+                        # Heuristic tiers for 4-bit 7B/8B LoRA-style training
+                        if max_vram >= 24:
+                            lr_tf.value = "2e-4"
+                            batch_tf.value = "4"
+                            grad_acc_tf.value = "2"
+                            max_steps_tf.value = max_steps_tf.value or "400"
+                        elif max_vram >= 16:
+                            lr_tf.value = "2e-4"
+                            batch_tf.value = "4"
+                            grad_acc_tf.value = "2"
+                            max_steps_tf.value = max_steps_tf.value or "200"
+                        elif max_vram >= 12:
+                            lr_tf.value = "2e-4"
+                            batch_tf.value = "2"
+                            grad_acc_tf.value = "2"
+                            max_steps_tf.value = max_steps_tf.value or "200"
+                        elif max_vram >= 8:
+                            lr_tf.value = "1e-4"
+                            batch_tf.value = "2"
+                            grad_acc_tf.value = "4"
+                            max_steps_tf.value = max_steps_tf.value or "200"
+                        elif max_vram > 0:
+                            lr_tf.value = "1e-4"
+                            batch_tf.value = "1"
+                            grad_acc_tf.value = "4"
+                            max_steps_tf.value = max_steps_tf.value or "100"
+                        else:
+                            # CPU-only or unknown GPU: stay very conservative
+                            lr_tf.value = "1e-4"
+                            batch_tf.value = "1"
+                            grad_acc_tf.value = "2"
+                            max_steps_tf.value = max_steps_tf.value or "50"
             except Exception:
                 pass
         # If switching to Expert for the first time, lazily refresh GPU list
@@ -4420,6 +4479,7 @@ Specify license and any restrictions.
         "Clear history",
         icon=getattr(ICONS, "DELETE_SWEEP", getattr(ICONS, "DELETE", ICONS.CLOSE)),
     )
+    local_infer_busy_ring = ft.ProgressRing(visible=False, width=24, height=24, stroke_width=3)
     local_infer_group_container = ft.Container(
         content=ft.Column(
             [
@@ -4439,7 +4499,7 @@ Specify license and any restrictions.
                     local_infer_temp_slider,
                     local_infer_max_tokens_slider,
                 ], wrap=True, spacing=10),
-                ft.Row([local_infer_btn, local_infer_clear_btn], wrap=True, spacing=10),
+                ft.Row([local_infer_btn, local_infer_clear_btn, local_infer_busy_ring], wrap=True, spacing=10),
                 ft.Container(
                     ft.Stack([local_infer_output, local_infer_output_placeholder], expand=True),
                     height=220,
@@ -4576,7 +4636,10 @@ Specify license and any restrictions.
             base_model_name = (info.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
             if adapter_path and os.path.isdir(adapter_path):
                 local_infer_group_container.visible = True
-                local_infer_status.value = "Idle — ready for local inference."
+                local_infer_status.value = (
+                    "Training finished — Quick Local Inference is ready. "
+                    "Enter a prompt below to test your fine-tuned model."
+                )
                 local_infer_meta.value = f"Adapter: {adapter_path} • Base model: {base_model_name}"
             else:
                 local_infer_status.value = "Quick local inference not available yet. Ensure training completed successfully."
@@ -4623,10 +4686,14 @@ Specify license and any restrictions.
             temperature = 0.1
         loaded = bool(info.get("model_loaded"))
         local_infer_btn.disabled = True
+        try:
+            local_infer_busy_ring.visible = True
+        except Exception:
+            pass
         if not loaded:
-            local_infer_status.value = "Loading model and generating response..."
+            local_infer_status.value = "Loading fine-tuned model and generating response..."
         else:
-            local_infer_status.value = "Generating response..."
+            local_infer_status.value = "Generating response from fine-tuned model..."
         await safe_update(page)
         try:
             text = await asyncio.to_thread(
@@ -4662,6 +4729,10 @@ Specify license and any restrictions.
             local_infer_status.value = f"Inference failed: {ex}"
         finally:
             local_infer_btn.disabled = False
+            try:
+                local_infer_busy_ring.visible = False
+            except Exception:
+                pass
             await safe_update(page)
 
     local_start_btn = ft.ElevatedButton(
@@ -4841,6 +4912,59 @@ Specify license and any restrictions.
         prof["fp16"] = bool(getattr(fp16_cb, "value", False))
         prof["bf16"] = bool(getattr(bf16_cb, "value", False))
 
+    def _update_beginner_mode_labels_for_target() -> None:
+        """Adjust Beginner preset labels based on Training target.
+
+        Under the hood, values stay as keys ("fastest" / "cheapest"); only
+        the visible text and tooltip change between Runpod and local.
+        """
+        try:
+            tgt = (train_target_dd.value or "Runpod - Pod").lower()
+        except Exception:
+            tgt = "runpod - pod"
+        try:
+            opts = list(getattr(beginner_mode_dd, "options", []) or [])
+        except Exception:
+            opts = []
+        for o in opts:
+            try:
+                key = (getattr(o, "key", None) or getattr(o, "text", "")).strip().lower()
+            except Exception:
+                key = ""
+            # Keys stay as stable preset identifiers; only user-facing labels change
+            if tgt.startswith("runpod - pod"):
+                if key == "fastest":
+                    o.text = "Fastest (Runpod)"
+                elif key == "cheapest":
+                    o.text = "Cheapest (Runpod)"
+            else:
+                if key == "fastest":
+                    o.text = "Quick local test"
+                elif key == "cheapest":
+                    o.text = "Auto Set (local)"
+        try:
+            beginner_mode_dd.options = opts
+        except Exception:
+            pass
+        try:
+            if tgt.startswith("runpod - pod"):
+                beginner_mode_dd.tooltip = (
+                    "Beginner presets for Runpod. Fastest favors throughput on higher-tier GPUs; "
+                    "Cheapest favors lower-cost GPUs with more conservative params."
+                )
+            else:
+                beginner_mode_dd.tooltip = (
+                    "Beginner presets for local training. Quick local test runs a short, small-batch "
+                    "experiment; Auto Set (local) uses your detected GPU VRAM to choose batch/grad_acc/"
+                    "max_steps that push the system without being overly aggressive."
+                )
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
     def _apply_hp_for_target(target_key: str):
         prof = train_target_profiles.get(target_key) or {}
         if (not prof) and (target_key == "local"):
@@ -4955,9 +5079,14 @@ Specify license and any restrictions.
                 train_target_state["current"] = new_key
         except Exception:
             pass
-        # Refresh config list when target changes so Runpod/local configs are separated
+        # Refresh config list and Beginner presets when target changes so
+        # Runpod/local configs are clearly separated.
         try:
             _refresh_config_list()
+        except Exception:
+            pass
+        try:
+            _update_beginner_mode_labels_for_target()
         except Exception:
             pass
         target = (val or "").lower()

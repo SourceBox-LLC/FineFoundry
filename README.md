@@ -137,6 +137,8 @@ For comprehensive guides, tutorials, and API documentation, visit the **[docs/](
 <a id="scrape-tab"></a>
 ### 🧭 Scrape tab
 
+![Scrape tab](img/ff_scrape_tab.png)
+
 - **Boards**: Multi-select chips with Select All / Clear.
 - **Parameters**: `Max Threads`, `Max Pairs`, `Delay (s)`, `Min Length`, `Output JSON Path`.
 - Click **Start** to scrape. Live progress, stats, and logs are shown.
@@ -153,6 +155,8 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 <a id="build--publish-tab"></a>
 ### 🏗️ Build / Publish tab
 
+![Build / Publish tab](img/ff_buld_publish.png)
+
 - Point to your `Data file (JSON)` (defaults to `scraped_training_data.json`).
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.
 - Set split fractions with sliders (`Validation`, `Test`).
@@ -166,11 +170,16 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 <a id="training-tab"></a>
 ### 🧠 Training tab
 
+![Training tab](img/ff_training.png)
+
 - **Training target**: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
 - **Dataset source**: select Hugging Face repo and split, or point to a JSON file.
 - **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, LR, Per-device batch size, Grad accum steps, Max steps, Packing, Auto-resume.
 - **Output**: `Output dir` is used inside the container (typically under `/data/outputs/...`) and mapped back into your host folder when using Runpod or local Docker.
 - **Push to Hub**: toggle to upload trained weights/adapters; set HF repo id and ensure authentication (HF token in Settings or env).
+- **Skill level & Beginner presets**: pick Beginner or Expert. In Beginner mode, presets adapt to the training target:
+  - **Runpod - Pod**: `Fastest (Runpod)` vs `Cheapest (Runpod)`.
+  - **local**: `Quick local test` vs `Auto Set (local)`, where Auto Set uses your detected GPU VRAM to choose batch size, grad accumulation, and max steps that push the GPU without being overly aggressive.
 - **Run on Runpod**:
   - First, ensure infrastructure: create/reuse a Network Volume and a Pod Template. The default mount path is `/data` (avoid `/workspace` to prevent hiding `train.py` baked into the image).
   - Start training on a pod from the template; checkpoints will appear under `/data/outputs/...` on the volume.
@@ -180,6 +189,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - **Quick Local Inference**:
   - After a successful local run, a Quick Local Inference panel appears.
   - Test the trained adapter with prompt input, temperature / max token sliders, presets (Deterministic / Balanced / Creative), and a clear-history button.
+  - When you click **Run Inference**, the button is disabled and a small progress ring plus status text indicate that the fine-tuned model is loading and generating; the response appears in the panel once it is ready.
 - **Training configurations**:
   - Save the current setup (dataset, hyperparameters, training target, Runpod infra or local Docker settings) as a JSON config.
   - Load configs from the **Configuration** section to quickly restore full training setups.
@@ -204,12 +214,16 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 <a id="merge-datasets-tab"></a>
 ### 🔀 Merge Datasets tab
 
+![Merge Datasets tab](img/ff_merge.png)
+
 - Combine multiple JSON files and/or Hugging Face datasets into a single dataset.
 - Automatically maps input/output columns and filters empty rows.
 - Optionally normalize and save merged results to a JSON path or build a `datasets.DatasetDict`.
 
 <a id="dataset-analysis-tab"></a>
 ### 📊 Dataset Analysis tab
+
+![Dataset Analysis tab](img/ff_dataset_analysis.png)
 
 - Select dataset source (Hugging Face or JSON) and click Analyze dataset.
 - Use "Select all" to toggle all modules at once.

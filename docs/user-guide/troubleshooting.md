@@ -191,6 +191,8 @@ On a single 12 GB GPU (e.g., RTX 3060), a conservative starting point for 8B 4-b
 
 If you still hit OOM, also reduce sequence length and/or disable evaluation during training.
 
+For local Docker training, the Training tab's Beginner preset **Auto Set (local)** automatically picks conservative batch size, grad accumulation, and max steps based on your detected GPU VRAM. Use this preset for first runs on consumer GPUs if you're unsure what values to choose.
+
 ### Training pod won't start
 
 **Problem**: Runpod pod fails to start or reach ready state
