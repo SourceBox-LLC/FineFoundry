@@ -124,7 +124,12 @@ The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Py
 Additional quality jobs in CI include:
 
 - **Typecheck (`typecheck` job)** – Runs `mypy` against `src/helpers` and `src/save_dataset.py` using the configuration in `pyproject.toml`.
-- **Security audit (`security` job)** – Uses `pip-audit` (via `uv`) to scan the synced environment for known dependency vulnerabilities.
+- **Security audit (`security` job)** – Uses `pip-audit` (via `uv`) to scan the synced environment for known dependency vulnerabilities. The job is configured to
+  ignore two specific CVEs that currently come only from transitive dependencies and are tracked separately:
+  - `CVE-2025-6176` (affecting `brotli` 1.1.0; fixed in 1.2.0)
+  - `CVE-2025-62727` (affecting `starlette` 0.48.0; fixed in 0.49.1)
+
+  All other vulnerabilities reported by `pip-audit` will still cause the `security` job to fail.
 
 You can download coverage artifacts from the CI run to inspect coverage in detail or feed them into external reporting tools.
 +

@@ -219,5 +219,12 @@ jobs:
         shell: bash
         run: |
           uv pip install pip-audit
-          # Audit the installed environment for known vulnerabilities
-          uv run pip-audit
+          # Audit the installed environment for known vulnerabilities.
+          # Ignore specific CVEs that are currently present only via transitive
+          # dependencies and tracked separately:
+          # - CVE-2025-6176 (brotli 1.1.0; fixed in 1.2.0)
+          # - CVE-2025-62727 (starlette 0.48.0; fixed in 0.49.1)
+          # All other vulnerabilities will still cause this job to fail.
+          uv run pip-audit \
+            --ignore-vuln CVE-2025-6176 \
+            --ignore-vuln CVE-2025-62727
