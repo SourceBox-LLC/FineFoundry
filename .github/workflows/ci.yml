@@ -47,7 +47,7 @@ jobs:
 
       - name: Install ruff
         run: |
-          uv run python -m pip install ruff
+          uv pip install ruff
 
       - name: Lint with ruff
         run: |
@@ -90,7 +90,7 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          uv run python -m pip install pytest
+          uv pip install pytest
           set +e
           # Ignore proxy_test.py, which expects a local SOCKS proxy (Tor) that won't
           # exist in CI, while still running any real tests that are added.
