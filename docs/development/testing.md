@@ -96,10 +96,10 @@
 +uv pip install coverage
 +```
 +
-+Then run tests under coverage and show a summary:
++Then run tests under coverage (measuring only project code under `src/`) and show a summary:
 +
 +```bash
-+uv run coverage run -m pytest
++uv run coverage run --source=src -m pytest
 +uv run coverage report -m
 +```
 +
@@ -109,16 +109,21 @@
 +uv run coverage xml -o coverage.xml
 +```
 +
-+### CI Coverage
-+
-+The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Python 3.10, 3.11, and 3.12. For each matrix entry it:
-+
-+- Installs `pytest` and `coverage` via `uv`.
-+- Runs `coverage run -m pytest --ignore=proxy_test.py`.
-+- Prints a coverage summary with `coverage report -m`.
-+- Exports `coverage.xml` and uploads it as a GitHub Actions artifact.
-+
-+You can download these artifacts from the CI run to inspect coverage in detail or feed them into external reporting tools.
++### CI Coverage and Quality Gates
+
+The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Python 3.10, 3.11, and 3.12. For each matrix entry it:
+
+- Installs `pytest` and `coverage` via `uv`.
+- Runs `coverage run -m pytest --ignore=proxy_test.py`.
+- Enforces a minimum coverage threshold with `coverage report -m --fail-under=80`.
+- Exports `coverage.xml` and uploads it as a GitHub Actions artifact.
+
+Additional quality jobs in CI include:
+
+- **Typecheck (`typecheck` job)** – Runs `mypy` against `src/helpers` and `src/save_dataset.py` using the configuration in `pyproject.toml`.
+- **Security audit (`security` job)** – Uses `pip-audit` (via `uv`) to scan the synced environment for known dependency vulnerabilities.
+
+You can download coverage artifacts from the CI run to inspect coverage in detail or feed them into external reporting tools.
 +
 +## Adding New Tests
 +

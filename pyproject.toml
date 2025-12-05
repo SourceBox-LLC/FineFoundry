@@ -52,3 +52,14 @@ pythonpath = ["src"]
 markers = [
   "integration: marks tests as integration (deselect with '-m \"not integration\"')",
 ]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = "src"
+files = [
+  "src/helpers",
+  "src/save_dataset.py",
+]
+ignore_missing_imports = true
+warn_unused_ignores = true
+show_error_codes = true
