@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Callable
 import flet as ft
 
 from .theme import COLORS, ICONS, ACCENT_COLOR, BORDER_BASE
@@ -70,7 +70,7 @@ def make_board_chip(text: str, selected: bool, base_color):
     )
 
 
-def section_title(title: str, icon: str, help_text: Optional[str] = None, on_help_click: Optional[callable] = None) -> ft.Row:
+def section_title(title: str, icon: str, help_text: Optional[str] = None, on_help_click: Optional[Callable[..., None]] = None) -> ft.Row:
     controls = [
         ft.Icon(icon, color=ACCENT_COLOR),
         ft.Text(title, size=16, weight=ft.FontWeight.BOLD),

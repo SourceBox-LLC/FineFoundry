@@ -267,7 +267,10 @@ async def _append_local_log_line(
 async def _stream_local_logs(page: ft.Page, proc: subprocess.Popen, timeline: ft.ListView, placeholder: ft.Control, buffer: List[str], save_btn: ft.Control, ICONS_module=None):
     try:
         while True:
-            line = await asyncio.to_thread(proc.stdout.readline)  # type: ignore[arg-type]
+            stdout = proc.stdout
+            if stdout is None:
+                break
+            line = await asyncio.to_thread(stdout.readline)
             if not line:
                 break
             await _append_local_log_line(page, timeline, placeholder, buffer, save_btn, line.rstrip(), ICONS_module=ICONS_module)
@@ -554,7 +557,7 @@ async def stop_local_training(
 ) -> None:
     info = train_state.get("local") or {}
     cont = (info.get("container") or "").strip()
-    proc: Optional[subprocess.Popen] = info.get("proc")  # type: ignore
+    proc = info.get("proc")
     if not cont and not proc:
         return
     # Try docker stop by name first

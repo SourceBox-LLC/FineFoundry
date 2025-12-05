@@ -55,7 +55,7 @@ def _total_ram_bytes() -> Optional[int]:
         pass
     # Optional psutil fallback if installed
     try:
-        import psutil  # type: ignore
+        import psutil
         return int(getattr(psutil, "virtual_memory")().total)
     except Exception:
         return None
@@ -66,7 +66,7 @@ def _probe_gpus_via_torch():
     cuda_ok = False
     torch_ok = False
     try:
-        import torch  # type: ignore
+        import torch
         torch_ok = True
         cuda_ok = bool(torch.cuda.is_available())
         if cuda_ok:

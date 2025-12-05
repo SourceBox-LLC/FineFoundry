@@ -5,7 +5,7 @@ from scrapers import fourchan_scraper as sc
 try:
     from scrapers import reddit_scraper as rdt
 except Exception:
-    rdt = None
+    rdt = None  # type: ignore[assignment]
 from scrapers import stackexchange_scraper as sx
 
 
