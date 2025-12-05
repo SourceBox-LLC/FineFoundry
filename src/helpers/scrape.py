@@ -526,17 +526,20 @@ async def run_reddit_scrape(
                             if not isinstance(rec, dict):
                                 continue
                             msgs = rec.get("messages", []) or []
-                            u = None; a = None
+                            u = None
+                            a = None
                             for m in msgs:
                                 if not isinstance(m, dict):
                                     continue
-                                role = m.get("role"); text = (m.get("content") or "").strip()
+                                role = m.get("role")
+                                text = (m.get("content") or "").strip()
                                 if not text:
                                     continue
                                 if role == "user" and u is None:
                                     u = text
                                 elif role == "assistant" and u is not None:
-                                    a = text; break
+                                    a = text
+                                    break
                             if not (u and a):
                                 texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
                                 if len(texts) >= 2:
@@ -812,17 +815,20 @@ async def run_real_scrape(
                             if not isinstance(rec, dict):
                                 continue
                             msgs = rec.get("messages", []) or []
-                            u = None; a = None
+                            u = None
+                            a = None
                             for m in msgs:
                                 if not isinstance(m, dict):
                                     continue
-                                role = m.get("role"); text = (m.get("content") or "").strip()
+                                role = m.get("role")
+                                text = (m.get("content") or "").strip()
                                 if not text:
                                     continue
                                 if role == "user" and u is None:
                                     u = text
                                 elif role == "assistant" and u is not None:
-                                    a = text; break
+                                    a = text
+                                    break
                             if not (u and a):
                                 texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
                                 if len(texts) >= 2:

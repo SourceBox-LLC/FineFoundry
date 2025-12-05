@@ -428,7 +428,8 @@ async def run_pod_training(
     if not tpl_id or not vol_id:
         train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod infrastructure not ready. Click Ensure Infrastructure first.")]))
         train_state["running"] = False
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
         return
 
     saved_key = ((train_state.get("api_key") or (_runpod_cfg.get("api_key") if isinstance(_runpod_cfg, dict) else "") or "").strip())
@@ -437,7 +438,8 @@ async def run_pod_training(
     if not api_key:
         train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings or temp field.")]))
         train_state["running"] = False
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
         return
 
     try:
@@ -538,7 +540,8 @@ async def run_pod_training(
                     ft.Text("Dataset not set. Provide a Hugging Face dataset or JSON path before starting."),
                 ]))
                 train_state["running"] = False
-                update_train_placeholders(); await safe_update(page)
+                update_train_placeholders()
+                await safe_update(page)
                 return
         except Exception:
             pass
@@ -613,7 +616,8 @@ async def run_pod_training(
             train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.SETTINGS, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Expert: Using GPU {sel_id} ({mode_txt})")]))
         except Exception:
             pass
-    update_train_placeholders(); await safe_update(page)
+    update_train_placeholders()
+    await safe_update(page)
 
     # Create pod
     try:
@@ -780,10 +784,12 @@ async def restart_pod_container(
         cmd = rp_pod_module.build_cmd(hp)
         await asyncio.to_thread(rp_pod_module.patch_pod_docker_start_cmd, api_key, pod_id, cmd)
         train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.RESTART_ALT, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text("Container restarting with new hyper-params…")]))
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
     except Exception as e:
         train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Restart failed: {e}")]))
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
 
 
 def open_runpod(page: ft.Page, train_state: dict, train_timeline: ft.ListView) -> None:
@@ -1059,7 +1065,8 @@ async def confirm_teardown_selected(
     # Timeline + snackbar feedback
     try:
         train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "WARNING_AMBER", ft.Icons.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown Selected clicked")]))
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
     except Exception:
         pass
     try:
@@ -1172,7 +1179,8 @@ async def confirm_teardown_all(
     # Timeline + snackbar feedback
     try:
         train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "WARNING_AMBER", ft.Icons.WARNING), color=WITH_OPACITY(0.9, COLORS.ORANGE)), ft.Text("Teardown All clicked")]))
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
     except Exception:
         pass
     try:

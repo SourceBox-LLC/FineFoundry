@@ -7,14 +7,12 @@ import httpx
 
 import flet as ft
 
-# Runpod modules (pod lifecycle and infra helpers)
+# Runpod infra helper (pods are managed via controllers; main only needs optional infra module)
 try:
-    from runpod import runpod_pod as rp_pod
     from runpod import ensure_infra as rp_infra
 except Exception:
     import sys as __sys2
     __sys2.path.append(os.path.dirname(__file__))
-    from runpod import runpod_pod as rp_pod
     try:
         from runpod import ensure_infra as rp_infra
     except Exception:
@@ -40,12 +38,7 @@ from helpers.theme import (
 logger = get_logger(__name__)
 from helpers.ui import (
     WITH_OPACITY,
-    pill,
     section_title,
-    make_empty_placeholder,
-    compute_two_col_flex,
-    two_col_header,
-    two_col_row,
 )
 from ui.tabs.tab_settings import build_settings_tab
 from ui.tabs.scrape_controller import build_scrape_tab_with_logic
@@ -58,7 +51,6 @@ from helpers.settings_ollama import (
     load_config as load_ollama_config_helper,
     save_config as save_ollama_config_helper,
     fetch_tags as fetch_ollama_tags_helper,
-    chat as ollama_chat_helper,
 )
 
 # Set terminal title to uppercase for the current session
@@ -108,6 +100,10 @@ def main(page: ft.Page):
             pass
 
     # In-app User Guide (opens a detailed, scrollable modal)
+    # Helper: robust Markdown factory for the in-app guide
+    def _make_md(md_text: str) -> ft.Markdown:
+        return ft.Markdown(md_text, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB)
+
     def open_user_guide(_):
         try:
             # Immediate feedback to verify click wiring
@@ -776,7 +772,7 @@ Tabs:
             page.add(tabs)
             try:
                 page.floating_action_button = ft.FloatingActionButton(
-                    icon=(INFO_ICON or getattr(ICONS, "INFO", None)),
+                    icon=getattr(ICONS, "INFO", None),
                     tooltip="User guide (F1)",
                     on_click=lambda e: open_user_guide(e),
                 )
@@ -786,15 +782,7 @@ Tabs:
                 page.update()
             except Exception:
                 pass
-            # Initialize visibility and dependent UI now that tabs exist
-            try:
-                _update_train_source()
-            except Exception:
-                pass
-            try:
-                _update_skill_controls()
-            except Exception:
-                pass
+            # Training tab manages its own visibility and skill controls internally.
         except Exception:
             pass
 

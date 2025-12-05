@@ -195,7 +195,7 @@ async def on_docker_pull(
                         "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}",
                         "--filter", f"reference={ref}:*"
                     ], capture_output=True, text=True)
-                    lines = [l.strip() for l in (ls.stdout or "").splitlines() if l.strip()]
+                    lines = [line.strip() for line in (ls.stdout or "").splitlines() if line.strip()]
                     if lines:
                         hints.append("Local tags found: " + ", ".join(lines[:8]))
                 except Exception:

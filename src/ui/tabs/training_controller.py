@@ -1223,7 +1223,8 @@ def build_training_tab_with_logic(
             page.snack_bar = ft.SnackBar(ft.Text("Ensuring Runpod infrastructure…"))
             page.snack_bar.open = True
             rp_infra_busy.visible = True
-            update_train_placeholders(); page.update()
+            update_train_placeholders()
+            page.update()
         except Exception:
             pass
         _schedule_task(page, on_ensure_infra)
@@ -1272,6 +1273,67 @@ def build_training_tab_with_logic(
             expert_spot_cb=expert_spot_cb,
             expert_gpu_avail=expert_gpu_avail,
         )
+
+    # Refresh local system specs (CPU/RAM/disk/GPU) and update the Local Training: System Specs UI.
+    async def on_refresh_local_specs(_=None):
+        try:
+            data = gather_local_specs_helper()
+        except Exception:
+            data = {}
+
+        try:
+            local_os_txt.value = str(data.get("os") or "")
+            local_py_txt.value = str(data.get("python") or "")
+            local_cpu_txt.value = str(data.get("cpu_cores") or "")
+
+            ram_gb = data.get("ram_gb")
+            local_ram_txt.value = f"{ram_gb} GB" if isinstance(ram_gb, (int, float)) else "?"
+
+            disk_gb = data.get("disk_free_gb")
+            local_disk_txt.value = f"{disk_gb} GB free" if isinstance(disk_gb, (int, float)) else "?"
+
+            torch_ok = bool(data.get("torch_installed"))
+            cuda_ok = bool(data.get("cuda_available"))
+            local_torch_txt.value = "Installed" if torch_ok else "Not installed"
+            local_cuda_txt.value = "Available" if cuda_ok else "Not available"
+
+            gpus = list(data.get("gpus") or [])
+            gpu_lines: List[str] = []
+            for g in gpus:
+                try:
+                    idx = g.get("index")
+                    name = str(g.get("name") or f"GPU {idx}")
+                    vram = g.get("vram_gb")
+                    if isinstance(vram, (int, float)):
+                        gpu_lines.append(f"GPU {idx}: {name} ({vram} GB)")
+                    else:
+                        gpu_lines.append(f"GPU {idx}: {name}")
+                except Exception:
+                    continue
+            local_gpus_txt.value = "\n".join(gpu_lines) if gpu_lines else "No NVIDIA GPUs detected."
+
+            local_capability_txt.value = str(data.get("capability") or "Unknown")
+
+            # Red flags list
+            flags = list(data.get("red_flags") or [])
+            local_flags_col.controls.clear()
+            if flags:
+                for msg in flags:
+                    try:
+                        local_flags_col.controls.append(ft.Text(str(msg)))
+                    except Exception:
+                        continue
+                local_flags_box.visible = True
+            else:
+                local_flags_box.visible = False
+
+            await safe_update(page)
+        except Exception:
+            # Best-effort; avoid breaking the UI if specs gathering fails
+            try:
+                await safe_update(page)
+            except Exception:
+                pass
 
     # Wire refresh button (dispatch based on training target)
     def on_click_expert_gpu_refresh(e):
@@ -1409,7 +1471,7 @@ def build_training_tab_with_logic(
         spacing=10,
     )
 
-    td_title = section_title(
+    section_title(
         "Teardown",
         getattr(ICONS, "DELETE_FOREVER", getattr(ICONS, "DELETE", ICONS.CLOSE)),
         "Select infrastructure items to delete. Teardown All removes all related items.",

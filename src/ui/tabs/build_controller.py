@@ -140,9 +140,6 @@ def build_build_tab_with_logic(
         can_reveal_password=True,
         width=320,
     )
-    saved_tok = (
-        (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
-    )
 
     # Validation chip for splits
     split_error = ft.Text("", color=COLORS.RED)
