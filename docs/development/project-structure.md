@@ -195,9 +195,17 @@ Organized by tab and section for modularity:
 
 Each tab builder:
 1. Imports section builders
-2. Receives controls from main.py
+2. Receives controls from `src/main.py` or a tab controller (for example, `ui/tabs/inference_controller.py` or `ui/tabs/training_controller.py`)
 3. Calls section builders
 4. Returns composed layout
+
+For the Inference tab specifically:
+
+- `ui/tabs/inference_controller.py` wires up all controls and handlers for adapter validation, prompt generation, and Full Chat View chat logic, and then calls `tab_inference.build_inference_tab()` for layout. This keeps `src/main.py` smaller and localizes inference behavior.
+
+For the Training tab, a similar pattern is used:
+
+- `ui/tabs/training_controller.py` owns all Training tab behavior (dataset source selection, hyperparameters, Runpod infrastructure, local Docker training, Quick Local Inference, config save/load/edit/delete, and target switching). It builds all Training controls, wires handlers and shared `train_state`, and then calls `tab_training.build_training_tab()` to compose the layout. `src/main.py` only calls `build_training_tab_with_logic(...)` and receives the composed Training tab + `train_state`.
 
 #### Section Builders
 Example: `src/ui/tabs/scrape/sections/`
