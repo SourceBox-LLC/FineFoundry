@@ -34,7 +34,7 @@ FineFoundry-Core/
 │   │   ├── reddit_scraper.py
 │   │   └── stackexchange_scraper.py
 │   ├── ui/                   # UI components
-│   │   └── tabs/             # Tab-specific UI
+│   │   └── tabs/             # Tab-specific UI (layouts + controllers)
 │   │       ├── tab_scrape.py
 │   │       ├── tab_build.py
 │   │       ├── tab_training.py
@@ -42,8 +42,16 @@ FineFoundry-Core/
 │   │       ├── tab_merge.py
 │   │       ├── tab_analysis.py
 │   │       ├── tab_settings.py
+│   │       ├── scrape_controller.py    # Scrape tab controller
+│   │       ├── build_controller.py     # Build / Publish tab controller
+│   │       ├── merge_controller.py     # Merge Datasets tab controller
+│   │       ├── analysis_controller.py  # Dataset Analysis tab controller
+│   │       ├── training_controller.py  # Training tab controller
+│   │       ├── inference_controller.py # Inference tab controller
 │   │       ├── scrape/       # Scrape tab sections
+│   │       ├── build/        # Build tab sections
 │   │       ├── merge/        # Merge tab sections
+│   │       ├── analysis/     # Analysis tab sections
 │   │       └── training/     # Training tab sections
 │   └── runpod/               # Runpod integration
 │       ├── runpod_pod.py     # Pod management
@@ -62,16 +70,15 @@ FineFoundry-Core/
 
 The main entry point that:
 - Initializes the Flet desktop application
-- Creates all UI tabs
-- Sets up event handlers
-- Manages application state
-- Coordinates between UI and business logic
+- Sets up the global app shell (AppBar, welcome view, shared settings/proxy/HF/Runpod/Ollama controls)
+- Delegates tab wiring to dedicated controllers in `ui/tabs/*_controller.py`
+- Coordinates between controllers and shared helper modules
 
-**Key sections:**
-- Imports and logger setup (lines 1-50)
-- Helper functions and utilities (lines 100-500)
-- Tab-specific UI creation (lines 500-3000)
-- Main app function (bottom of file)
+**Key responsibilities (after controller refactor):**
+- Imports and logger setup
+- Global helpers (user guide dialog, keyboard shortcuts, settings I/O)
+- Building each tab by calling `build_*_tab_with_logic(...)` from the appropriate controller
+- Adding all tabs to the Flet `Tabs` control and bootstrapping the app
 
 ### Helpers (`src/helpers/`)
 
@@ -195,17 +202,20 @@ Organized by tab and section for modularity:
 
 Each tab builder:
 1. Imports section builders
-2. Receives controls from `src/main.py` or a tab controller (for example, `ui/tabs/inference_controller.py` or `ui/tabs/training_controller.py`)
+2. Receives controls from a tab controller (for example, `ui/tabs/scrape_controller.py`, `ui/tabs/build_controller.py`, `ui/tabs/merge_controller.py`, `ui/tabs/analysis_controller.py`, `ui/tabs/training_controller.py`, or `ui/tabs/inference_controller.py`)
 3. Calls section builders
-4. Returns composed layout
+4. Returns the composed layout
 
-For the Inference tab specifically:
+Tab controllers own behavior and state for each tab and then delegate layout to the corresponding builder:
 
-- `ui/tabs/inference_controller.py` wires up all controls and handlers for adapter validation, prompt generation, and Full Chat View chat logic, and then calls `tab_inference.build_inference_tab()` for layout. This keeps `src/main.py` smaller and localizes inference behavior.
+- `ui/tabs/scrape_controller.py` → `tab_scrape.py`
+- `ui/tabs/build_controller.py` → `tab_build.py`
+- `ui/tabs/merge_controller.py` → `tab_merge.py`
+- `ui/tabs/analysis_controller.py` → `tab_analysis.py`
+- `ui/tabs/training_controller.py` → `tab_training.py`
+- `ui/tabs/inference_controller.py` → `tab_inference.py`
 
-For the Training tab, a similar pattern is used:
-
-- `ui/tabs/training_controller.py` owns all Training tab behavior (dataset source selection, hyperparameters, Runpod infrastructure, local Docker training, Quick Local Inference, config save/load/edit/delete, and target switching). It builds all Training controls, wires handlers and shared `train_state`, and then calls `tab_training.build_training_tab()` to compose the layout. `src/main.py` only calls `build_training_tab_with_logic(...)` and receives the composed Training tab + `train_state`.
+`src/main.py` now calls the exported `build_*_tab_with_logic(...)` functions from these controllers instead of creating tab controls and handlers inline.
 
 #### Section Builders
 Example: `src/ui/tabs/scrape/sections/`
@@ -242,7 +252,7 @@ Benefits:
 
 ### Scraping Flow
 ```
-User (UI) → main.py event handler
+User (UI) → Scrape tab controller (`ui/tabs/scrape_controller.py`)
            ↓
          helpers/scrape.py wrapper
            ↓
