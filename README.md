@@ -532,6 +532,19 @@ Quick fixes:
 - UI built with Flet (`flet`, `flet-desktop`), pinned in `requirements.txt`.
 - Run formatting/linting as desired. Contributions welcome via PR.
 
+### Controller pattern
+
+- Each tab's behavior and event wiring lives in `ui/tabs/*_controller.py` (Scrape, Build / Publish, Merge Datasets, Dataset Analysis, Training, Inference).
+- Layout-only builders live in `ui/tabs/tab_*.py` and per-tab section modules under `ui/tabs/<tab>/sections/`.
+- `src/main.py` is intentionally kept slim: it builds the global shell and delegates tab construction to controller functions such as `build_scrape_tab_with_logic(...)`, `build_build_tab_with_logic(...)`, `build_merge_tab_with_logic(...)`, and `build_analysis_tab_with_logic(...)`.
+
+#### Adding a new tab (high level)
+
+- Pick a short tab key (for example, `mytab`).
+- Create a layout builder `ui/tabs/tab_mytab.py` and any sections under `ui/tabs/mytab/sections/`.
+- Create a controller `ui/tabs/mytab_controller.py` that exposes `build_mytab_tab_with_logic(page, *, section_title, _mk_help_handler, ...)`.
+- Import that controller function in `src/main.py` and add a new `ft.Tab(...)` entry whose `content` is the result of `build_mytab_tab_with_logic(...)`.
+
 <a id="license"></a>
 ## 📄 License
 
