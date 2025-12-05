@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 import flet as ft
 
@@ -360,8 +360,12 @@ async def run_merge(
             out_abs = os.path.abspath(out_path)
             os.makedirs(os.path.dirname(out_abs) or ".", exist_ok=True)
             logger.info(f"Saving {len(merged_examples)} merged records to JSON: {out_abs}")
-            await asyncio.to_thread(lambda: open(out_abs, "w", encoding="utf-8").write(json.dumps(merged_examples, ensure_ascii=False, indent=4)))
-            logger.info(f"Successfully saved merged JSON dataset")
+            await asyncio.to_thread(
+                lambda: open(out_abs, "w", encoding="utf-8").write(
+                    json.dumps(merged_examples, ensure_ascii=False, indent=4)
+                )
+            )
+            logger.info("Successfully saved merged JSON dataset")
             merge_timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Saved JSON to {out_abs}")]))
             await safe_update(page)
             # Populate inline preview with a small sample
@@ -416,7 +420,8 @@ async def run_merge(
                     # Fallback to any available split
                     try:
                         for k in getattr(dd, "keys", lambda: [])():
-                            ds = dd[k]; break
+                            ds = dd[k]
+                            break
                     except Exception:
                         ds = None
                 pairs = []
@@ -510,11 +515,13 @@ async def preview_merged(
             os.path.join(os.getcwd(), orig_dir),
             os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_dir),
         ])
-    seen = set(); resolved_list: List[str] = []
+    seen = set()
+    resolved_list: List[str] = []
     for pth in candidates:
         ap = os.path.abspath(pth)
         if ap not in seen:
-            seen.add(ap); resolved_list.append(ap)
+            seen.add(ap)
+            resolved_list.append(ap)
     existing = next((p for p in resolved_list if os.path.exists(p)), None)
     if not existing:
         page.snack_bar = ft.SnackBar(ft.Text(
@@ -635,10 +642,12 @@ async def preview_merged(
         if DatasetDict is not None and isinstance(obj, DatasetDict):
             for k in ["train", "validation", "test"]:
                 if k in obj:
-                    ds = obj[k]; break
+                    ds = obj[k]
+                    break
             if ds is None:
                 for k in getattr(obj, "keys", lambda: [])():
-                    ds = obj[k]; break
+                    ds = obj[k]
+                    break
         else:
             ds = obj
     except Exception:

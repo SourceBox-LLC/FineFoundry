@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Optional
 
 import flet as ft
 

@@ -19,7 +19,7 @@ import flet as ft
 from helpers.common import safe_update
 from helpers.datasets import guess_input_output_columns
 from helpers.logging_config import get_logger
-from helpers.theme import ACCENT_COLOR, BORDER_BASE, COLORS, ICONS
+from helpers.theme import ACCENT_COLOR, BORDER_BASE, ICONS
 from helpers.ui import WITH_OPACITY
 
 # Optional datasets dependency (for HF datasets backend)
@@ -374,9 +374,10 @@ def build_analysis_tab_with_logic(
     # Select-all toggle for analysis modules
     select_all_modules_cb = ft.Checkbox(label="Select all", value=False)
 
-    # Analyze button; enabled only when dataset is selected
-    async def on_analyze(_=None):  # defined below; stub to satisfy type checkers
-        ...
+    # Analyze button; enabled only when dataset is selected.
+    # Stub delegates to implementation defined later.
+    async def on_analyze(_=None):
+        await _on_analyze_impl(_)
 
     analyze_btn = ft.ElevatedButton(
         "Analyze dataset",
@@ -513,7 +514,7 @@ def build_analysis_tab_with_logic(
     kpi_avg_out_value = ft.Text("—", size=18, weight=ft.FontWeight.W_600)
     kpi_dupe_value = ft.Text("—", size=18, weight=ft.FontWeight.W_600)
 
-    async def on_analyze(_=None):  # type: ignore[override]
+    async def _on_analyze_impl(_=None) -> None:
         if analysis_state.get("running"):
             return
         analysis_state["running"] = True

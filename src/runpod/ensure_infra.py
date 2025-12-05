@@ -307,19 +307,26 @@ def ensure_infrastructure(
                 need_patch = False
                 patch_args: Dict[str, Any] = {}
                 if merged_env != existing_env:
-                    patch_args["env_vars"] = merged_env; need_patch = True
+                    patch_args["env_vars"] = merged_env
+                    need_patch = True
                 if desired_ports != existing_ports:
-                    patch_args["ports"] = desired_ports; need_patch = True
+                    patch_args["ports"] = desired_ports
+                    need_patch = True
                 if desired_readme != existing_readme:
-                    patch_args["readme"] = desired_readme; need_patch = True
+                    patch_args["readme"] = desired_readme
+                    need_patch = True
                 if desired_entry != existing_entry:
-                    patch_args["docker_entrypoint"] = desired_entry; need_patch = True
+                    patch_args["docker_entrypoint"] = desired_entry
+                    need_patch = True
                 if desired_start != existing_start:
-                    patch_args["docker_start_cmd"] = desired_start; need_patch = True
+                    patch_args["docker_start_cmd"] = desired_start
+                    need_patch = True
                 if desired_vol_gb != existing_vol_gb:
-                    patch_args["volume_in_gb"] = desired_vol_gb; need_patch = True
+                    patch_args["volume_in_gb"] = desired_vol_gb
+                    need_patch = True
                 if desired_mount != existing_mount:
-                    patch_args["volume_mount_path"] = desired_mount; need_patch = True
+                    patch_args["volume_mount_path"] = desired_mount
+                    need_patch = True
 
                 if need_patch:
                     patched = patch_template(template_id=tpl_id, api_key=api_key, **patch_args)

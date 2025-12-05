@@ -51,7 +51,7 @@ async def on_docker_pull(
             if info_res.returncode != 0:
                 err_txt = (info_res.stderr or info_res.stdout or "").strip()
                 raise RuntimeError(err_txt or "Docker daemon not responding")
-        except Exception as ex_chk:
+        except Exception:
             # Pretty error if Docker Desktop/daemon isn't running
             nice_msg = "Docker is not running. Please start Docker Desktop, then retry."
             docker_status.value = nice_msg

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import datetime
 from typing import Callable, Awaitable, Optional, List
 
 import flet as ft
@@ -87,8 +86,10 @@ async def refresh_expert_gpus(
             sec = bool(d.get("secureAvailable"))
             spot = bool(d.get("spotAvailable"))
             tags = []
-            if sec: tags.append("secure")
-            if spot: tags.append("spot")
+            if sec:
+                tags.append("secure")
+            if spot:
+                tags.append("spot")
             mem_txt = (f" {int(mem)}GB" if isinstance(mem, (int, float)) and mem else "")
             label = f"{name}{mem_txt} [{'/' .join(tags) if tags else 'limited'}]"
             opts.append(ft.dropdown.Option(text=label, key=gid))
@@ -228,7 +229,8 @@ async def do_teardown(
     key = saved_key or temp_key or (os.environ.get("RUNPOD_API_KEY") or "").strip()
     if not key:
         train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text("Runpod API key missing. Set it in Settings → Runpod API Access.")]))
-        update_train_placeholders(); await safe_update(page)
+        update_train_placeholders()
+        await safe_update(page)
         return
 
     infra = train_state.get("infra") or {}
@@ -245,7 +247,8 @@ async def do_teardown(
             if status == 404:
                 try:
                     train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.INFO, color=WITH_OPACITY(0.9, COLORS.BLUE)), ft.Text(f"Pod already absent on Runpod: {pod_id}")]))
-                    update_train_placeholders(); await safe_update(page)
+                    update_train_placeholders()
+                    await safe_update(page)
                 except Exception:
                     pass
                 try:
@@ -288,7 +291,8 @@ async def do_teardown(
                 ft.Icon(getattr(ft.Icons, "PLAY_CIRCLE", ft.Icons.PLAY_ARROW), color=ACCENT_COLOR),
                 ft.Text("Starting teardown: " + ", ".join(actions))
             ]))
-            update_train_placeholders(); await safe_update(page)
+            update_train_placeholders()
+            await safe_update(page)
     except Exception:
         pass
 
@@ -361,19 +365,14 @@ async def do_teardown(
                 train_state["infra"] = None
         except Exception:
             pass
-
-        # Disable training actions if infra missing
-        try:
-            has_infra = bool(train_state.get("infra"))
-            # The caller may tweak button states; keep minimal here
-        except Exception:
-            pass
         # Completion log and refresh UI
         try:
-            train_timeline.controls.append(ft.Row([ft.Icon(getattr(ft.Icons, "CHECK_CIRCLE", ft.Icons.CHECK), color=COLORS.GREEN), ft.Text("Teardown complete")]))
+            train_timeline.controls.append(ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Teardown complete")]))
         except Exception:
             pass
-        update_train_placeholders(); await refresh_teardown_ui_fn(); await safe_update(page)
+        update_train_placeholders()
+        await refresh_teardown_ui_fn()
+        await safe_update(page)
     finally:
         try:
             td_busy.visible = False
@@ -886,6 +885,7 @@ async def ensure_infrastructure(
     train_timeline: ft.ListView,
     refresh_expert_gpus_fn: Callable[[], None],
     refresh_teardown_ui_fn: Callable[[], Awaitable[None]],
+    train_state: dict,
     dataset_section: ft.Container,
     train_params_section: ft.Container,
     start_train_btn: ft.Control,

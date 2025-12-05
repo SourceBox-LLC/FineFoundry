@@ -368,7 +368,7 @@ async def run_local_training(
         pass
 
     # Build docker run command
-    cont_name = (local_container_name_tf.value or f"ds-local-train-").strip()
+    cont_name = (local_container_name_tf.value or "ds-local-train-").strip()
     if cont_name.endswith("-"):
         # Avoid trailing hyphen-only names
         cont_name = f"{cont_name}{str(abs(hash(img)))[:6]}"

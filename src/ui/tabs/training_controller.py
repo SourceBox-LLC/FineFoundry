@@ -471,7 +471,8 @@ def build_training_tab_with_logic(
             m = re.search(r"(?:global[_ ]?step|steps?|iter(?:ation)?|it(?:er)?)\s*[:=]?\s*(\d+)\s*(?:/|of)\s*(\d+)", s, re.IGNORECASE)
             if m:
                 try:
-                    cur = int(m.group(1)); tot = int(m.group(2))
+                    cur = int(m.group(1))
+                    tot = int(m.group(2))
                     if tot > 0:
                         pct_found = max(0, min(100, int(cur * 100 / tot)))
                         break
@@ -484,7 +485,8 @@ def build_training_tab_with_logic(
                 m = re.search(r"epoch\s*\[\s*(\d+)\s*/\s*(\d+)\s*\]", s, re.IGNORECASE)
             if m:
                 try:
-                    cur = int(m.group(1)); tot = int(m.group(2))
+                    cur = int(m.group(1))
+                    tot = int(m.group(2))
                     if tot > 0:
                         # Use (cur-1)/tot as coarse progress into epochs
                         pct_found = max(0, min(100, int(((cur - 1) / tot) * 100)))
@@ -1206,6 +1208,7 @@ def build_training_tab_with_logic(
             train_timeline=train_timeline,
             refresh_expert_gpus_fn=lambda: page.run_task(refresh_expert_gpus),
             refresh_teardown_ui_fn=_refresh_teardown_ui,
+            train_state=train_state,
             dataset_section=dataset_section,
             train_params_section=train_params_section,
             start_train_btn=start_train_btn,

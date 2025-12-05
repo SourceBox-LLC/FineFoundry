@@ -143,7 +143,6 @@ def build_build_tab_with_logic(
     saved_tok = (
         (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
     )
-    token_val = saved_tok or token_val_ui.value
 
     # Validation chip for splits
     split_error = ft.Text("", color=COLORS.RED)

@@ -248,8 +248,8 @@ def compute_two_col_widths(page: ft.Page, samples: list[tuple[str, str]], *,
 def compute_two_col_flex(samples: list[tuple[str, str]]) -> tuple[int, int]:
     """Return left/right flex factors based on content ratio with sane clamps."""
     r = _estimate_two_col_ratio(samples)
-    l = max(1, int(round(r * 100)))
-    return l, max(1, 100 - l)
+    left = max(1, int(round(r * 100)))
+    return left, max(1, 100 - left)
 
 
 def two_col_header(left: str = "Input", right: str = "Output", *, left_flex: int = 50, right_flex: int = 50) -> ft.Container:

@@ -20,4 +20,5 @@ extend-exclude = [
 # We can tighten this later once the codebase is formatted consistently.
 ignore = [
   "E501",  # line too long
+  "E402",  # module level import not at top of file (allowed in some CLI scripts)
 ]
