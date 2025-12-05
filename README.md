@@ -545,6 +545,18 @@ Quick fixes:
 - Create a controller `ui/tabs/mytab_controller.py` that exposes `build_mytab_tab_with_logic(page, *, section_title, _mk_help_handler, ...)`.
 - Import that controller function in `src/main.py` and add a new `ft.Tab(...)` entry whose `content` is the result of `build_mytab_tab_with_logic(...)`.
 
+### CI/CD workflows
+
+- **CI (GitHub Actions)** — `.github/workflows/ci.yml`
+  - `lint` (py311): sets up Python 3.11 with `uv sync --frozen`, then runs `ruff` against `src/` using `ruff.toml`.
+  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest`, and runs `pytest -q --ignore=proxy_test.py` (treats "no tests collected" as success).
+  - `build` (py311): depends on `lint` and `test`; uses `uv` to run `compileall` on `src` and `scripts` and performs an import smoke test for `helpers`, `scrapers`, `runpod`, and `ui`.
+
+- **Release (CD)** — `.github/workflows/release.yml`
+  - Triggers on tags matching `v*` (for example, `v0.1.0`) or via manual `workflow_dispatch`.
+  - Uses `uv build` to create wheel/sdist into `dist/`, then uploads them as workflow artifacts.
+  - If the `PYPI_API_TOKEN` GitHub secret is set, publishes the built artifacts to PyPI via `pypa/gh-action-pypi-publish`.
+
 <a id="license"></a>
 ## 📄 License
 

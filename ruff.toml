@@ -1,0 +1,22 @@
+[tool.ruff]
+# Match project minimum (>=3.10) for syntax/linting decisions.
+target-version = "py310"
+
+# Slightly relaxed width to avoid noisy E501 while still catching egregious cases.
+line-length = 120
+
+# Don't waste time linting generated or environment folders.
+extend-exclude = [
+  ".git",
+  ".venv",
+  ".uv",
+  "dist",
+  "build",
+]
+
+[tool.ruff.lint]
+# Start with Ruff's default rule set (E/F), but ignore long-line warnings for now.
+# We can tighten this later once the codebase is formatted consistently.
+ignore = [
+  "E501",  # line too long
+]
