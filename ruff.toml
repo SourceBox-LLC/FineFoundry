@@ -1,4 +1,5 @@
-[tool.ruff]
+## Ruff configuration for this repository.
+
 # Match project minimum (>=3.10) for syntax/linting decisions.
 target-version = "py310"
 
@@ -14,7 +15,7 @@ extend-exclude = [
   "build",
 ]
 
-[tool.ruff.lint]
+[lint]
 # Start with Ruff's default rule set (E/F), but ignore long-line warnings for now.
 # We can tighten this later once the codebase is formatted consistently.
 ignore = [
