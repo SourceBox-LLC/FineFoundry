@@ -545,11 +545,52 @@ Quick fixes:
 - Create a controller `ui/tabs/mytab_controller.py` that exposes `build_mytab_tab_with_logic(page, *, section_title, _mk_help_handler, ...)`.
 - Import that controller function in `src/main.py` and add a new `ft.Tab(...)` entry whose `content` is the result of `build_mytab_tab_with_logic(...)`.
 
+### Testing
+
+Tests live under `tests/` and are discovered by `pytest` (configured via `pyproject.toml`). The main groups are:
+
+- **Unit tests (`tests/unit/`)**
+  - Fast, isolated tests for helper modules and the `save_dataset` CLI (normalization, splits, logging, local specs, proxy logic, Ollama settings, ChatML conversion, hyperparameter builder, etc.).
+  - Run locally:
+
+    ```bash
+    uv run pytest tests/unit
+    ```
+
+- **Integration tests (`tests/integration/`)**
+  - End-to-end flows such as `save_dataset.main` (JSON → normalized pairs → on-disk HF dataset), dataset merge JSON interleave, and tab-controller smoke tests (Scrape/Build/Merge/Analysis/Training/Inference controllers building successfully on a dummy `Page`).
+  - Marked with `@pytest.mark.integration` so you can select or skip them:
+
+    ```bash
+    # Only integration tests
+    uv run pytest -m "integration"
+
+    # Everything except integration tests (fast inner loop)
+    uv run pytest -m "not integration"
+    ```
+
+- **Full suite**
+
+  ```bash
+  uv run pytest
+  ```
+
+#### Coverage
+
+- Locally, you can measure coverage with `coverage.py` (install once with `uv pip install coverage`):
+
+  ```bash
+  uv run coverage run -m pytest
+  uv run coverage report -m
+  ```
+
+- In CI, tests are run under coverage and a summary is printed in the logs; an XML report is also produced per Python version (see `.github/workflows/ci.yml`).
+
 ### CI/CD workflows
 
 - **CI (GitHub Actions)** — `.github/workflows/ci.yml`
   - `lint` (py311): sets up Python 3.11 with `uv sync --frozen`, then runs `ruff` against `src/` using `ruff.toml`.
-  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest`, and runs `pytest -q --ignore=proxy_test.py` (treats "no tests collected" as success).
+  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest` and `coverage`, runs `coverage run -m pytest --ignore=proxy_test.py`, prints `coverage report -m`, and uploads `coverage.xml` as an artifact (treats "no tests collected" as success).
   - `build` (py311): depends on `lint` and `test`; uses `uv` to run `compileall` on `src` and `scripts` and performs an import smoke test for `helpers`, `scrapers`, `runpod`, and `ui`.
 
 - **Release (CD)** — `.github/workflows/release.yml`

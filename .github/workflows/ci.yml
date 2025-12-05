@@ -87,21 +87,31 @@ jobs:
           uv --version
           python --version
 
-      - name: Run tests
+      - name: Run tests with coverage
         shell: bash
         run: |
-          uv pip install pytest
+          uv pip install pytest coverage
           set +e
-          # Ignore proxy_test.py, which expects a local SOCKS proxy (Tor) that won't
-          # exist in CI, while still running any real tests that are added.
-          uv run pytest -q --ignore=proxy_test.py
+          # Run pytest under coverage; ignore proxy_test.py, which expects a local SOCKS proxy (Tor)
+          uv run coverage run -m pytest --ignore=proxy_test.py
           rc=$?
           set -e
           if [ "$rc" -eq 5 ]; then
             echo "No tests collected. Skipping pytest."
             exit 0
           fi
+          # Show coverage summary in CI logs
+          uv run coverage report -m
+          # Export XML report for artifacts or external tools
+          uv run coverage xml -o coverage.xml
           exit "$rc"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml
 
   build:
     name: Build checks (py311)

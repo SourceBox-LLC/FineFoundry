@@ -381,13 +381,13 @@ See [Logging Guide](logging.md) for details.
 ## Testing Locations
 
 ```
-tests/                    # Test directory (create if needed)
-├── unit/                # Unit tests
-├── integration/         # Integration tests
-└── fixtures/            # Test data
+tests/                    # Test directory (collected by pytest)
+├── unit/                 # Unit tests for helpers, save_dataset, etc.
+├── integration/          # Integration tests (end-to-end flows and UI/controller smoke tests)
+└── fixtures/             # Optional shared test data
 ```
 
-See [Testing Guide](testing.md) for details.
+See [Testing Guide](testing.md) for details on test types, commands, and coverage.
 
 ## Configuration Files
 
