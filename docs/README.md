@@ -41,7 +41,9 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 - [Runpod Setup](deployment/runpod.md) - Cloud training infrastructure
 
 ### ❓ Help & Troubleshooting
-- [FAQ](user-guide/faq.md) - Frequently asked questions
+
+- [User FAQ](user-guide/faq.md) - Frequently asked questions and pointers to the right doc
+- [Developer FAQ](development/faq.md) - Questions for contributors and advanced users
 - [Troubleshooting](user-guide/troubleshooting.md) - Common issues and solutions
 - [Ethical & Legal](user-guide/ethical-legal.md) - Important usage considerations
 
