@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get up and running with FineFoundry in just a few minutes!
+Use this guide to install FineFoundry and get from "cloned repo" to a running desktop app and your first small dataset in just a few minutes.
 
 ## Prerequisites
 
@@ -17,8 +17,8 @@ Optional for publishing:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/finefoundry.git
-cd finefoundry
+git clone https://github.com/SourceBox-LLC/FineFoundry.git
+cd FineFoundry-Core
 
 # Run the application (uv handles dependencies automatically)
 uv run src/main.py
@@ -28,8 +28,8 @@ uv run src/main.py
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/finefoundry.git
-cd finefoundry
+git clone https://github.com/SourceBox-LLC/FineFoundry.git
+cd FineFoundry-Core
 
 # Create and activate virtual environment
 python -m venv venv
@@ -117,7 +117,7 @@ Now that you have the basics:
 
 - **Troubleshooting**: Check the [troubleshooting guide](troubleshooting.md)
 - **FAQ**: Browse [frequently asked questions](faq.md)
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/yourusername/finefoundry/issues)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues)
 - **Logging**: Enable debug mode for detailed logs (see [Logging Guide](../development/logging.md))
 
 ---

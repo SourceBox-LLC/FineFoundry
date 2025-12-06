@@ -580,18 +580,22 @@ Tests live under `tests/` and are discovered by `pytest` (configured via `pyproj
 - Locally, you can measure coverage with `coverage.py` (install once with `uv pip install coverage`):
 
   ```bash
-  uv run coverage run -m pytest
+  uv run coverage run --source=src -m pytest --ignore=proxy_test.py
   uv run coverage report -m
   ```
 
-- In CI, tests are run under coverage and a summary is printed in the logs; an XML report is also produced per Python version (see `.github/workflows/ci.yml`).
+- In CI, tests are run under coverage for each Python version in the matrix. A summary is printed in the logs, an XML report is produced per version,
+  and a minimum coverage threshold is enforced with `coverage report -m --fail-under=20` (see `.github/workflows/ci.yml`).
 
 ### CI/CD workflows
 
 - **CI (GitHub Actions)** — `.github/workflows/ci.yml`
   - `lint` (py311): sets up Python 3.11 with `uv sync --frozen`, then runs `ruff` against `src/` using `ruff.toml`.
-  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest` and `coverage`, runs `coverage run -m pytest --ignore=proxy_test.py`, prints `coverage report -m`, and uploads `coverage.xml` as an artifact (treats "no tests collected" as success).
-  - `build` (py311): depends on `lint` and `test`; uses `uv` to run `compileall` on `src` and `scripts` and performs an import smoke test for `helpers`, `scrapers`, `runpod`, and `ui`.
+  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest` and `coverage`, runs `coverage run --source=src -m pytest --ignore=proxy_test.py`, prints `coverage report -m --fail-under=20`, and uploads `coverage.xml` as an artifact (treats "no tests collected" as success).
+  - `typecheck` (py311): runs `mypy` against `src/helpers` and `src/save_dataset.py` using the configuration in `pyproject.toml`.
+  - `security` (py311): runs `pip-audit` via `uv` against the synced environment, ignoring a small, explicit set of tracked CVEs while failing on any new vulnerabilities.
+  - `docs` (py311): checks documentation quality by running `mdformat` (formatting), `codespell` (spelling), and `lychee` (link checker) over `README.md` and `docs/`.
+  - `build` (py311): depends on `lint`, `test`, and `typecheck`; uses `uv` to run `compileall` on `src` and `scripts` and performs an import smoke test for `helpers`, `scrapers`, `runpod`, and `ui`.
 
 - **Release (CD)** — `.github/workflows/release.yml`
   - Triggers on tags matching `v*` (for example, `v0.1.0`) or via manual `workflow_dispatch`.

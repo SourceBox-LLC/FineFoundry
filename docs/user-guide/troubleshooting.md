@@ -433,7 +433,7 @@ See the complete [Logging Guide](../development/logging.md) for more details.
 Enable DEBUG mode and check log files for detailed error information.
 
 ### Search existing issues
-Check [GitHub Issues](https://github.com/yourusername/finefoundry/issues) to see if others have encountered the same problem.
+Check [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues) to see if others have encountered the same problem.
 
 ### Report a bug
 If you've found a bug:
@@ -449,7 +449,7 @@ If you've found a bug:
    - Screenshots if applicable
 
 ### Ask for help
-- [GitHub Discussions](https://github.com/yourusername/finefoundry/discussions)
+- [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions)
 - Include relevant context and logs
 - Be specific about what you tried
 

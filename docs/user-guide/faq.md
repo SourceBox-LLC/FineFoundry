@@ -1,8 +1,8 @@
 # FineFoundry FAQ
 
-This FAQ focuses on **where to find things in the docs** and how to quickly answer the most common questions about installing, running, testing, and maintaining FineFoundry.
+This FAQ helps you answer common questions about **installing, using, and troubleshooting** FineFoundry by pointing you straight to the right guides.
 
-If you are unsure where to start, skim this page first and follow the links that match what you are trying to do.
+If you're not sure which document to open, start here and click the link that best matches what you're trying to do.
 
 ---
 
@@ -252,8 +252,8 @@ for current links to GitHub Issues / Discussions and any other support channels.
 
 ## How to Use This FAQ
 
-- If you are **a new user**, follow the links in **Getting Started** and **Using the Application**.
-- If you are **a contributor**, focus on **Testing, CI, and Code Quality** plus **Development & Internals**.
-- If you are **debugging**, jump straight to **Troubleshooting & Support**.
+- If you are **a new user**, start with **Getting Started** and **Using the Application**.
+- If you are **debugging a problem**, jump straight to **Troubleshooting & Support**.
+- If you are **contributing code**, see **Testing, CI, and Code Quality** plus **Development & Internals**.
 
-Whenever you add new documentation, consider whether a short pointer here would help future readers discover it quickly.
+When you add new documentation, consider adding a short Q&A here that points readers to it.

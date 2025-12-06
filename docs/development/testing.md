@@ -133,6 +133,9 @@ Additional quality jobs in CI include:
 
   All other vulnerabilities reported by `pip-audit` will still cause the `security` job to fail.
 
+- **Docs quality (`docs` job)** – Uses `mdformat` to enforce consistent Markdown formatting, `codespell` to catch common spelling mistakes, and `lychee` to
+  check links across `README.md` and `docs/**/*.md`. These checks keep documentation clean and prevent broken links from creeping into the repository.
+
 You can download coverage artifacts from the CI run to inspect coverage in detail or feed them into external reporting tools.
 
 ## Adding New Tests

@@ -76,8 +76,8 @@ See our [Contributing Guide](development/contributing.md) for details on:
 
 ## 📧 Support
 
-- **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/yourusername/finefoundry/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/yourusername/finefoundry/discussions)
+- **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions)
 
 ---
 
