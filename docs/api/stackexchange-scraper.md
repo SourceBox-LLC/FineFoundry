@@ -4,12 +4,10 @@ FineFoundry's Stack Exchange scraper is implemented in `src/scrapers/stackexchan
 
 It focuses on scraping question/answer pairs (typically accepted answers) suitable for supervised training.
 
-Topics to document here:
+Key considerations include:
 
-- Which Stack Exchange sites are supported
-- How questions and answers are selected and cleaned
-- Any rate limiting or API usage considerations
+- Which Stack Exchange sites are supported.
+- How questions and answers are selected and cleaned.
+- Rate limiting and API usage considerations.
 
-See also:
-
-- [Scrapers API](scrapers.md)
+For a high‑level overview of all scrapers, see the **[Scrapers API](scrapers.md)** page.

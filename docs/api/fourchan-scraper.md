@@ -2,12 +2,12 @@
 
 FineFoundry's 4chan scraper is implemented in `src/scrapers/fourchan_scraper.py`.
 
-It supports scraping posts and replies from selected boards and building training pairs (e.g. quote chains or contextual groupings). Use this page as a starting point for documenting:
+It supports scraping posts and replies from selected boards and building training pairs (for example, quote chains or contextual groupings).
 
-- Supported boards and configuration options
-- Pairing strategies (adjacent vs. contextual)
-- Cleaning / normalization steps
+Key topics when working with the 4chan scraper include:
 
-See also:
+- Supported boards and configuration options.
+- Pairing strategies (adjacent vs. contextual).
+- Cleaning / normalization steps.
 
-- [Scrapers API](scrapers.md)
+For an overview of all scrapers, see the **[Scrapers API](scrapers.md)** page.
