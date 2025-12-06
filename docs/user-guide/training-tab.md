@@ -247,6 +247,24 @@ Configurations are **filtered by Training target** in the dropdown to reduce mis
 
 ______________________________________________________________________
 
+## Under the Hood: Training stack
+
+Under the hood, both **Runpod** and **local Docker** training paths run the
+same `train.py` script inside an Unsloth‑based trainer image
+(default `docker.io/sbussiso/unsloth-trainer:latest`). That image uses:
+
+- **PyTorch** for accelerated training on CPU/GPU.
+- **Hugging Face Transformers** for loading the base model (for example
+  `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit` by default).
+- **bitsandbytes** for 4‑bit quantization where supported.
+- **PEFT / LoRA** (via Unsloth) for parameter‑efficient fine‑tuning.
+
+The default base models offered in the Training tab are Unsloth‑optimized
+variants of popular open models. Fine‑tuned adapters and checkpoints are
+written under your chosen **Output directory** inside the container
+(typically `/data/outputs/...`) and then picked up by **Quick Local
+Inference** and the [Inference Tab](inference-tab.md).
+
 ## Tips & Best Practices
 
 - Start in **Beginner** mode until you've found stable hyperparameters.

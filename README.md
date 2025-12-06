@@ -58,13 +58,13 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 </details>
 
 Built with Flet for a fast, native-like UI. Includes:
-
 - 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
 - Reddit scraper CLI for subreddits or single posts; expands “more” comments; builds pairs (parent→child or contextual).
 - Stack Exchange Q/A scraper (programmatic) for accepted answers.
 - Dataset builder for train/val/test splits with Hugging Face `datasets`, with optional push + dataset card.
 - Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
-- Training via Runpod (managed pods, network volume at /data) or local Docker, with LoRA, packing, auto‑resume, Quick Local Inference, and reusable training configurations.
+- Training via Runpod (managed pods, network volume at /data) or local Docker, backed by an Unsloth‑based LoRA fine‑tuning stack (PyTorch, Transformers, bitsandbytes, PEFT), with packing, auto‑resume, Quick Local Inference, and reusable training configurations.
+- Local inference using the same adapters and base models, powered by Hugging Face Transformers + PEFT + bitsandbytes on top of PyTorch.
 
 <a id="contents"></a>
 
@@ -94,32 +94,41 @@ Optional (for pushing to Hugging Face):
 
 ## 🚀 Quick Start (GUI)
 
-1. Create and activate a virtual environment
+### Option 1: uv (recommended)
 
-   ```bash
-   # Windows (PowerShell)
-   python -m venv venv
-   ./venv/Scripts/Activate.ps1
+```bash
+git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
+cd FineFoundry-Core
 
-   # macOS/Linux
-   python -m venv venv
-   source venv/bin/activate
-   ```
+# Install uv if needed
+pip install uv
 
-1. Install dependencies
+# Run the app (creates an isolated env and installs deps automatically)
+uv run src/main.py
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Option 2: venv + pip
 
-1. Run the desktop app
+```bash
+git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
+cd FineFoundry-Core
 
-   ```bash
-   # Either of the following works
-   python src/main.py
-   # or
-   flet run src/main.py
-   ```
+# Windows (PowerShell)
+python -m venv venv
+./venv/Scripts/Activate.ps1
+
+# macOS/Linux
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the desktop app
+python src/main.py
+# or
+flet run src/main.py
+```
 
 The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Inference, Merge Datasets, Dataset Analysis, and Settings.
 

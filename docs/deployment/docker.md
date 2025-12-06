@@ -13,6 +13,7 @@ The main place Docker is used today is for **local training** from the Training 
 - The Training tab can launch training jobs inside a local Docker container.
 - A host directory is mounted into the container (typically mapped to `/data`).
 - Checkpoints and outputs are written under that directory.
+- By default, FineFoundry uses the same **Unsloth-based trainer image** as the Runpod flow (`docker.io/sbussiso/unsloth-trainer:latest`), so local and remote runs share the same LoRA fine-tuning stack.
 
 For details, see:
 

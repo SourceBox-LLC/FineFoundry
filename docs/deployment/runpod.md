@@ -15,6 +15,7 @@ When you select **Runpod – Pod** as the training target in the Training tab, F
 - Ensures a **Pod Template** exists for your chosen image and hardware.
 - Launches pods from that template to run your training job.
 - Writes logs, checkpoints, and final adapters under `/data/outputs/...` on the network volume.
+- By default, uses an **Unsloth-based trainer image** (`docker.io/sbussiso/unsloth-trainer:latest`) that runs LoRA fine-tuning on top of PyTorch, Hugging Face Transformers, bitsandbytes, and PEFT.
 
 This lets you keep your training artifacts persistent across pods and accessible both from Runpod and (optionally) your local machine.
 
@@ -61,7 +62,7 @@ ______________________________________________________________________
 Still in the Runpod console:
 
 1. Create a **Pod Template** that:
-   - Uses a compatible training image.
+   - Uses a compatible training image. The recommended default is `docker.io/sbussiso/unsloth-trainer:latest`, which bundles the Unsloth training stack (PyTorch, Transformers, bitsandbytes, PEFT).
    - Mounts the Network Volume at `/data`.
    - Exposes the resources (GPU, CPU, RAM) you want.
 1. Note the template identifier.

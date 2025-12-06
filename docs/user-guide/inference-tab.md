@@ -145,11 +145,27 @@ The main Inference tab and Full Chat View share a single in‑memory **chat hist
 
 ______________________________________________________________________
 
+## Under the Hood: Inference stack
+
+The Inference tab calls into `src/helpers/local_inference.py` to load models and generate text locally. That helper uses:
+
+- **Hugging Face Transformers** (`AutoModelForCausalLM`, `AutoTokenizer`) to load the base model you specify (by default an Unsloth-optimized Llama 3.1 model).
+- **PEFT** (`PeftModel`) to attach the selected LoRA adapter directory.
+- **bitsandbytes** 4-bit quantization on CUDA GPUs when available, falling back to standard PyTorch weights otherwise.
+- **PyTorch** for all tensor computation and generation.
+
+This means you can:
+
+- Point the Inference tab at adapters produced by the Unsloth trainer image on Runpod or local Docker, or at any compatible LoRA adapter on disk.
+- Keep all inference traffic **local** to your machine – no external inference APIs are called.
+
+______________________________________________________________________
+
 ## Tips & Best Practices
 
 - Point the adapter directory directly at the **adapter subfolder** from training, not the parent run directory.
 - If validation keeps failing, check that the folder really contains `adapter_config.json` or LoRA weight files.
-- Use **Deterministic** preset when quickly verifying whether fine‑tuning did what you expect.
+- Use **Deterministic** preset when quickly verifying whether fine-tuning did what you expect.
 - Use **Creative** when exploring the qualitative behavior of your model.
 - For quick smoke tests right after local training, you can still use **Quick Local Inference** in the Training tab; then move to the Inference tab for deeper prompting and chat.
 
