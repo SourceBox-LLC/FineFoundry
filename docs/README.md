@@ -5,10 +5,12 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 ## 📚 Documentation Index
 
 ### 🚀 Getting Started
+
 - [Quick Start Guide](user-guide/quick-start.md) - Get up and running in minutes
 - [Installation](user-guide/installation.md) - Detailed installation instructions
 
 ### 👤 User Guides
+
 - [Using the GUI](user-guide/gui-overview.md) - High-level overview of all tabs
   - [Scrape Tab](user-guide/scrape-tab.md) - Data collection from various sources
   - [Build & Publish Tab](user-guide/build-publish-tab.md) - Dataset creation and Hugging Face publishing
@@ -21,6 +23,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 - [Authentication](user-guide/authentication.md) - Hugging Face and Runpod setup
 
 ### 🛠️ Development
+
 - [Project Structure](development/project-structure.md) - Codebase organization
 - [Logging System](development/logging.md) - Logging configuration and usage
 - [Contributing Guide](development/contributing.md) - How to contribute to FineFoundry
@@ -28,6 +31,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 - [Code Style](development/code-style.md) - Coding standards and conventions
 
 ### 🔌 API Reference
+
 - [Scrapers API](api/scrapers.md) - Programmatic scraping interfaces
   - [4chan Scraper](api/fourchan-scraper.md)
   - [Reddit Scraper](api/reddit-scraper.md)
@@ -36,6 +40,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 - [Training API](api/training.md) - Programmatic training interface
 
 ### 🚢 Deployment
+
 - [Proxy Configuration](deployment/proxy-setup.md) - Tor and custom proxy setup
 - [Docker Deployment](deployment/docker.md) - Running in containers
 - [Runpod Setup](deployment/runpod.md) - Cloud training infrastructure
@@ -59,6 +64,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 ## 📝 Documentation Standards
 
 All documentation follows these conventions:
+
 - Written in Markdown
 - Cross-linked for easy navigation
 - Includes practical examples
@@ -70,6 +76,7 @@ All documentation follows these conventions:
 Found a typo? Want to add an example? Documentation contributions are welcome!
 
 See our [Contributing Guide](development/contributing.md) for details on:
+
 - Writing style guidelines
 - How to submit documentation improvements
 - Where to add new documentation
@@ -79,7 +86,7 @@ See our [Contributing Guide](development/contributing.md) for details on:
 - **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues)
 - **Discussions**: Ask questions in [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions)
 
----
+______________________________________________________________________
 
 **Last Updated**: January 2025
 **Version**: See [CHANGELOG](../CHANGELOG.md)

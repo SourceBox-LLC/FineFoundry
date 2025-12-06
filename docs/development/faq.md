@@ -6,7 +6,7 @@ If you just want to use the app, start with the **User FAQ** instead:
 
 - [`user-guide/faq.md`](../user-guide/faq.md)
 
----
+______________________________________________________________________
 
 ## Getting Started as a Contributor
 
@@ -32,7 +32,7 @@ For a quick orientation, combine:
 - [`development/testing.md`](testing.md)
 - The main CI workflow: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
 
----
+______________________________________________________________________
 
 ## Tests and Test Layout
 
@@ -80,7 +80,7 @@ Details live under **CI Coverage and Quality Gates** in:
 
 - [`development/testing.md`](testing.md)
 
----
+______________________________________________________________________
 
 ## Linting and Code Style
 
@@ -107,7 +107,7 @@ In practice:
 
 When in doubt, copy the style of nearby modules (especially in `src/helpers/`).
 
----
+______________________________________________________________________
 
 ## Type Checking (mypy)
 
@@ -132,7 +132,7 @@ This uses the configuration in `pyproject.toml` and should match what CI runs in
 
 If you add new helper modules or significantly change types, consider tightening annotations and running mypy as part of your inner loop.
 
----
+______________________________________________________________________
 
 ## Security and Dependency Auditing
 
@@ -156,15 +156,15 @@ The exact command and ignore list are maintained in:
 General guidance:
 
 1. **Prefer upgrading** the affected dependency (or its parent package) when possible.
-2. If a vulnerability only affects an optional feature you do not use, document that and consider an ignore rule.
-3. Avoid piling on ignore rules—treat each one as a conscious decision that should be documented.
+1. If a vulnerability only affects an optional feature you do not use, document that and consider an ignore rule.
+1. Avoid piling on ignore rules—treat each one as a conscious decision that should be documented.
 
 Open a PR that:
 
 - Updates dependencies or adds a targeted ignore, and
 - Explains the rationale in the PR description.
 
----
+______________________________________________________________________
 
 ## CI Jobs Overview
 
@@ -182,17 +182,17 @@ See the Testing guide for how these jobs relate to local commands:
 
 - [`development/testing.md`](testing.md)
 
----
+______________________________________________________________________
 
 ## Troubleshooting as a Developer
 
 ### Where should I look when something fails in CI?
 
 1. Open the failing job in GitHub Actions and inspect the logs for the specific step.
-2. Cross-check the corresponding section in:
+1. Cross-check the corresponding section in:
    - [`development/testing.md`](testing.md)
    - [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
-3. Try to reproduce locally using the same `uv` command shown in the workflow.
+1. Try to reproduce locally using the same `uv` command shown in the workflow.
 
 ### Where can I get more detail via logs?
 
@@ -202,7 +202,7 @@ See:
 
 for how logs are emitted and where to find them. This is especially useful when debugging scrapers, training flows, or background processes.
 
----
+______________________________________________________________________
 
 ## How to Use This FAQ
 

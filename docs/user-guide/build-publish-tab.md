@@ -11,19 +11,19 @@ Use this tab to:
 
 ![Build & Publish Tab](../../img/ff_buld_publish.png)
 
----
+______________________________________________________________________
 
 ## Overview
 
 Typical workflow:
 
 1. Select a **Data file (JSON)** produced by scraping or other sources.
-2. Configure **splits**, **min length**, and shuffling.
-3. Click **Build Dataset** to create a `DatasetDict` on disk.
-4. Optionally enable **Push to Hub**, fill in repo details and token.
-5. Click **Push + Upload README** to publish the dataset.
+1. Configure **splits**, **min length**, and shuffling.
+1. Click **Build Dataset** to create a `DatasetDict` on disk.
+1. Optionally enable **Push to Hub**, fill in repo details and token.
+1. Click **Push + Upload README** to publish the dataset.
 
----
+______________________________________________________________________
 
 ## Layout at a Glance
 
@@ -61,34 +61,34 @@ Typical workflow:
 - **Push + Upload README** button
   - Uploads the dataset and a generated dataset card (`README.md` in the repo).
 
----
+______________________________________________________________________
 
 ## Usage Examples
 
 ### Example 1: Local splits only
 
 1. Set **Data file (JSON)** to `scraped_training_data.json`.
-2. Set **Validation** to `0.05` and **Test** to `0.0`.
-3. Enable **Shuffle** and choose a **Seed** (e.g. 42).
-4. Set **Save dir** to `hf_dataset`.
-5. Click **Build Dataset**.
+1. Set **Validation** to `0.05` and **Test** to `0.0`.
+1. Enable **Shuffle** and choose a **Seed** (e.g. 42).
+1. Set **Save dir** to `hf_dataset`.
+1. Click **Build Dataset**.
 
 Result: a `DatasetDict` saved under `hf_dataset/` with `train` and `validation` splits.
 
 ### Example 2: Prepare a dataset for training + Hub
 
 1. Point to your scraped JSON.
-2. Choose validation/test fractions (e.g. 5% validation, 5% test).
-3. Set **Save dir** to something like `my_dataset`.
-4. Enable **Push to Hub** and provide:
+1. Choose validation/test fractions (e.g. 5% validation, 5% test).
+1. Set **Save dir** to something like `my_dataset`.
+1. Enable **Push to Hub** and provide:
    - **Repo ID**: `username/my-first-dataset`
    - **Private**: as desired
    - **HF Token**: if not already set in Settings/env.
-5. Click **Build Dataset** and then **Push + Upload README**.
+1. Click **Build Dataset** and then **Push + Upload README**.
 
 Result: a local dataset plus a remote dataset repo with a generated card.
 
----
+______________________________________________________________________
 
 ## Tips & Best Practices
 
@@ -97,7 +97,7 @@ Result: a local dataset plus a remote dataset repo with a generated card.
 - Double-check **Repo ID** and permissions before pushing to avoid cluttering your account.
 - Use the **Dataset Analysis** tab after building to understand distribution, duplicates, sentiment, etc.
 
----
+______________________________________________________________________
 
 ## Related Topics
 
@@ -107,6 +107,6 @@ Result: a local dataset plus a remote dataset repo with a generated card.
 - [Training Tab](training-tab.md) – fine-tune models on your dataset.
 - [Authentication](authentication.md) – managing your Hugging Face token.
 
----
+______________________________________________________________________
 
 **Next**: [Training Tab](training-tab.md) | **Previous**: [Scrape Tab](scrape-tab.md) | [Back to Documentation Index](../README.md)

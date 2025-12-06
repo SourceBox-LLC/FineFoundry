@@ -11,21 +11,21 @@ Use this tab to:
 
 ![Training Tab](../../img/ff_training.png)
 
----
+______________________________________________________________________
 
 ## Overview
 
 Typical workflow:
 
 1. Choose a **Training target** (Runpod pod or local Docker).
-2. Pick a **Skill level** and (optionally) a **Beginner preset**.
-3. Configure **dataset source**, **hyperparameters**, and **output directory**.
-4. For Runpod: ensure infrastructure (volume + template) and start training on a pod.
-5. For local: configure Docker image, host mount, GPU use, and start local training.
-6. After a successful local run, use **Quick Local Inference** to test the adapter.
-7. At any time, **Save current setup** as a config and reload it later.
+1. Pick a **Skill level** and (optionally) a **Beginner preset**.
+1. Configure **dataset source**, **hyperparameters**, and **output directory**.
+1. For Runpod: ensure infrastructure (volume + template) and start training on a pod.
+1. For local: configure Docker image, host mount, GPU use, and start local training.
+1. After a successful local run, use **Quick Local Inference** to test the adapter.
+1. At any time, **Save current setup** as a config and reload it later.
 
----
+______________________________________________________________________
 
 ## Layout at a Glance
 
@@ -139,7 +139,7 @@ Configs include:
 
 The last used config is tracked and **auto‑loads on startup**.
 
----
+______________________________________________________________________
 
 ## Beginner vs Expert Flow
 
@@ -185,39 +185,39 @@ Designed for users who want guardrails and good defaults.
 
 You can still use **Save current setup** in Expert mode to snapshot tuned configurations.
 
----
+______________________________________________________________________
 
 ## Runpod vs Local Flows
 
 ### Runpod Flow (Remote Training)
 
 1. In **Training target**, choose **Runpod - Pod**.
-2. Configure **dataset source**, **output dir**, and **hyperparameters**.
-3. Use **Skill level** and **Beginner presets** if desired.
-4. In the Runpod section:
+1. Configure **dataset source**, **output dir**, and **hyperparameters**.
+1. Use **Skill level** and **Beginner presets** if desired.
+1. In the Runpod section:
    - Ensure **network volume** and **template** exist (Infrastructure helpers).
    - Pick a GPU type and region via the template.
-5. Start training on the pod.
-6. Monitor progress via the **Logs / Status** panel.
-7. Optionally push adapters/weights to the Hub when training completes.
+1. Start training on the pod.
+1. Monitor progress via the **Logs / Status** panel.
+1. Optionally push adapters/weights to the Hub when training completes.
 
 ### Local Flow (Local Docker Training)
 
 1. In **Training target**, choose **local**.
-2. (Optional) Set **Skill level = Beginner** and pick a preset:
+1. (Optional) Set **Skill level = Beginner** and pick a preset:
    - `Quick local test` for very short runs.
    - `Auto Set (local)` for tuned defaults based on your GPU.
-3. Configure **dataset source**, **output dir**, and **hyperparameters**.
-4. In the local Docker section:
+1. Configure **dataset source**, **output dir**, and **hyperparameters**.
+1. In the local Docker section:
    - Set **Host data dir** (e.g., `~/Desktop/test_data`).
    - Check **Use GPU** if you have a CUDA‑capable GPU.
    - Enable **Pass HF token to container** if you need `--push`.
-5. Click **Start Local Training**.
-6. Watch logs in the timeline; use **Stop** if needed.
-7. After a successful run, the **Quick Local Inference** panel becomes visible and shows the detected adapter + base model.
-8. Enter a prompt and click **Run Inference** to verify quality.
+1. Click **Start Local Training**.
+1. Watch logs in the timeline; use **Stop** if needed.
+1. After a successful run, the **Quick Local Inference** panel becomes visible and shows the detected adapter + base model.
+1. Enter a prompt and click **Run Inference** to verify quality.
 
----
+______________________________________________________________________
 
 ## Training Configurations (Save / Load)
 
@@ -245,7 +245,7 @@ Training configs are JSON files under `src/saved_configs/` and capture the **ent
 
 Configurations are **filtered by Training target** in the dropdown to reduce mistakes (e.g., accidentally applying a Runpod‑specific config while in local mode).
 
----
+______________________________________________________________________
 
 ## Tips & Best Practices
 
@@ -256,7 +256,7 @@ Configurations are **filtered by Training target** in the dropdown to reduce mis
 - Use **Packing** when most examples are short to improve throughput.
 - Keep an eye on logs for early signs of OOM or dataset issues.
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
@@ -270,7 +270,7 @@ Highlights:
 - HF authentication issues inside containers.
 - Config‑related mistakes and how to avoid them with saved setups.
 
----
+______________________________________________________________________
 
 ## Related Topics
 
@@ -280,6 +280,6 @@ Highlights:
 - [Troubleshooting](troubleshooting.md) – common training issues.
 - [Logging Guide](../development/logging.md) – debugging training runs.
 
----
+______________________________________________________________________
 
 **Next**: [Merge Datasets Tab](merge-tab.md) | **Previous**: [Build & Publish Tab](build-publish-tab.md) | [Back to Documentation Index](../README.md)

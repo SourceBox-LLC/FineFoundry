@@ -11,18 +11,18 @@ Use this tab to:
 
 ![Scrape Tab](../../img/ff_scrape_tab.png)
 
----
+______________________________________________________________________
 
 ## Overview
 
 Typical workflow:
 
 1. Select one or more **boards** to scrape.
-2. Tune **Max Threads**, **Max Pairs**, **Delay**, and other parameters.
-3. Choose a pairing **mode** (normal vs contextual) and strategy (e.g. quote_chain).
-4. Click **Start Scrape** and watch the progress / logs.
-5. When finished, use **Preview Dataset** to inspect the pairs.
-6. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
+1. Tune **Max Threads**, **Max Pairs**, **Delay**, and other parameters.
+1. Choose a pairing **mode** (normal vs contextual) and strategy (e.g. quote_chain).
+1. Click **Start Scrape** and watch the progress / logs.
+1. When finished, use **Preview Dataset** to inspect the pairs.
+1. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
 
 The output is a JSON file like:
 
@@ -32,7 +32,7 @@ The output is a JSON file like:
 ]
 ```
 
----
+______________________________________________________________________
 
 ## Layout at a Glance
 
@@ -69,32 +69,32 @@ Core scraping / pairing parameters:
 - **Output path** – Where the JSON file will be written.
 - **Preview button** – Opens a two-column preview of the first N `input` / `output` pairs so you can inspect data before building or training.
 
----
+______________________________________________________________________
 
 ## Usage Examples
 
 ### Example 1: Quick sanity-check scrape
 
 1. Select `pol` and `b`.
-2. Set:
+1. Set:
    - Max Threads: `50`
    - Max Pairs: `500`
    - Delay: `0.5`
    - Min Length: `10`
-3. Leave **Mode** as `normal` (adjacent pairs).
-4. Click **Start Scrape**.
-5. When done, click **Preview Dataset** to inspect a handful of pairs.
+1. Leave **Mode** as `normal` (adjacent pairs).
+1. Click **Start Scrape**.
+1. When done, click **Preview Dataset** to inspect a handful of pairs.
 
 ### Example 2: Contextual quote-chain dataset
 
 1. Select a conversation-heavy board (e.g., `pol`).
-2. Set:
+1. Set:
    - Mode: `contextual`
    - Strategy: `quote_chain`
    - K: `6`
    - Max Input Chars: `2000`
-3. Enable any "require question" / "merge same author" options as desired.
-4. Start the scrape and inspect the preview to confirm that `input` contains multi-turn context.
+1. Enable any "require question" / "merge same author" options as desired.
+1. Start the scrape and inspect the preview to confirm that `input` contains multi-turn context.
 
 ### Example 3: Longer, slower crawl
 
@@ -102,7 +102,7 @@ Core scraping / pairing parameters:
 - Increase **Delay** slightly to be respectful of API rate limits.
 - Leave the job running while you work elsewhere, then return to preview the final dataset.
 
----
+______________________________________________________________________
 
 ## Tips & Best Practices
 
@@ -112,7 +112,7 @@ Core scraping / pairing parameters:
 - Use **Min Length** and mode settings to reduce low-signal / spammy pairs.
 - After scraping, pass the JSON file through the **Build / Publish** and **Dataset Analysis** tabs before training.
 
----
+______________________________________________________________________
 
 ## Related Topics
 
@@ -122,6 +122,6 @@ Core scraping / pairing parameters:
 - [Training Tab](training-tab.md) – fine-tune models on your prepared dataset.
 - [Quick Start Guide](quick-start.md) – end-to-end overview.
 
----
+______________________________________________________________________
 
 **Next**: [Build & Publish Tab](build-publish-tab.md) | **Previous**: [Quick Start Guide](quick-start.md) | [Back to Documentation Index](../README.md)

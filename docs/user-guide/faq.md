@@ -4,7 +4,7 @@ This FAQ helps you answer common questions about **installing, using, and troubl
 
 If you're not sure which document to open, start here and click the link that best matches what you're trying to do.
 
----
+______________________________________________________________________
 
 ## Getting Started
 
@@ -38,7 +38,7 @@ FineFoundry is developed and tested against **Python 3.10+**.
 - For installation details and any version-specific notes, see [`user-guide/installation.md`](installation.md).
 - CI runs tests and checks on a matrix of Python versions; see **CI Coverage and Quality Gates** in [`development/testing.md`](../development/testing.md).
 
----
+______________________________________________________________________
 
 ## Using the Application
 
@@ -77,7 +77,7 @@ See:
 
 These cover token management, environment variables, and best practices for storing credentials.
 
----
+______________________________________________________________________
 
 ## Data, Scraping, and Proxies
 
@@ -99,7 +99,7 @@ See the deployment docs:
 
 This explains SOCKS proxies, Tor integration, and environment variables used by the helpers.
 
----
+______________________________________________________________________
 
 ## Training, Inference, and Runpod
 
@@ -129,7 +129,7 @@ Use:
 
 for the GUI side, and refer to the Training API docs if you need to wire inference into scripts.
 
----
+______________________________________________________________________
 
 ## Testing, CI, and Code Quality
 
@@ -193,7 +193,7 @@ In short:
 See **CI Coverage and Quality Gates** in
 [`development/testing.md`](../development/testing.md) for the full matrix of CI jobs: `lint`, `test`, `typecheck`, `security`, and `build`.
 
----
+______________________________________________________________________
 
 ## Development & Internals
 
@@ -222,7 +222,7 @@ Yes:
 
 These cover formatting, naming conventions, and how to submit changes (including tests and documentation updates).
 
----
+______________________________________________________________________
 
 ## Troubleshooting & Support
 
@@ -248,7 +248,7 @@ for current links to GitHub Issues / Discussions and any other support channels.
 - Steps to reproduce
 - Relevant logs and configuration snippets
 
----
+______________________________________________________________________
 
 ## How to Use This FAQ
 

@@ -12,17 +12,17 @@ Use this tab to:
 
 ![Inference Tab](../../img/ff_inferance.png)
 
----
+______________________________________________________________________
 
 ## Overview
 
 Typical workflow:
 
 1. Pick a **base model** and **adapter directory**, or import from **latest local training**.
-2. Wait for the adapter path to be **validated** (spinner + snackbar feedback).
-3. Once validated, the **Prompt & responses** section unlocks.
-4. Type a prompt, choose a preset, and click **Generate** to get responses.
-5. Optionally click **Full Chat View** to open a focused dialog for multi‑turn chat.
+1. Wait for the adapter path to be **validated** (spinner + snackbar feedback).
+1. Once validated, the **Prompt & responses** section unlocks.
+1. Type a prompt, choose a preset, and click **Generate** to get responses.
+1. Optionally click **Full Chat View** to open a focused dialog for multi‑turn chat.
 
 The Inference tab is intended as a **lightweight, local playground** for your fine‑tuned models, separate from training. It shares model loading and caching with Quick Local Inference but adds:
 
@@ -30,7 +30,7 @@ The Inference tab is intended as a **lightweight, local playground** for your fi
 - A **shared conversation history** between the main view and Full Chat View
 - A full‑screen‑style chat experience suitable for demos and deeper testing
 
----
+______________________________________________________________________
 
 ## Layout at a Glance
 
@@ -55,21 +55,21 @@ At the top of the tab you configure which model to run:
 Any time you select or change the adapter directory – either via **Browse…** or **Use latest local training** – the app:
 
 1. Shows a **loading spinner** while it checks the folder.
-2. Verifies that the directory exists and contains typical **LoRA adapter artifacts**, such as:
+1. Verifies that the directory exists and contains typical **LoRA adapter artifacts**, such as:
    - `adapter_config.json`, or
    - Weight files like `*.safetensors` or `*.bin`.
-3. If validation **fails**:
+1. If validation **fails**:
    - Status text turns red with a descriptive error.
    - A **snackbar** appears explaining the problem.
    - The **Prompt & responses** controls are **locked**.
-4. If validation **succeeds**:
+1. If validation **succeeds**:
    - Status shows: *"Adapter directory validated. Ready for inference."*
    - Meta line updates with adapter + base model.
    - The **Prompt & responses** section is **unlocked**.
 
 This prevents silent failures when pointing at the wrong folder (e.g., parent run directory instead of the adapter subdirectory).
 
----
+______________________________________________________________________
 
 ## 2. Prompt & Responses
 
@@ -108,7 +108,7 @@ When you click **Generate**:
 
 If inference fails (e.g., due to a model error), the status text shows the exception in red.
 
----
+______________________________________________________________________
 
 ## 3. Full Chat View (Focused Chatbot)
 
@@ -143,7 +143,7 @@ The main Inference tab and Full Chat View share a single in‑memory **chat hist
   - The bubbles in Full Chat View,
   - And resets placeholders + status to an idle state.
 
----
+______________________________________________________________________
 
 ## Tips & Best Practices
 
@@ -153,11 +153,10 @@ The main Inference tab and Full Chat View share a single in‑memory **chat hist
 - Use **Creative** when exploring the qualitative behavior of your model.
 - For quick smoke tests right after local training, you can still use **Quick Local Inference** in the Training tab; then move to the Inference tab for deeper prompting and chat.
 
----
+______________________________________________________________________
 
 ## Related Topics
 
 - [Training Tab](training-tab.md) – configure and run training jobs.
 - [Quick Start Guide](quick-start.md) – overall workflow.
 - [Troubleshooting](troubleshooting.md) – includes tips for training and adapter issues.
-

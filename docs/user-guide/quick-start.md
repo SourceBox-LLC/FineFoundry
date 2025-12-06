@@ -9,6 +9,7 @@ Use this guide to install FineFoundry and get from "cloned repo" to a running de
 - **uv** (recommended) or pip for package management
 
 Optional for publishing:
+
 - [Hugging Face account](https://huggingface.co/) with an [access token](https://huggingface.co/settings/tokens)
 
 ## Installation
@@ -52,12 +53,12 @@ python src/main.py
 When you first launch FineFoundry, you'll see a desktop application with several tabs:
 
 1. **Scrape** - Collect training data from 4chan, Reddit, or Stack Exchange
-2. **Build / Publish** - Create datasets and publish to Hugging Face
-3. **Training** - Fine-tune models on Runpod or locally
-4. **Inference** - Run inference against fine-tuned adapters with prompt history and Full Chat View
-5. **Merge Datasets** - Combine multiple datasets
-6. **Dataset Analysis** - Analyze dataset quality
-7. **Settings** - Configure authentication and preferences
+1. **Build / Publish** - Create datasets and publish to Hugging Face
+1. **Training** - Fine-tune models on Runpod or locally
+1. **Inference** - Run inference against fine-tuned adapters with prompt history and Full Chat View
+1. **Merge Datasets** - Combine multiple datasets
+1. **Dataset Analysis** - Analyze dataset quality
+1. **Settings** - Configure authentication and preferences
 
 ## Your First Dataset
 
@@ -66,27 +67,27 @@ Let's create a simple dataset from 4chan:
 ### Step 1: Scrape Data
 
 1. Navigate to the **Scrape** tab
-2. Select a few boards (e.g., `pol`, `b`, `x`)
-3. Configure parameters:
+1. Select a few boards (e.g., `pol`, `b`, `x`)
+1. Configure parameters:
    - **Max Threads**: 50 (for a quick test)
    - **Max Pairs**: 500
    - **Delay**: 0.5 seconds
    - **Min Length**: 10 characters
-4. Click **Start Scrape**
-5. Watch the progress bar and logs
-6. When complete, click **Preview Dataset** to inspect the data
+1. Click **Start Scrape**
+1. Watch the progress bar and logs
+1. When complete, click **Preview Dataset** to inspect the data
 
 Your data is saved to `scraped_training_data.json` by default.
 
 ### Step 2: Build & Publish (Optional)
 
 1. Navigate to the **Build / Publish** tab
-2. The data file should already be set to `scraped_training_data.json`
-3. Configure splits:
+1. The data file should already be set to `scraped_training_data.json`
+1. Configure splits:
    - Adjust validation/test split percentages with sliders
    - Set seed for reproducibility
-4. Click **Build Dataset** to create train/val/test splits
-5. (Optional) To publish to Hugging Face:
+1. Click **Build Dataset** to create train/val/test splits
+1. (Optional) To publish to Hugging Face:
    - Enable **Push to Hub**
    - Set **Repo ID** (e.g., `username/my-first-dataset`)
    - Add your **HF Token** (or configure in Settings)
@@ -95,10 +96,10 @@ Your data is saved to `scraped_training_data.json` by default.
 ### Step 3: Analyze Your Dataset (Optional)
 
 1. Navigate to the **Dataset Analysis** tab
-2. Select your dataset source (JSON file or Hugging Face)
-3. Enable analysis modules you're interested in
-4. Click **Analyze Dataset**
-5. Review the insights to understand your data quality
+1. Select your dataset source (JSON file or Hugging Face)
+1. Enable analysis modules you're interested in
+1. Click **Analyze Dataset**
+1. Review the insights to understand your data quality
 
 ## Next Steps
 
@@ -120,6 +121,6 @@ Now that you have the basics:
 - **Issues**: Report bugs on [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues)
 - **Logging**: Enable debug mode for detailed logs (see [Logging Guide](../development/logging.md))
 
----
+______________________________________________________________________
 
 **Next**: [GUI Overview](gui-overview.md) | [Back to Documentation Index](../README.md)

@@ -13,7 +13,7 @@ Common issues and their solutions for FineFoundry.
 - [Performance Issues](#performance-issues)
 - [Logging & Debugging](#logging--debugging)
 
----
+______________________________________________________________________
 
 ## Installation Issues
 
@@ -22,6 +22,7 @@ Common issues and their solutions for FineFoundry.
 **Problem**: `python` or `python3` not recognized
 
 **Solution**:
+
 - Ensure Python 3.10+ is installed
 - On Windows, use `py` instead of `python`
 - Add Python to your PATH environment variable
@@ -31,6 +32,7 @@ Common issues and their solutions for FineFoundry.
 **Problem**: `uv` is not installed
 
 **Solution**:
+
 ```bash
 # Install uv
 pip install uv
@@ -45,6 +47,7 @@ python src/main.py
 **Problem**: Missing dependencies
 
 **Solution**:
+
 ```bash
 # With uv
 uv sync
@@ -58,6 +61,7 @@ pip install -r requirements.txt --upgrade
 **Problem**: `SSL: CERTIFICATE_VERIFY_FAILED`
 
 **Solution**:
+
 ```bash
 # Update certifi
 pip install --upgrade certifi
@@ -66,19 +70,21 @@ pip install --upgrade certifi
 pip install --upgrade certifi urllib3 requests
 ```
 
----
+______________________________________________________________________
 
 ## Scraping Issues
 
 ### "No data found" after scraping
 
 **Possible causes**:
+
 1. No boards selected
-2. Max Pairs set to 0
-3. Network connectivity issues
-4. Boards are currently slow/empty
+1. Max Pairs set to 0
+1. Network connectivity issues
+1. Boards are currently slow/empty
 
 **Solutions**:
+
 - Verify boards are actually selected (highlighted)
 - Set Max Pairs > 0 (try 500 for testing)
 - Check your internet connection
@@ -89,6 +95,7 @@ pip install --upgrade certifi urllib3 requests
 ### Scraping is very slow
 
 **Solutions**:
+
 - Decrease Delay (but respect rate limits - minimum 0.3s recommended)
 - Increase Max Threads (but more threads = more API requests)
 - Check your network speed
@@ -98,6 +105,7 @@ pip install --upgrade certifi urllib3 requests
 ### "Too few pairs" with contextual mode
 
 **Solutions**:
+
 - Reduce "Last K" value (try 3-4 instead of 6)
 - Uncheck "Require question" option
 - Increase Max Threads
@@ -110,17 +118,18 @@ pip install --upgrade certifi urllib3 requests
 **Problem**: Tor or custom proxy not working
 
 **Solution**:
+
 1. Verify Tor is running:
    ```bash
    # Check if Tor is listening on port 9050
    netstat -an | grep 9050
    ```
-2. Try without proxy first to isolate the issue
-3. Verify proxy URL format: `socks5h://127.0.0.1:9050`
-4. Check proxy settings in [Settings Tab](settings-tab.md)
-5. See [Proxy Setup Guide](../deployment/proxy-setup.md)
+1. Try without proxy first to isolate the issue
+1. Verify proxy URL format: `socks5h://127.0.0.1:9050`
+1. Check proxy settings in [Settings Tab](settings-tab.md)
+1. See [Proxy Setup Guide](../deployment/proxy-setup.md)
 
----
+______________________________________________________________________
 
 ## Dataset Building Issues
 
@@ -129,24 +138,26 @@ pip install --upgrade certifi urllib3 requests
 **Problem**: JSON file is corrupted or wrong format
 
 **Solution**:
+
 1. Validate JSON syntax:
    ```bash
    python -m json.tool your_file.json
    ```
-2. Check file encoding (should be UTF-8)
-3. Verify schema matches expected format:
+1. Check file encoding (should be UTF-8)
+1. Verify schema matches expected format:
    ```json
    [
      {"input": "text", "output": "text"}
    ]
    ```
-4. Re-scrape if file is corrupted
+1. Re-scrape if file is corrupted
 
 ### "No records after filtering"
 
 **Problem**: All records filtered out due to min length or empty fields
 
 **Solution**:
+
 - Reduce minimum length requirement
 - Check that scraped data has actual content
 - Preview raw JSON to verify data quality
@@ -157,17 +168,18 @@ pip install --upgrade certifi urllib3 requests
 **Problem**: Authentication error
 
 **Solution**:
+
 1. Verify HF token has write permissions
-2. Check token in Settings tab or environment variable
-3. Try logging in via CLI:
+1. Check token in Settings tab or environment variable
+1. Try logging in via CLI:
    ```bash
    huggingface-cli login
    ```
-4. Verify repo ID format: `username/repo-name`
-5. Check if repo already exists and you have access
-6. See [Authentication Guide](authentication.md)
+1. Verify repo ID format: `username/repo-name`
+1. Check if repo already exists and you have access
+1. See [Authentication Guide](authentication.md)
 
----
+______________________________________________________________________
 
 ## Training Issues
 
@@ -176,6 +188,7 @@ pip install --upgrade certifi urllib3 requests
 **Problem**: GPU doesn't have enough VRAM
 
 **Solution**:
+
 - Enable LoRA (reduces memory significantly)
 - Reduce per-device batch size
 - Increase gradient accumulation steps
@@ -208,38 +221,41 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Solution**:
 
 1. Make sure you're selecting the **adapter subdirectory** from a completed fine-tuning run (often named `adapter/`).
-2. Verify the folder contains at least one of:
+1. Verify the folder contains at least one of:
    - `adapter_config.json`
    - LoRA weight files such as `*.safetensors` or `*.bin`
-3. If you're unsure, click **Use latest local training** in the Inference tab to automatically populate the adapter path and base model from your most recent local run.
-4. After fixing the path, wait for the Inference tab to re-run validation (spinner + snackbar) before trying to generate.
+1. If you're unsure, click **Use latest local training** in the Inference tab to automatically populate the adapter path and base model from your most recent local run.
+1. After fixing the path, wait for the Inference tab to re-run validation (spinner + snackbar) before trying to generate.
 
 ### Training pod won't start
 
 **Problem**: Runpod pod fails to start or reach ready state
 
 **Solution**:
+
 1. Check Runpod dashboard for pod status
-2. Verify GPU availability in selected region
-3. Check if you have sufficient credits
-4. Try a different GPU type
-5. Verify network volume is accessible
-6. Check pod logs in Runpod dashboard
+1. Verify GPU availability in selected region
+1. Check if you have sufficient credits
+1. Try a different GPU type
+1. Verify network volume is accessible
+1. Check pod logs in Runpod dashboard
 
 ### "Network volume not found"
 
 **Problem**: Training can't find /data mount
 
 **Solution**:
+
 1. Verify network volume exists in Runpod
-2. Check volume is attached to template
-3. Ensure mount path is `/data` (not `/workspace`)
-4. Click "Ensure Infrastructure" in Training tab
-5. Wait for volume to sync (can take a few minutes)
+1. Check volume is attached to template
+1. Ensure mount path is `/data` (not `/workspace`)
+1. Click "Ensure Infrastructure" in Training tab
+1. Wait for volume to sync (can take a few minutes)
 
 ### Training stops/fails unexpectedly
 
 **Solutions**:
+
 - Enable "Auto-resume" to recover from interruptions
 - Check logs for specific error messages
 - Verify dataset is accessible
@@ -253,6 +269,7 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Cause**: This usually means the container was killed by the OS (often an OOM killer) or manually stopped.
 
 **Solution**:
+
 - Treat it like a CUDA OOM: reduce per-device batch size, increase grad accumulation, or use a smaller model.
 - Make sure other heavy GPU/CPU workloads are closed while training.
 - Check local logs (Training → Local Docker section) for additional error messages.
@@ -262,25 +279,28 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Problem**: Training completes but fails at the end with a `huggingface_hub` error (e.g., around `api.whoami()`), especially when `--push` is enabled.
 
 **Causes**:
+
 - HF token not present inside the Docker container.
 - Token lacks required write permissions.
 
 **Solutions**:
+
 1. In **Settings → Hugging Face**, save a valid token with write access, or export `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` before launching the app.
-2. In the **Local Docker: Run Training** section, enable **"Pass HF token to container"** so the token is forwarded as env vars.
-3. If you don't need to push to the Hub for a given run, disable **Push to Hub** to avoid calling Hub APIs at the end.
+1. In the **Local Docker: Run Training** section, enable **"Pass HF token to container"** so the token is forwarded as env vars.
+1. If you don't need to push to the Hub for a given run, disable **Push to Hub** to avoid calling Hub APIs at the end.
 
 ### Config‑related mistakes
 
 **Problem**: Training fails or behaves unexpectedly after manual changes to many fields.
 
 **Solution**:
+
 - Use the Training tab's **Save current setup** buttons (or Configuration mode) to snapshot known‑good setups.
 - Re‑load a saved config instead of re‑entering values manually, especially when switching between Runpod and local runs.
 - Config JSON files live under `src/saved_configs/`, and the last used config auto-loads on startup.
 - Enable DEBUG logging (see [Logging Guide](../development/logging.md))
 
----
+______________________________________________________________________
 
 ## Merge Issues
 
@@ -289,6 +309,7 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Problem**: Can't find merged dataset to download
 
 **Solution**:
+
 - Verify merge completed successfully (check Status section)
 - Check the output path you specified
 - Look in project root directory
@@ -300,6 +321,7 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Problem**: Input/output columns not detected
 
 **Solution**:
+
 - Manually specify column names for HF datasets
 - For JSON files, ensure schema matches:
   ```json
@@ -313,13 +335,14 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Problem**: Large datasets cause memory issues
 
 **Solution**:
+
 - Merge fewer datasets at once
 - Use HF dataset dir format instead of JSON
 - Close other applications
 - Merge in batches
 - Upgrade system RAM if consistently hitting limits
 
----
+______________________________________________________________________
 
 ## Authentication Issues
 
@@ -328,10 +351,11 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 **Problem**: Token rejected or not recognized
 
 **Solution**:
+
 1. Generate a new token with write permissions: https://huggingface.co/settings/tokens
-2. Copy token exactly (no extra spaces)
-3. Paste in Settings tab HF Token field
-4. Or set environment variable:
+1. Copy token exactly (no extra spaces)
+1. Paste in Settings tab HF Token field
+1. Or set environment variable:
    ```bash
    # Linux/macOS
    export HF_TOKEN="hf_xxxxxxxxxxxxx"
@@ -342,26 +366,28 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
    # Windows CMD
    set HF_TOKEN=hf_xxxxxxxxxxxxx
    ```
-5. Restart the application after setting env variable
+1. Restart the application after setting env variable
 
 ### Runpod API key issues
 
 **Problem**: Can't access Runpod features
 
 **Solution**:
-1. Get API key from Runpod Settings: https://runpod.io/console/user/settings
-2. Paste in Settings tab
-3. Click "Save Runpod Settings"
-4. Verify key has correct permissions
-5. Try refreshing the page/app
 
----
+1. Get API key from Runpod Settings: https://runpod.io/console/user/settings
+1. Paste in Settings tab
+1. Click "Save Runpod Settings"
+1. Verify key has correct permissions
+1. Try refreshing the page/app
+
+______________________________________________________________________
 
 ## Performance Issues
 
 ### Application is slow/laggy
 
 **Solutions**:
+
 - Close unused tabs in the application
 - Reduce preview size in dataset views
 - Clear logs periodically
@@ -372,6 +398,7 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 ### Large dataset previews feel slow
 
 **Solutions**:
+
 - Use paginated preview dialogs instead of inline previews
 - Open datasets in external tools for large datasets
 - Use HF dataset dir format for better performance
@@ -380,12 +407,13 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 ### Logs filling up disk space
 
 **Solutions**:
+
 - Log files auto-rotate at 10MB
 - Old backups (`.log.1` through `.log.5`) can be safely deleted
 - See [Logging Guide](../development/logging.md) for details
 - Disable DEBUG mode if enabled
 
----
+______________________________________________________________________
 
 ## Logging & Debugging
 
@@ -425,23 +453,26 @@ tail -100 logs/__main__.log
 
 See the complete [Logging Guide](../development/logging.md) for more details.
 
----
+______________________________________________________________________
 
 ## Still Having Issues?
 
 ### Check the logs
+
 Enable DEBUG mode and check log files for detailed error information.
 
 ### Search existing issues
+
 Check [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues) to see if others have encountered the same problem.
 
 ### Report a bug
+
 If you've found a bug:
 
 1. Enable DEBUG logging
-2. Reproduce the issue
-3. Collect relevant log files
-4. Create a GitHub issue with:
+1. Reproduce the issue
+1. Collect relevant log files
+1. Create a GitHub issue with:
    - Clear description of the problem
    - Steps to reproduce
    - Log excerpts (remove sensitive info)
@@ -449,18 +480,20 @@ If you've found a bug:
    - Screenshots if applicable
 
 ### Ask for help
+
 - [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions)
 - Include relevant context and logs
 - Be specific about what you tried
 
----
+______________________________________________________________________
 
 **Related Documentation**:
+
 - [Logging Guide](../development/logging.md)
 - [Authentication](authentication.md)
 - [FAQ](faq.md)
 - [Proxy Setup](../deployment/proxy-setup.md)
 
----
+______________________________________________________________________
 
 **Back to**: [Documentation Index](../README.md)

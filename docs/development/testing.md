@@ -51,14 +51,17 @@ Integration tests exercise realistic flows and minimal UI wiring. All are marked
 Current integration tests include:
 
 - `test_save_dataset_main.py`
+
   - Runs `save_dataset.main()` end-to-end against a tiny JSON file (standard pairs + ChatML).
   - Asserts an HF `DatasetDict` is saved to disk and has the expected structure.
 
 - `test_merge_json_interleave.py`
+
   - Uses the merge helpers to interleave two small JSON datasets into a single JSON output.
   - Verifies the interleave order and that the download button and snackbar state look correct.
 
 - `test_tab_controllers_smoke.py`
+
   - Instantiates Scrape, Build, Merge, Analysis, Training, and Inference tab controllers with a minimal `DummyPage`.
   - Verifies each controller can build its tab content and, for Training/Inference, that a shared `train_state` dict is returned.
 
@@ -124,8 +127,10 @@ The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Py
 Additional quality jobs in CI include:
 
 - **Typecheck (`typecheck` job)** – Runs `mypy` against `src/helpers` and `src/save_dataset.py` using the configuration in `pyproject.toml`.
+
 - **Security audit (`security` job)** – Uses `pip-audit` (via `uv`) to scan the synced environment for known dependency vulnerabilities. The job is configured to
   ignore a small, explicit set of CVEs that currently come only from transitive dependencies and are tracked separately:
+
   - `CVE-2025-6176` (affecting `brotli` 1.1.0; fixed in 1.2.0)
   - `CVE-2025-62727` (affecting `starlette` 0.48.0; fixed in 0.49.1)
   - `CVE-2025-66418` (affecting `urllib3` 2.5.0; fixed in 2.6.0)

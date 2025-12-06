@@ -13,6 +13,7 @@ All log files are stored in the `logs/` directory in the project root:
 - Additional module-specific logs as needed
 
 Each log file:
+
 - Automatically rotates when it reaches 10MB
 - Keeps 5 backup files
 - Uses UTF-8 encoding
@@ -38,6 +39,7 @@ uv run src/main.py
 ```
 
 Or on Windows:
+
 ```cmd
 set FINEFOUNDRY_DEBUG=1
 uv run src/main.py
@@ -46,11 +48,13 @@ uv run src/main.py
 ## Log Format
 
 Each log entry includes:
+
 ```
 2025-01-15 14:30:45 - module.name - LEVEL - [filename.py:123] - Message
 ```
 
 Example:
+
 ```
 2025-01-15 14:30:45 - __main__ - INFO - [main.py:2059] - Download merged dataset called with destination: /home/user/Downloads
 2025-01-15 14:30:45 - helpers.merge - INFO - [merge.py:170] - Starting merge operation
@@ -60,6 +64,7 @@ Example:
 ## What Gets Logged
 
 ### Merge Operations
+
 - Start of merge operation
 - Validation results
 - Dataset loading progress
@@ -68,6 +73,7 @@ Example:
 - Number of records merged
 
 ### Download Operations
+
 - Download button clicks
 - Source and destination paths
 - File copy operations
@@ -75,6 +81,7 @@ Example:
 - Errors with full stack traces
 
 ### Error Handling
+
 - All errors include full stack traces (via `exc_info=True`)
 - Source and destination paths for debugging
 - Operation context (what was being attempted)
@@ -82,6 +89,7 @@ Example:
 ## Viewing Logs
 
 ### Real-time Monitoring
+
 ```bash
 # Watch all main application logs
 tail -f logs/__main__.log
@@ -94,6 +102,7 @@ tail -f logs/*.log
 ```
 
 ### Searching Logs
+
 ```bash
 # Find all errors
 grep "ERROR" logs/*.log
@@ -128,6 +137,7 @@ def my_function():
 ## Log Rotation
 
 Logs automatically rotate when they reach 10MB. The system keeps:
+
 - Current log file: `module_name.log`
 - 5 backups: `module_name.log.1` through `module_name.log.5`
 
@@ -136,29 +146,36 @@ Older backups are automatically deleted.
 ## Troubleshooting
 
 ### Logs not appearing
+
 1. Check that the `logs/` directory exists (it's auto-created)
-2. Verify file permissions
-3. Check if DEBUG mode is needed: `export FINEFOUNDRY_DEBUG=1`
+1. Verify file permissions
+1. Check if DEBUG mode is needed: `export FINEFOUNDRY_DEBUG=1`
 
 ### Too many logs
+
 1. Reduce log level (default is INFO, which is reasonable)
-2. The rotation system automatically manages disk space
-3. Manually delete old `.log.N` backup files if needed
+1. The rotation system automatically manages disk space
+1. Manually delete old `.log.N` backup files if needed
 
 ### Finding specific issues
+
 1. Check ERROR level logs first: `grep "ERROR" logs/*.log`
-2. Look for the specific operation (merge, download, etc.)
-3. Stack traces are included for all errors
+1. Look for the specific operation (merge, download, etc.)
+1. Stack traces are included for all errors
 
 ## Best Practices
 
 1. **Use appropriate log levels**:
+
    - DEBUG: Verbose diagnostic info
    - INFO: Normal operation milestones
    - WARNING: Potential issues
    - ERROR: Actual failures
 
-2. **Include context**: Log relevant variables and paths
-3. **Use `exc_info=True`** for exceptions to capture full stack traces
-4. **Log operation boundaries**: Start and completion of major operations
-5. **Don't log sensitive data**: Avoid logging passwords, API keys, etc.
+1. **Include context**: Log relevant variables and paths
+
+1. **Use `exc_info=True`** for exceptions to capture full stack traces
+
+1. **Log operation boundaries**: Start and completion of major operations
+
+1. **Don't log sensitive data**: Avoid logging passwords, API keys, etc.

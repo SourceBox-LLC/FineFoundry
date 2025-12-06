@@ -8,20 +8,20 @@ Use this tab to:
 - Set up **proxy behavior** for scrapers
 - Configure **Ollama** connection for optional dataset card generation
 
----
+______________________________________________________________________
 
 ## Overview
 
 Typical workflow:
 
 1. Enter and save your **Hugging Face** token.
-2. (Optional) Enter and save your **Runpod** API key.
-3. Configure proxy behavior if you use Tor or HTTP proxies.
-4. (Optional) Point the app at an **Ollama** instance and test connectivity.
+1. (Optional) Enter and save your **Runpod** API key.
+1. Configure proxy behavior if you use Tor or HTTP proxies.
+1. (Optional) Point the app at an **Ollama** instance and test connectivity.
 
 These settings are used by the Scrape, Build & Publish, Training, and tooling features throughout the app.
 
----
+______________________________________________________________________
 
 ## Layout at a Glance
 
@@ -72,7 +72,7 @@ If you use **Ollama** for dataset card drafting or other features:
 - **Models dropdown + Refresh button** – list and select models from the Ollama instance.
 - **Test / Save** buttons
 
----
+______________________________________________________________________
 
 ## Tips & Best Practices
 
@@ -80,7 +80,7 @@ If you use **Ollama** for dataset card drafting or other features:
 - Use the **Test** buttons after changing tokens or API keys.
 - If scraping over Tor or an HTTP proxy, configure proxy settings here and verify scrapers behave as expected.
 
----
+______________________________________________________________________
 
 ## Related Topics
 
@@ -89,6 +89,6 @@ If you use **Ollama** for dataset card drafting or other features:
 - [Training Tab](training-tab.md) – uses Hugging Face and Runpod settings.
 - [Build & Publish Tab](build-publish-tab.md) – uses Hugging Face token for pushing.
 
----
+______________________________________________________________________
 
 **Previous**: [Analysis Tab](analysis-tab.md) | [Back to Documentation Index](../README.md)

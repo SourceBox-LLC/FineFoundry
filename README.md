@@ -34,26 +34,27 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 <details>
   <summary><b>Table of Contents</b></summary>
 
-  - <a href="#quick-start-gui">Quick Start</a>
-  - <a href="#using-the-app">Using the App</a>
-    - <a href="#scrape-tab">Scrape tab</a>
-    - <a href="#build--publish-tab">Build / Publish tab</a>
-    - <a href="#training-tab">Training tab</a>
-    - <a href="#merge-datasets-tab">Merge Datasets tab</a>
-    - <a href="#dataset-analysis-tab">Dataset Analysis tab</a>
-    - <a href="#settings-tab">Settings tab</a>
-  - <a href="#hugging-face-authentication">Hugging Face Authentication</a>
-  - <a href="#proxy-configuration">Proxy Configuration</a>
-  - <a href="#cli-build-and-push-without-the-gui">CLI: Build &amp; Push</a>
-  - <a href="#cli-reddit-scraper">CLI: Reddit Scraper</a>
-  - <a href="#programmatic-4chan-scraper">Programmatic: 4chan</a>
-  - <a href="#programmatic-stack-exchange-scraper">Programmatic: Stack Exchange</a>
-  - <a href="#how-scraping-works-4chan">How Scraping Works (4chan)</a>
-  - <a href="#dataset-artifacts">Dataset Artifacts</a>
-  - <a href="#troubleshooting">Troubleshooting</a>
-  - <a href="#ethical-and-legal-notes">Ethical &amp; Legal</a>
-  - <a href="#development">Development</a>
-  - <a href="#license">License</a>
+- <a href="#quick-start-gui">Quick Start</a>
+- <a href="#using-the-app">Using the App</a>
+  - <a href="#scrape-tab">Scrape tab</a>
+  - <a href="#build--publish-tab">Build / Publish tab</a>
+  - <a href="#training-tab">Training tab</a>
+  - <a href="#merge-datasets-tab">Merge Datasets tab</a>
+  - <a href="#dataset-analysis-tab">Dataset Analysis tab</a>
+  - <a href="#settings-tab">Settings tab</a>
+- <a href="#hugging-face-authentication">Hugging Face Authentication</a>
+- <a href="#proxy-configuration">Proxy Configuration</a>
+- <a href="#cli-build-and-push-without-the-gui">CLI: Build & Push</a>
+- <a href="#cli-reddit-scraper">CLI: Reddit Scraper</a>
+- <a href="#programmatic-4chan-scraper">Programmatic: 4chan</a>
+- <a href="#programmatic-stack-exchange-scraper">Programmatic: Stack Exchange</a>
+- <a href="#how-scraping-works-4chan">How Scraping Works (4chan)</a>
+- <a href="#dataset-artifacts">Dataset Artifacts</a>
+- <a href="#troubleshooting">Troubleshooting</a>
+- <a href="#ethical-and-legal-notes">Ethical & Legal</a>
+- <a href="#development">Development</a>
+- <a href="#license">License</a>
+
 </details>
 
 Built with Flet for a fast, native-like UI. Includes:
@@ -66,6 +67,7 @@ Built with Flet for a fast, native-like UI. Includes:
 - Training via Runpod (managed pods, network volume at /data) or local Docker, with LoRA, packing, auto‑resume, Quick Local Inference, and reusable training configurations.
 
 <a id="contents"></a>
+
 ## 🧭 Contents
 
 - `src/main.py` — Flet desktop app (Scrape, Build/Publish, Training, Merge, Analysis, Settings)
@@ -78,6 +80,7 @@ Built with Flet for a fast, native-like UI. Includes:
 - `requirements.txt` — pinned dependencies
 
 <a id="prerequisites"></a>
+
 ## 🧰 Prerequisites
 
 - Python 3.10+ on Windows/macOS/Linux
@@ -88,6 +91,7 @@ Optional (for pushing to Hugging Face):
 - A Hugging Face account and an access token with write permissions: <https://huggingface.co/settings/tokens>
 
 <a id="quick-start-gui"></a>
+
 ## 🚀 Quick Start (GUI)
 
 1. Create and activate a virtual environment
@@ -102,13 +106,13 @@ Optional (for pushing to Hugging Face):
    source venv/bin/activate
    ```
 
-2. Install dependencies
+1. Install dependencies
 
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Run the desktop app
+1. Run the desktop app
 
    ```bash
    # Either of the following works
@@ -132,9 +136,11 @@ For comprehensive guides, tutorials, and API documentation, visit the **[docs/](
 - **[API Reference](docs/README.md#-api-reference)** - Programmatic usage
 
 <a id="using-the-app"></a>
+
 ## 🖥️ Using the App (Quick Reference)
 
 <a id="scrape-tab"></a>
+
 ### 🧭 Scrape tab
 
 ![Scrape tab](img/ff_scrape_tab.png)
@@ -153,6 +159,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 ```
 
 <a id="build--publish-tab"></a>
+
 ### 🏗️ Build / Publish tab
 
 ![Build / Publish tab](img/ff_buld_publish.png)
@@ -168,6 +175,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - Click **Push + Upload README** to upload the dataset and a generated dataset card.
 
 <a id="training-tab"></a>
+
 ### 🧠 Training tab
 
 ![Training tab](img/ff_training.png)
@@ -212,6 +220,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - This is independent of the Training tab; settings here won’t affect AutoTrain jobs.
 
 <a id="merge-datasets-tab"></a>
+
 ### 🔀 Merge Datasets tab
 
 ![Merge Datasets tab](img/ff_merge.png)
@@ -221,6 +230,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - Optionally normalize and save merged results to a JSON path or build a `datasets.DatasetDict`.
 
 <a id="dataset-analysis-tab"></a>
+
 ### 📊 Dataset Analysis tab
 
 ![Dataset Analysis tab](img/ff_dataset_analysis.png)
@@ -260,6 +270,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 
 <a id="settings-tab"></a>
 <a id="inference-tab"></a>
+
 ### 💬 Inference tab
 
 ![Inference tab](img/ff_inferance.png)
@@ -274,6 +285,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
   - The main Prompt & responses history and Full Chat View share a single conversation history, so you can switch back and forth without losing context.
 
 <a id="settings-tab"></a>
+
 ### ⚙️ Settings tab
 
 - Hugging Face Access: save token used by Build/Publish and Training push.
@@ -282,18 +294,20 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 - Ollama: enable connection, set base URL, list/select models, and save settings. Used for dataset card generation.
 
 <a id="hugging-face-authentication"></a>
+
 ## 🔐 Hugging Face Authentication
 
 You can authenticate in one of three ways:
 
 - Paste your token into the `HF Token` field in the UI.
+
 - Set an environment variable before launching the app:
 
-   ```bash
-   # Windows (PowerShell)
-   setx HF_TOKEN "hf_xxx"
-   # New shells will inherit it
-   ```
+  ```bash
+  # Windows (PowerShell)
+  setx HF_TOKEN "hf_xxx"
+  # New shells will inherit it
+  ```
 
 - Log in via CLI (persisted cache):
 
@@ -304,13 +318,17 @@ You can authenticate in one of three ways:
 The app tries the field value first, then `HF_TOKEN`, then the cached login.
 
 <a id="proxy-configuration"></a>
+
 ## 🌐 Proxy Configuration
 
 - All scrapers support proxies via module variables.
+
   - 4chan (`src/scrapers/fourchan_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
   - Reddit (`src/scrapers/reddit_scraper.py`): `PROXY_URL = "socks5h://127.0.0.1:9050"`, `USE_ENV_PROXIES = False` (default Tor SOCKS5)
   - Stack Exchange (`src/scrapers/stackexchange_scraper.py`): `PROXY_URL = None`, `USE_ENV_PROXIES = False` (no proxy by default)
+
 - To use system env proxies, set `USE_ENV_PROXIES = True` and define `HTTP_PROXY`/`HTTPS_PROXY` before launching.
+
 - Programmatic runtime change:
 
   ```python
@@ -328,13 +346,15 @@ The app tries the field value first, then `HF_TOKEN`, then the cached login.
   ```
 
 <a id="cli-build-and-push-without-the-gui"></a>
+
 ## 🛠️ CLI: Build and Push Without the GUI
 
 `src/save_dataset.py` provides a fully scriptable path.
 Note: there are no CLI flags; configure constants in the file header, then run it.
 
 1. Ensure you have a JSON file like `scraped_training_data.json` (schema above).
-2. Open `src/save_dataset.py` and edit the configuration block at the top:
+
+1. Open `src/save_dataset.py` and edit the configuration block at the top:
 
    ```python
    DATA_FILE = "scraped_training_data.json"
@@ -350,7 +370,7 @@ Note: there are no CLI flags; configure constants in the file header, then run i
    HF_TOKEN = None  # if None, uses env HF_TOKEN or cached login
    ```
 
-3. Run the script
+1. Run the script
 
    ```bash
    python src/save_dataset.py
@@ -359,6 +379,7 @@ Note: there are no CLI flags; configure constants in the file header, then run i
 This saves to `SAVE_DIR` and optionally pushes to `REPO_ID`. A dataset card is generated and uploaded as `README.md` in the repo.
 
 <a id="cli-reddit-scraper"></a>
+
 ## 🧭 CLI: Reddit Scraper
 
 Run the crawler and build pairs from a subreddit or a single post:
@@ -372,21 +393,27 @@ python src/scrapers/reddit_scraper.py \
 ```
 
 - General crawl:
+
   - `--url` (subreddit or post URL), `--max-posts`, `--request-delay`, `--request-jitter-frac`
   - `--max-requests` (0=off), `--stop-after-seconds` (0=off)
   - `--output-dir`, `--use-temp-dump`, `--no-expand-more`
+
 - Dataset build:
+
   - `--build-dataset`, `--mode {parent_child,contextual}`, `--k`, `--max-input-chars` (0=off)
   - `--require-question`, `--no-merge-same-author`, `--min-len`, `--include-automod`
   - `--pairs-path` (copy pairs to a stable path), `--cleanup` (remove dump)
+
 - Proxy is configured via `PROXY_URL`/`USE_ENV_PROXIES` in `src/scrapers/reddit_scraper.py` (see Proxy Configuration).
 
 - Output:
+
   - Writes dump under an auto folder, e.g., `reddit_dump_<slug>/` (or `--output-dir`).
   - Saves pairs to `reddit_dump_*/reddit_pairs.json`, then copies to `--pairs-path` or `./reddit_pairs.json` by default.
   - With `--cleanup` (or when `--use-temp-dump` is on), the dump folder is removed after copying pairs.
 
 - Defaults (from `src/scrapers/reddit_scraper.py`):
+
   - `--url`: <https://www.reddit.com/r/LocalLLaMA/>
   - `--max-posts`: 100
   - `--request-delay`: 1.0 (s)
@@ -414,6 +441,7 @@ python src/scrapers/reddit_scraper.py \
   ```
 
 <a id="programmatic-4chan-scraper"></a>
+
 ## 🧩 Programmatic: 4chan Scraper
 
 Use the library API from `src/scrapers/fourchan_scraper.py`.
@@ -452,6 +480,7 @@ for board in ["pol", "b"]:
 - Proxy: defaults to Tor via `PROXY_URL = "socks5h://127.0.0.1:9050"`; set `USE_ENV_PROXIES=True` to use `HTTP(S)_PROXY`. If you change these at runtime, call `apply_session_config()` before `scrape()`.
 
 <a id="programmatic-stack-exchange-scraper"></a>
+
 ## 🧩 Programmatic: Stack Exchange Scraper
 
 Scrape accepted Q/A pairs via `src/scrapers/stackexchange_scraper.py`.
@@ -484,6 +513,7 @@ pairs = se.scrape(site="superuser", max_pairs=50)
 - No CLI entrypoint for Stack Exchange; use the programmatic API or the GUI.
 
 <a id="how-scraping-works-4chan"></a>
+
 ## ⚙️ How Scraping Works (4chan)
 
 - Uses the 4chan public JSON API (`a.4cdn.org`).
@@ -500,6 +530,7 @@ Key modules: `src/scrapers/fourchan_scraper.py` (e.g., `fetch_catalog_pages()`, 
 Reddit and Stack Exchange details are documented in their CLI/usage sections below.
 
 <a id="dataset-artifacts"></a>
+
 ## 🗃️ Dataset Artifacts
 
 - On build, a `datasets.DatasetDict` is created with keys among `train`, `validation`, `test`.
@@ -508,11 +539,13 @@ Reddit and Stack Exchange details are documented in their CLI/usage sections bel
   - Summary, fields, size bucket, example records, warnings, usage snippet.
 
 <a id="troubleshooting"></a>
+
 ## 🩺 Troubleshooting
 
 For comprehensive troubleshooting, see the **[Troubleshooting Guide](docs/user-guide/troubleshooting.md)**.
 
 Quick fixes:
+
 - **No data found**: Verify boards are selected and `Max Pairs` > 0; check network access to `a.4cdn.org`.
 - **Push fails (401/403)**: Ensure your token has write scope and is correctly provided.
 - **Large previews feel slow**: Use the dataset preview dialog (paginated) or open the saved dataset with Python.
@@ -520,6 +553,7 @@ Quick fixes:
 - **Debug logging**: Set `FINEFOUNDRY_DEBUG=1` environment variable - see [Logging Guide](docs/development/logging.md)
 
 <a id="ethical-and-legal-notes"></a>
+
 ## ⚖️ Ethical and Legal Notes
 
 - Content may be NSFW, offensive, or harmful. For research purposes only.
@@ -527,6 +561,7 @@ Quick fixes:
 - Before any production use, apply filtering, detoxification, and alignment techniques.
 
 <a id="development"></a>
+
 ## 🧑‍💻 Development
 
 - UI built with Flet (`flet`, `flet-desktop`), pinned in `requirements.txt`.
@@ -550,7 +585,9 @@ Quick fixes:
 Tests live under `tests/` and are discovered by `pytest` (configured via `pyproject.toml`). The main groups are:
 
 - **Unit tests (`tests/unit/`)**
+
   - Fast, isolated tests for helper modules and the `save_dataset` CLI (normalization, splits, logging, local specs, proxy logic, Ollama settings, ChatML conversion, hyperparameter builder, etc.).
+
   - Run locally:
 
     ```bash
@@ -558,7 +595,9 @@ Tests live under `tests/` and are discovered by `pytest` (configured via `pyproj
     ```
 
 - **Integration tests (`tests/integration/`)**
+
   - End-to-end flows such as `save_dataset.main` (JSON → normalized pairs → on-disk HF dataset), dataset merge JSON interleave, and tab-controller smoke tests (Scrape/Build/Merge/Analysis/Training/Inference controllers building successfully on a dummy `Page`).
+
   - Marked with `@pytest.mark.integration` so you can select or skip them:
 
     ```bash
@@ -590,6 +629,7 @@ Tests live under `tests/` and are discovered by `pytest` (configured via `pyproj
 ### CI/CD workflows
 
 - **CI (GitHub Actions)** — `.github/workflows/ci.yml`
+
   - `lint` (py311): sets up Python 3.11 with `uv sync --frozen`, then runs `ruff` against `src/` using `ruff.toml`.
   - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest` and `coverage`, runs `coverage run --source=src -m pytest --ignore=proxy_test.py`, prints `coverage report -m --fail-under=20`, and uploads `coverage.xml` as an artifact (treats "no tests collected" as success).
   - `typecheck` (py311): runs `mypy` against `src/helpers` and `src/save_dataset.py` using the configuration in `pyproject.toml`.
@@ -598,11 +638,13 @@ Tests live under `tests/` and are discovered by `pytest` (configured via `pyproj
   - `build` (py311): depends on `lint`, `test`, and `typecheck`; uses `uv` to run `compileall` on `src` and `scripts` and performs an import smoke test for `helpers`, `scrapers`, `runpod`, and `ui`.
 
 - **Release (CD)** — `.github/workflows/release.yml`
+
   - Triggers on tags matching `v*` (for example, `v0.1.0`) or via manual `workflow_dispatch`.
   - Uses `uv build` to create wheel/sdist into `dist/`, then uploads them as workflow artifacts.
   - If the `PYPI_API_TOKEN` GitHub secret is set, publishes the built artifacts to PyPI via `pypa/gh-action-pypi-publish`.
 
 <a id="license"></a>
+
 ## 📄 License
 
 MIT

@@ -10,19 +10,19 @@ Use this tab to:
 
 ![Dataset Analysis Tab](../../img/ff_dataset_analysis.png)
 
----
+______________________________________________________________________
 
 ## Overview
 
 Typical workflow:
 
 1. Select a **dataset source** (JSON file or Hugging Face repo).
-2. Enable the analysis **modules** you care about.
-3. Click **Analyze dataset**.
-4. Review summary stats and module outputs.
-5. Adjust scraping/building/merging parameters if needed.
+1. Enable the analysis **modules** you care about.
+1. Click **Analyze dataset**.
+1. Review summary stats and module outputs.
+1. Adjust scraping/building/merging parameters if needed.
 
----
+______________________________________________________________________
 
 ## Layout at a Glance
 
@@ -58,32 +58,32 @@ A summary section lists all active modules after each run.
 - **Progress bars / charts** – visualize distributions (sentiment, length buckets, etc.).
 - **Tables / samples** – preview representative rows and metrics.
 
----
+______________________________________________________________________
 
 ## Usage Examples
 
 ### Example 1: Quick sanity check
 
 1. Load your just-built dataset from the **Build & Publish** tab.
-2. Enable **Basic Stats**, **Duplicates & Similarity**, and **Sentiment**.
-3. Click **Analyze dataset**.
-4. Confirm record counts and check for excessive duplicates or extreme sentiment imbalance.
+1. Enable **Basic Stats**, **Duplicates & Similarity**, and **Sentiment**.
+1. Click **Analyze dataset**.
+1. Confirm record counts and check for excessive duplicates or extreme sentiment imbalance.
 
 ### Example 2: Curriculum planning
 
 1. Load a merged dataset.
-2. Enable **Class Balance (length)**, **Conversation depth**, and **Topics**.
-3. Use the outputs to decide whether you need to:
+1. Enable **Class Balance (length)**, **Conversation depth**, and **Topics**.
+1. Use the outputs to decide whether you need to:
    - Rebalance short vs long samples.
    - Add or remove certain topic sources.
 
 ### Example 3: Safety scanning
 
 1. Enable **Toxicity / Politeness** and **Data leakage** proxies.
-2. Identify whether your dataset has significant toxic content or potential leakage issues.
-3. Adjust scraping filters or dataset cleaning steps accordingly.
+1. Identify whether your dataset has significant toxic content or potential leakage issues.
+1. Adjust scraping filters or dataset cleaning steps accordingly.
 
----
+______________________________________________________________________
 
 ## Tips & Best Practices
 
@@ -92,7 +92,7 @@ A summary section lists all active modules after each run.
 - Use **Sentiment** and **Toxicity** to gauge whether additional filtering is needed for your use case.
 - Re-run analysis after major changes to scraping, merging, or cleaning logic.
 
----
+______________________________________________________________________
 
 ## Related Topics
 
@@ -101,6 +101,6 @@ A summary section lists all active modules after each run.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple datasets.
 - [Training Tab](training-tab.md) – fine-tune models on analyzed datasets.
 
----
+______________________________________________________________________
 
 **Next**: [Settings Tab](settings-tab.md) | **Previous**: [Merge Datasets Tab](merge-tab.md) | [Back to Documentation Index](../README.md)
