@@ -272,6 +272,6 @@ jobs:
       - name: Check documentation links (lychee)
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --no-progress --exclude https://huggingface.co/settings/tokens README.md docs/**/*.md
+          args: --no-progress --exclude https://huggingface.co/settings/tokens --exclude https://www.reddit.com/r/LocalLLaMA/ README.md docs/**/*.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
