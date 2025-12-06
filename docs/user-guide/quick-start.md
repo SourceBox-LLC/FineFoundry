@@ -18,7 +18,7 @@ Optional for publishing:
 
 ```bash
 # Clone the repository
-git clone https://github.com/SourceBox-LLC/FineFoundry.git
+git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
 
 # Run the application (uv handles dependencies automatically)

@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 # Managed by uv; add libraries with `uv add <pkg>`
 dependencies = [
     "bitsandbytes>=0.48.2",
+    "codespell>=2.4.1",
     "datasets>=4.1.1",
     # Flet will try to install desktop support with pip at runtime unless the extra is present.
     # Pin to the exact version you use.
