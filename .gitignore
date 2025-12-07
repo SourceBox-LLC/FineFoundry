@@ -1,11 +1,61 @@
-venv
-.venv
-__pycache__
-hf_dataset/
+# Virtual environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment files
 .env
-runpod tests/
+.env.local
+
+# Database
+finefoundry.db
+finefoundry.db-journal
+finefoundry.db-wal
+finefoundry.db-shm
+
+# Legacy JSON settings (migrated to database)
+ff_settings.json
+hf_config.json
+runpod_config.json
+ollama_config.json
+
+# User data directories
 saved_configs/
 logs/
-ff_settings.json
+hf_dataset/
 merged_dataset/
+
+# Scraped data files
 scraped_training_data.json
+reddit_pairs.json
+fourchan_pairs.json
+stackexchange_pairs.json
+reddit_dump_*/
+
+# Test artifacts
+runpod tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

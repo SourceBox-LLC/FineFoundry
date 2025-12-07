@@ -52,6 +52,20 @@ from helpers.settings_ollama import (
     save_config as save_ollama_config_helper,
     fetch_tags as fetch_ollama_tags_helper,
 )
+from helpers.settings import (
+    load_settings as load_settings_from_db,
+    save_settings as save_settings_to_db,
+    load_hf_config as load_hf_config_from_db,
+    save_hf_config as save_hf_config_to_db,
+    load_runpod_config as load_runpod_config_from_db,
+    save_runpod_config as save_runpod_config_to_db,
+    load_ollama_config as load_ollama_config_from_db,
+    save_ollama_config as save_ollama_config_to_db,
+    load_proxy_config as load_proxy_config_from_db,
+    save_proxy_config as save_proxy_config_to_db,
+)
+from db import init_db, migrate_from_json
+from db.migrate import is_migration_complete
 
 # Set terminal title to uppercase for the current session
 set_terminal_title("PYTHON: MAIN")
@@ -358,73 +372,28 @@ Tabs:
     use_env_cb.on_change = update_proxy_controls
     update_proxy_controls()
 
-    # Shared unified settings file for Hugging Face, Runpod, and Ollama
-    SETTINGS_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ff_settings.json")
-    _HF_LEGACY_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "hf_config.json")
-    _RUNPOD_LEGACY_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "runpod_config.json")
-    _OLLAMA_LEGACY_CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ollama_config.json")
-
-    def _load_settings_file() -> dict:
-        try:
-            with open(SETTINGS_CFG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f) or {}
-        except Exception:
-            data: dict = {}
-            # Best-effort migration from legacy per-service config files
-            try:
-                with open(_HF_LEGACY_CFG_PATH, "r", encoding="utf-8") as f:
-                    hf_cfg = json.load(f) or {}
-                tok = (hf_cfg.get("token") or "").strip()
-                if tok:
-                    data.setdefault("huggingface", {})["token"] = tok
-            except Exception:
-                pass
-            try:
-                with open(_RUNPOD_LEGACY_CFG_PATH, "r", encoding="utf-8") as f:
-                    rp_cfg = json.load(f) or {}
-                key = (rp_cfg.get("api_key") or "").strip()
-                if key:
-                    data.setdefault("runpod", {})["api_key"] = key
-            except Exception:
-                pass
-            try:
-                with open(_OLLAMA_LEGACY_CFG_PATH, "r", encoding="utf-8") as f:
-                    ollama_cfg = json.load(f) or {}
-                if isinstance(ollama_cfg, dict) and ollama_cfg:
-                    data["ollama"] = ollama_cfg
-            except Exception:
-                pass
-            return data
-
-    def _save_settings_file(data: dict) -> None:
-        try:
-            with open(SETTINGS_CFG_PATH, "w", encoding="utf-8") as f:
-                json.dump(data or {}, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+    # Initialize database and run migration if needed
+    try:
+        init_db()
+        if not is_migration_complete():
+            logger.info("Running one-time migration from JSON to SQLite...")
+            migrate_from_json()
+            logger.info("Migration complete")
+    except Exception as e:
+        logger.warning(f"Database initialization warning: {e}")
 
     # ---------- SETTINGS (Hugging Face) CONTROLS ----------
+    # Now using SQLite database via helpers.settings
 
     def _load_hf_config() -> dict:
         try:
-            all_cfg = _load_settings_file()
-            hf_cfg = all_cfg.get("huggingface") or {}
+            return load_hf_config_from_db()
         except Exception:
-            hf_cfg = {}
-        return {"token": (hf_cfg.get("token") or "")}
+            return {"token": ""}
 
     def _save_hf_config(cfg: dict):
         try:
-            all_cfg = _load_settings_file()
-            if not isinstance(all_cfg, dict):
-                all_cfg = {}
-            tok = (cfg.get("token") or "").strip()
-            section = all_cfg.get("huggingface") or {}
-            if not isinstance(section, dict):
-                section = {}
-            section["token"] = tok
-            all_cfg["huggingface"] = section
-            _save_settings_file(all_cfg)
+            save_hf_config_to_db(cfg)
         except Exception:
             pass
 
@@ -494,27 +463,17 @@ Tabs:
     hf_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_hf)
 
     # ---------- SETTINGS (Runpod) CONTROLS ----------
+    # Now using SQLite database via helpers.settings
 
     def _load_runpod_config() -> dict:
         try:
-            all_cfg = _load_settings_file()
-            rp_cfg = all_cfg.get("runpod") or {}
+            return load_runpod_config_from_db()
         except Exception:
-            rp_cfg = {}
-        return {"api_key": (rp_cfg.get("api_key") or "")}
+            return {"api_key": ""}
 
     def _save_runpod_config(cfg: dict):
         try:
-            all_cfg = _load_settings_file()
-            if not isinstance(all_cfg, dict):
-                all_cfg = {}
-            key = (cfg.get("api_key") or "").strip()
-            section = all_cfg.get("runpod") or {}
-            if not isinstance(section, dict):
-                section = {}
-            section["api_key"] = key
-            all_cfg["runpod"] = section
-            _save_settings_file(all_cfg)
+            save_runpod_config_to_db(cfg)
         except Exception:
             pass
 

@@ -186,9 +186,15 @@ jobs:
           uv run python - <<'PY'
           import sys, importlib
           sys.path.append('src')
-          for pkg in ("helpers", "scrapers", "runpod", "ui"):
+          for pkg in ("helpers", "scrapers", "runpod", "ui", "db"):
               importlib.import_module(pkg)
           print("Core packages imported successfully")
+          # Verify database module works
+          from db import init_db, get_setting, set_setting
+          init_db()
+          set_setting("ci.test", "ok")
+          assert get_setting("ci.test") == "ok"
+          print("Database module verified")
           PY
 
   security:

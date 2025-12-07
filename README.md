@@ -49,6 +49,7 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 - <a href="#programmatic-4chan-scraper">Programmatic: 4chan</a>
 - <a href="#programmatic-stack-exchange-scraper">Programmatic: Stack Exchange</a>
 - <a href="#how-scraping-works-4chan">How Scraping Works (4chan)</a>
+- <a href="#data-storage">Data Storage</a>
 - <a href="#dataset-artifacts">Dataset Artifacts</a>
 - <a href="#troubleshooting">Troubleshooting</a>
 - <a href="#ethical-and-legal-notes">Ethical & Legal</a>
@@ -71,6 +72,7 @@ Built with Flet for a fast, native-like UI. Includes:
 ## 🧭 Contents
 
 - `src/main.py` — Flet desktop app (Scrape, Build/Publish, Training, Merge, Analysis, Settings)
+- `src/db/` — SQLite database module for unified data storage
 - `src/scrapers/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
 - `src/scrapers/reddit_scraper.py` — Reddit scraper CLI + conversational pair builder
 - `src/scrapers/stackexchange_scraper.py` — Stack Exchange Q/A scraper (programmatic)
@@ -78,6 +80,7 @@ Built with Flet for a fast, native-like UI. Includes:
 - `src/runpod/ensure_infra.py` — Runpod infrastructure automation (network volume + template)
 - `src/runpod/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
 - `requirements.txt` — pinned dependencies
+- `finefoundry.db` — SQLite database (auto-created on first run)
 
 <a id="prerequisites"></a>
 
@@ -537,6 +540,21 @@ pairs = se.scrape(site="superuser", max_pairs=50)
 
 Key modules: `src/scrapers/fourchan_scraper.py` (e.g., `fetch_catalog_pages()`, `fetch_thread()`, `build_pairs_*()`).
 Reddit and Stack Exchange details are documented in their CLI/usage sections below.
+
+<a id="data-storage"></a>
+
+## 💾 Data Storage
+
+FineFoundry uses a SQLite database (`finefoundry.db`) for unified data storage:
+
+- **Settings** — HF token, RunPod API key, Ollama config, proxy settings
+- **Training Configs** — Saved hyperparameter configurations
+- **Scrape Sessions** — History of all scrape runs with metadata
+- **Scraped Pairs** — All input/output pairs from scraping
+
+The database is auto-created on first run. Existing JSON files (`ff_settings.json`, `saved_configs/*.json`) are automatically migrated.
+
+JSON files are still written during scraping for compatibility with the Build & Publish workflow and external tools.
 
 <a id="dataset-artifacts"></a>
 

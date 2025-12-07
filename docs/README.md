@@ -25,6 +25,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 ### 🛠️ Development
 
 - [Project Structure](development/project-structure.md) - Codebase organization
+- [Database Architecture](development/database.md) - SQLite storage system
 - [Logging System](development/logging.md) - Logging configuration and usage
 - [Contributing Guide](development/contributing.md) - How to contribute to FineFoundry
 - [Testing](development/testing.md) - Running and writing tests
@@ -88,5 +89,5 @@ See our [Contributing Guide](development/contributing.md) for details on:
 
 ______________________________________________________________________
 
-**Last Updated**: January 2025
+**Last Updated**: December 2025
 **Version**: See [CHANGELOG](../CHANGELOG.md)

@@ -18,6 +18,7 @@ from helpers.chatml import (
     reddit_thread_to_chatml_conversations,
 )
 from helpers.proxy import apply_proxy_from_ui
+from helpers.scrape_db import save_scrape_to_db, save_chatml_to_db
 from scrapers import stackexchange_scraper as sx
 from scrapers import fourchan_scraper as sc
 from scrapers import reddit_scraper as rdt
@@ -125,6 +126,28 @@ async def run_stackexchange_scrape(
         await asyncio.to_thread(
             lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
         )
+        # Save to database
+        try:
+            if pairs_output:
+                await asyncio.to_thread(
+                    lambda: save_scrape_to_db(
+                        source="stackexchange",
+                        pairs=payload,
+                        source_details=f"site={site}",
+                        dataset_format=dataset_format,
+                    )
+                )
+            else:
+                await asyncio.to_thread(
+                    lambda: save_chatml_to_db(
+                        source="stackexchange",
+                        conversations=payload,
+                        source_details=f"site={site}",
+                    )
+                )
+            log("Saved to database")
+        except Exception as db_err:
+            log(f"Database save warning: {db_err}")
         if pairs_output:
             log(f"Wrote {len(payload)} pairs to {output_path}")
             count = len(payload)
@@ -450,6 +473,28 @@ async def run_reddit_scrape(
                 json.dumps(payload, ensure_ascii=False, indent=4)
             )
         )
+        # Save to database
+        try:
+            if pairs_output:
+                await asyncio.to_thread(
+                    lambda: save_scrape_to_db(
+                        source="reddit",
+                        pairs=standard_pairs,
+                        source_details=f"url={url}",
+                        dataset_format=dataset_format,
+                    )
+                )
+            else:
+                await asyncio.to_thread(
+                    lambda: save_chatml_to_db(
+                        source="reddit",
+                        conversations=chatml_convs,
+                        source_details=f"url={url}",
+                    )
+                )
+            log("Saved to database")
+        except Exception as db_err:
+            log(f"Database save warning: {db_err}")
         if pairs_output:
             log(f"Wrote {pairs_count} pairs to: {dest_abs}")
         else:
@@ -765,6 +810,46 @@ async def run_real_scrape(
         await asyncio.to_thread(
             lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
         )
+        # Save to database
+        try:
+            boards_str = ",".join(boards[:5]) + ("..." if len(boards) > 5 else "")
+            if pairs_output:
+                # Convert to standard pairs if needed
+                db_pairs = payload if isinstance(payload, list) and payload and isinstance(payload[0], dict) and "input" in payload[0] else []
+                if not db_pairs and chatml_enabled:
+                    # Extract from conversations
+                    for conv in (conversations_accum or []):
+                        msgs = conv.get("messages", []) or []
+                        user_text = assistant_text = None
+                        for m in msgs:
+                            role = m.get("role")
+                            text = m.get("content") or ""
+                            if role == "user" and user_text is None and text:
+                                user_text = text
+                            elif role == "assistant" and user_text is not None and text:
+                                assistant_text = text
+                                break
+                        if user_text and assistant_text:
+                            db_pairs.append({"input": user_text, "output": assistant_text})
+                await asyncio.to_thread(
+                    lambda: save_scrape_to_db(
+                        source="4chan",
+                        pairs=db_pairs,
+                        source_details=f"boards={boards_str}",
+                        dataset_format=dataset_format,
+                    )
+                )
+            else:
+                await asyncio.to_thread(
+                    lambda: save_chatml_to_db(
+                        source="4chan",
+                        conversations=payload,
+                        source_details=f"boards={boards_str}",
+                    )
+                )
+            log("Saved to database")
+        except Exception as db_err:
+            log(f"Database save warning: {db_err}")
         log(
             (f"Wrote {len(payload)} pairs to {output_path}" if pairs_output else f"Wrote {len(payload)} conversations to {output_path}")
         )
