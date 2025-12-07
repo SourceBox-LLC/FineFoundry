@@ -7,7 +7,6 @@ Supports sessions (scrape runs) and individual pairs.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .core import get_connection, init_db

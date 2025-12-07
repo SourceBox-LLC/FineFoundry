@@ -59,6 +59,7 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 </details>
 
 Built with Flet for a fast, native-like UI. Includes:
+
 - 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
 - Reddit scraper CLI for subreddits or single posts; expands “more” comments; builds pairs (parent→child or contextual).
 - Stack Exchange Q/A scraper (programmatic) for accepted answers.

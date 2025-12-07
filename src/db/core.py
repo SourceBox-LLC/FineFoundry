@@ -13,9 +13,15 @@ _local = threading.local()
 # Default database path (project root)
 _DB_NAME = "finefoundry.db"
 
+# Override for testing - set _DB_PATH_OVERRIDE["path"] to use a different db
+_DB_PATH_OVERRIDE: dict = {}
+
 
 def get_db_path(project_root: Optional[str] = None) -> str:
     """Get the path to the SQLite database file."""
+    # Check for test override first
+    if "path" in _DB_PATH_OVERRIDE:
+        return _DB_PATH_OVERRIDE["path"]
     if project_root:
         return os.path.join(project_root, _DB_NAME)
     # Default: project root (parent of src/)

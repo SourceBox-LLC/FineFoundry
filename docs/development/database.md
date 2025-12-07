@@ -152,6 +152,7 @@ if not is_migration_complete():
 ```
 
 The migration handles:
+
 - `ff_settings.json` → `settings` table
 - `saved_configs/*.json` → `training_configs` table
 - `scraped_training_data.json` → `scraped_pairs` table (both standard and ChatML formats)

@@ -6,11 +6,10 @@ Now uses SQLite database for storage. Maintains backward-compatible API.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from db import init_db
 from db.settings import (
-    get_setting,
     set_setting,
     get_all_settings,
     get_hf_token,

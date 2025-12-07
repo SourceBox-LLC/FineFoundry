@@ -1,7 +1,6 @@
 import asyncio
 import os
 from typing import Optional
-import json
 import httpx
 
 
@@ -53,16 +52,10 @@ from helpers.settings_ollama import (
     fetch_tags as fetch_ollama_tags_helper,
 )
 from helpers.settings import (
-    load_settings as load_settings_from_db,
-    save_settings as save_settings_to_db,
     load_hf_config as load_hf_config_from_db,
     save_hf_config as save_hf_config_to_db,
     load_runpod_config as load_runpod_config_from_db,
     save_runpod_config as save_runpod_config_to_db,
-    load_ollama_config as load_ollama_config_from_db,
-    save_ollama_config as save_ollama_config_to_db,
-    load_proxy_config as load_proxy_config_from_db,
-    save_proxy_config as save_proxy_config_to_db,
 )
 from db import init_db, migrate_from_json
 from db.migrate import is_migration_complete
