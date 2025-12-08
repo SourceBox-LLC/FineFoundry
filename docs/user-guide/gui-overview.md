@@ -4,7 +4,7 @@ This guide provides a high-level tour of the FineFoundry desktop interface and l
 
 When you launch the app you will see several tabs across the top:
 
-1. **Scrape** – Collect raw conversational data.
+1. **Scrape** – Collect raw conversational data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents.
 1. **Build / Publish** – Turn JSON into structured datasets and optionally push to Hugging Face.
 1. **Training** – Fine-tune models on Runpod or locally via Docker.
 1. **Inference** – Run inference against fine-tuned adapters with prompt history and Full Chat View.

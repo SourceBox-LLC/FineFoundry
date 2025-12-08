@@ -1,0 +1,94 @@
+ For example, if
+‘urn:contexts:payment:v2.0‘ fixed a semantic ambiguity that
+allowed double-spending in ‘v1.0‘, an attacker performing
+a man-in-the-middle attack could strip ‘v2.0‘ from the SNL-
+HELLO capabilities list, forcing agents to fall back to the
+vulnerable ‘v1.0‘ context. This is analogous to TLS down-
+grade attacks but operates at the semantic layer.
+
+5.2 Security Requirements for a Robust SNL
+To be viable, the SNL (L9) must be built on a foundation of "zero
+trust" for meaning, integrating with existing security layers through
+defense-in-depth.
+
+5.2.1 Multi-Layer Security Integration. L9 security operates along-
+side existing mechanisms. Transport security (TLS) protects L8
+message envelopes in transit. For protocols like SLIM [10], MLS
+provides end-to-end encryption of message payloads, ensuring con-
+fidentiality even through intermediate nodes. L9 adds semantic in-
+tegrity: validating that message content conforms to authenticated
+contexts and that agents are authorized to use specific concepts. All
+three layers are necessary—transport encryption prevents eaves-
+dropping, message encryption ensures end-to-end confidentiality,
+and semantic validation prevents malicious or malformed meaning
+from reaching agent logic.
+
+5.2.2 Core Security Mechanisms.
+
+• Authenticated Contexts: A Shared Context schema must
+be as verifiable as an SSL/TLS certificate. The SNL hand-
+shake must involve exchanging cryptographically signed
+context definitions, including version numbers and sup-
+ported feature sets. Agents must validate signatures against
+trusted Schema Authorities before accepting a context. The
+handshake must include minimum version negotiation to
+
+A Layered Protocol Architecture for the Internet of Agents
+
+prevent downgrade attacks—if Agent A requires ‘payment:v2.0‘
+minimum, it must reject any negotiation attempt for ‘v1.x‘.
+• Semantic Firewalls: Semantic Firewalls operate at the L9
+layer, positioned between the SNL and the agent’s appli-
+cation logic (LLM or rules engine). They inspect validated
+L9 content—not raw L8 bytes—and enforce concept-level
+authorization policies. Unlike traditional firewalls that filter
+based on IPs or ports, semantic firewalls understand the
+meaning of communication. Implementation challenges
+include:
+
+– Placement: Semantic firewalls can be deployed client-
+side (protecting individual agents), at gateways (pro-
+tecting agent populations), or distributed (each agent
+enforces policies for its context).
+
+– Policy Examples:
+
+∗ "Agent [Retailer-7] is allowed to use the ‘deci-
+
+sion_contingency‘ concept. Agent [Public-WebApp-
+3] is not."
+
+∗ "Rate-limit any single agent to 10 ‘ambiguous_parameter‘
+
+queries per minute (to prevent SDoS)."
+
+∗ "Reject any ‘payment‘ context message where
+‘amount > $10000‘ unless sender has ‘high-value-
+authorized‘ credential."
+
+– Content Inspection: Detecting semantic injection
+(malicious prompts embedded in semantically valid
+fields) remains an open research challenge. Current
+approaches include pattern matching for known in-
+jection signatures, anomaly detection on text distri-
+butions, and even LLM-based analysis of suspicious
+content. However, this creates an arms race similar
+to spam filtering. We acknowledge this limitation and
+suggest semantic firewalls focus on authorization (who
+can use which concepts) and rate limiting as more
+tractable near-term defenses.
+
+– Performance: Semantic inspection adds latency pro-
+portional to message complexity and policy count.
+Caching policy decisions per context-agent pair and
+using efficient policy languages (e.g., Rego, Cedar) can
+minimize overhead.
+
+• Confidentiality of Capability: The SNL-HELLO hand-
+shake reveals an agent’s capabilities (i.e., what contexts
+it understands). This is sensitive business intelligence—
+revealing that an agent supports ‘military-logistics:v3.2‘ or
+‘high-frequency-trading:v1.0‘ exposes strategic information.
+Where SLIM uses MLS for payload encryption, the L9 nego-
+tiation messages (SNL-HELLO, SNL-SELECT) must also be
+encrypted using the same

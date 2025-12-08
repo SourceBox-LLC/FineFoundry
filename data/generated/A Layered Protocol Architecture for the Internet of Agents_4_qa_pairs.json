@@ -1,0 +1,25 @@
+{
+  "summary": "Here is a summary of the document in 3-5 sentences, focusing on the main topic and key concepts:\n\nThe current protocols for multi-agent systems, such as A2A and MCP, excel at standardizing the syntactic envelope of communication, but fail to manage the context of tasks and shared understanding of terms. This leads to brittle, unpredictable, and inefficient systems. To address this issue, a new architectural stack is proposed, which separates the application transport layer (HTTP/2/3) from the agent communication layer (L8 and L9). The Agent Communication Layer (L8) ensures that agents can reliably exchange structured messages, understand communicative intent, and coordinate interaction flows, independently of semantic content. This layer provides a standardized foundation for agent communication, unifying the best parts of existing protocols into a single, standardized layer.",
+  "qa_pairs": [
+    {
+      "question": "What is the main focus of MCP in terms of communication protocols?",
+      "answer": "Standardizing the syntactic envelope of communication"
+    },
+    {
+      "question": "What is the example of a JSON structure for agent messages in a protocol?",
+      "answer": "A JSON structure with the following fields: 'protocol', 'performative', 'sender_id', 'receiver_id', and 'content'."
+    },
+    {
+      "question": "What is the responsibility of the multi-agent system developer in the communication protocol?",
+      "answer": "The responsibility for specifying syntax and semantic context accurately remains with the multi-agent system developer."
+    },
+    {
+      "question": "What is the possible outcome of the agent-booking-4's LLM on ambiguous data?",
+      "answer": "The agent may either guess or send a REQUEST-CLARIFY message back, leading to a 'prompt negotiation' loop."
+    },
+    {
+      "question": "What is the main problem in current multi-agent systems?",
+      "answer": "The most important information\u2014the shared understanding of terms, goals, and constraints\u2014is left unmanaged, leading to brittle, unpredictable, and inefficient systems."
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+ Which airport (JFK, LGA, EWR)? What travel
+date? Which service class? Which passenger? These are not syntac-
+tic ambiguities—the message parses correctly—but semantic gaps
+where critical contextual parameters are missing.
+
+Without a formal semantic layer that defines the required pa-
+rameters for the "book ticket" task within a "travel" context, agents
+cannot deterministically execute requests. The receiving agent must
+either make potentially incorrect assumptions or engage in multiple
+clarification rounds, each invoking expensive LLM inference. This
+creates non-deterministic negotiation loops that scale poorly—the
+computational cost grows not from syntactic parsing but from iter-
+ative semantic resolution that should have been established at the
+protocol level.
+
+The Solution Framework: Efficient multi-agent systems re-
+quire protocols that combine formal syntax with semantic knowl-
+edge. Formal syntax ensures messages are parseable and interaction
+patterns are predictable. Semantic knowledge—expressed through
+shared, machine-readable ontologies and schemas—provides the
+context necessary to interpret message content unambiguously.
+This combination enables agents to validate semantic correctness
+at the protocol level, eliminating ambiguity before computation
+begins and ensuring that distributed agents execute tasks determin-
+istically and efficiently.
+
+Charles Fleming, Vijoy Pandey, Luca Muscariello, and Ramana Kompella
+
+This paper argues for a proactive, systematic solution. We pro-
+pose formalizing agent communication through two new architec-
+tural layers: an Agent Communication Layer (L8) that standard-
+izes interaction structure, and an Agent Semantic Negotiation
+Layer (L9) that establishes shared meaning before task execution.
+The Internet of Agents adds the semantics and syntax of modern
+multipurpose DSLs into agent interactions. While individual LLMs
+may fail to implement weak non-deterministic Turing machines,
+agents equipped with memory and structured communication pro-
+tocols can theoretically achieve non-deterministic Turing compu-
+tation in a distributed manner. Together, these layers provide the
+foundation for scalable, distributed agent collaboration—the essen-
+tial infrastructure for an Internet of Agents where computation
+scales through semantic coordination rather than context window
+expansion.
+
+2 The Lesson of Ad-Hoc Layers: HTTP
+The history of the internet is a powerful precedent for our current
+situation. The original OSI (Zimmermann, 1980) and TCP/IP mod-
+els provided a robust and universal standard for routing packets
+and ensuring reliable data delivery. However, they intentionally
+stopped short of dictating how applications should use that data.
+The Application Layer (L7) was less a "layer" and more a "gateway"
+for other protocols like FTP, SMTP, and Telnet.
+
+In the early 1990s, the World Wide Web created a new require-
+ment: a simple, extensible way to retrieve hypermedia documents.
+The TCP/IP stack had no native primitive for "getting a document."
+This led to the creation of the Hypertext Transfer Protocol (HTTP).
+HTTP was, in effect, an ad-hoc protocol built to fill the gap left
+by L4 (TCP) and L7. It started as a simple, stateless protocol with
+one primary method (GET). However, as web applications grew
+in complexity, HTTP was forced to evolve. It accrued state man-
+agement (Cookies), complex caching mechanisms (Headers), new
+verbs (PUT, DELETE), and session-like capabilities (Keep-Alive),
+effectively becoming its own complex, stateful "application layer"
+living entirely within the "data" payload of a TCP segment.
+
+The evolution continued with HTTP/2 [12] and HTTP/3, which
+introduced fundamental transport-level primitives: FRAMES for
+efficient message encapsulation and STREAMS for multiplexed,
+independent channels within a single connection. These capabili-
+ties transformed HTTP from a simple application protocol into a
+genuine transport protocol, perfectly fitting the definition of a "nar-
+row waist" or "thin waist" layer of the internet stack [8]. HTTP/2’s
+binary framing and stream multiplexing, followed by HTTP/3’s
+QUIC-based transport, established HTTP as a universal transport
+foundation for modern applications.
+
+Today, HTTP/2 and HTTP/3 represent a de facto transport layer
+of the stack, arguably more complex and influential than the lay-
+ers below

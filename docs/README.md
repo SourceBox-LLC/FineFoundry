@@ -33,10 +33,11 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 
 ### 🔌 API Reference
 
-- [Scrapers API](api/scrapers.md) - Programmatic scraping interfaces
+- [Scrapers API](api/scrapers.md) - Programmatic scraping and generation interfaces
   - [4chan Scraper](api/fourchan-scraper.md)
   - [Reddit Scraper](api/reddit-scraper.md)
   - [Stack Exchange Scraper](api/stackexchange-scraper.md)
+  - Synthetic Data Generator (see [Scrapers API](api/scrapers.md#synthetic-data-generation))
 - [Dataset Builder](api/dataset-builder.md) - Programmatic dataset creation
 - [Training API](api/training.md) - Programmatic training interface
 
@@ -56,7 +57,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 ## 🔍 Quick Links
 
 - **Need help getting started?** → [Quick Start Guide](user-guide/quick-start.md)
-- **Want to scrape data?** → [Scrape Tab Guide](user-guide/scrape-tab.md) or [Scrapers API](api/scrapers.md)
+- **Want to scrape data or generate synthetic data?** → [Scrape Tab Guide](user-guide/scrape-tab.md) or [Scrapers API](api/scrapers.md)
 - **Building datasets?** → [Build & Publish Guide](user-guide/build-publish-tab.md)
 - **Training models?** → [Training Tab Guide](user-guide/training-tab.md)
 - **Contributing code?** → [Contributing Guide](development/contributing.md)

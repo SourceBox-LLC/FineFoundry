@@ -18,8 +18,8 @@ def build_source_section(
             section_title(
                 "Source",
                 getattr(ICONS, "DASHBOARD", ICONS.SETTINGS),
-                "Choose a data source. Options: 4chan, Reddit, StackExchange.",
-                on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange."),
+                "Choose a data source. Options: 4chan, Reddit, StackExchange, or Synthetic (generate from documents).",
+                on_help_click=_mk_help_handler("Choose a data source. Options: 4chan, Reddit, StackExchange, or Synthetic (generate QA pairs from PDFs, DOCX, HTML, etc.)."),
             ),
             ft.Container(
                 content=ft.Column([

@@ -82,7 +82,7 @@ def main(page: ft.Page):
         title=ft.Text("About"),
         content=ft.Text(
             "FineFoundry Core Application\n\n"
-            "Scrape sources (4chan, Reddit, StackExchange), build/merge datasets, train locally or on Runpod, and analyze data quality.\n"
+            "Collect data from sources (4chan, Reddit, StackExchange, or generate synthetic data from documents), build/merge datasets, train locally or on Runpod, and analyze data quality.\n"
             "Built with Flet."
         ),
         actions=[ft.TextButton("Close", on_click=lambda e: setattr(about_dialog, "open", False))],
@@ -123,10 +123,10 @@ def main(page: ft.Page):
             guide_md = """# FineFoundry — In‑App User Guide
 
 ## Overview
-FineFoundry is a desktop studio to scrape, merge, analyze, build/publish, and train LLM datasets.
+FineFoundry is a desktop studio to collect data, merge, analyze, build/publish, and train LLM datasets.
 
 Tabs:
-- Scrape
+- Data Sources
 - Build / Publish
 - Training
 - Merge Datasets
@@ -138,10 +138,11 @@ Tabs:
 - User guide: press F1 or click the bottom‑right Help FAB.
 - Use the tabs to switch workflows.
 
-## Scrape
-- Choose source (4chan, Reddit, StackExchange).
-- Configure parameters (max pairs, threads, delays, length filters).
-- Start scraping and preview results in a two‑column grid (input/output).
+## Data Sources
+- Choose source: 4chan, Reddit, StackExchange, or **Synthetic** (generate from documents).
+- For scraping: configure parameters (max pairs, threads, delays, length filters).
+- For synthetic: select files (PDF, DOCX, PPTX, HTML, TXT) or URLs to generate QA pairs, Chain of Thought, or summaries.
+- Preview results in a two‑column grid (input/output).
 - Proxy support per scraper; system env proxies optional.
 
 ## Build / Publish
@@ -707,7 +708,7 @@ Tabs:
     # Tabs and welcome screen
     tabs = ft.Tabs(
         tabs=[
-            ft.Tab(text="Scrape", icon=ICONS.SEARCH, content=scrape_tab),
+            ft.Tab(text="Data Sources", icon=ICONS.SEARCH, content=scrape_tab),
             ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab),
             ft.Tab(text="Dataset Analysis", icon=getattr(ICONS, "INSIGHTS", ICONS.ANALYTICS), content=analysis_tab),
             ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),

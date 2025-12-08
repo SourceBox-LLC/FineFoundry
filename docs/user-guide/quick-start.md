@@ -52,7 +52,7 @@ python src/main.py
 
 When you first launch FineFoundry, you'll see a desktop application with several tabs:
 
-1. **Scrape** - Collect training data from 4chan, Reddit, or Stack Exchange
+1. **Scrape** - Collect training data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents
 1. **Build / Publish** - Create datasets and publish to Hugging Face
 1. **Training** - Fine-tune models on Runpod or locally
 1. **Inference** - Run inference against fine-tuned adapters with prompt history and Full Chat View

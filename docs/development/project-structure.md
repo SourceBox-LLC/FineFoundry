@@ -115,6 +115,14 @@ Business logic separated from UI:
 - `run_stackexchange_scrape()` - Stack Exchange wrapper
 - UI update helpers for scraping progress
 
+#### `synthetic.py`
+
+- `run_synthetic_generation()` - Synthetic data generation using Unsloth's SyntheticDataKit
+- Document ingestion (PDF, DOCX, TXT, HTML, URLs)
+- Q&A, chain-of-thought, and summary generation
+- Local LLM serving via vLLM
+- Database integration for generated pairs
+
 #### `training.py`
 
 - `run_local_training()` - Local Docker training (mirrors Runpod command builder inside a container)

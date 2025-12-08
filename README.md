@@ -63,6 +63,7 @@ Built with Flet for a fast, native-like UI. Includes:
 - 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
 - Reddit scraper CLI for subreddits or single posts; expands “more” comments; builds pairs (parent→child or contextual).
 - Stack Exchange Q/A scraper (programmatic) for accepted answers.
+- **Synthetic data generation** using Unsloth's SyntheticDataKit — generate Q&A pairs, chain-of-thought, or summaries from PDFs, documents, and URLs using local LLMs.
 - Dataset builder for train/val/test splits with Hugging Face `datasets`, with optional push + dataset card.
 - Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
 - Training via Runpod (managed pods, network volume at /data) or local Docker, backed by an Unsloth‑based LoRA fine‑tuning stack (PyTorch, Transformers, bitsandbytes, PEFT), with packing, auto‑resume, Quick Local Inference, and reusable training configurations.
@@ -77,6 +78,7 @@ Built with Flet for a fast, native-like UI. Includes:
 - `src/scrapers/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
 - `src/scrapers/reddit_scraper.py` — Reddit scraper CLI + conversational pair builder
 - `src/scrapers/stackexchange_scraper.py` — Stack Exchange Q/A scraper (programmatic)
+- `src/helpers/synthetic.py` — Synthetic data generation using Unsloth's SyntheticDataKit
 - `src/save_dataset.py` — CLI dataset builder and Hub pusher
 - `src/runpod/ensure_infra.py` — Runpod infrastructure automation (network volume + template)
 - `src/runpod/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
@@ -158,10 +160,31 @@ For comprehensive guides, tutorials, and API documentation, visit the **[docs/](
 
 ![Scrape tab](img/ff_scrape_tab.png)
 
-- **Boards**: Multi-select chips with Select All / Clear.
-- **Parameters**: `Max Threads`, `Max Pairs`, `Delay (s)`, `Min Length`, `Output JSON Path`.
-- Click **Start** to scrape. Live progress, stats, and logs are shown.
-- **Preview Dataset** to inspect the first rows in a two-column grid.
+Choose from multiple data sources:
+
+- **4chan**: Multi-select board chips with Select All / Clear.
+- **Reddit**: Scrape subreddits or single posts with comment expansion.
+- **Stack Exchange**: Q&A pairs from Stack Overflow and other sites.
+- **Synthetic**: Generate training data from documents using local LLMs (see below).
+
+**Parameters**: `Max Threads`, `Max Pairs`, `Delay (s)`, `Min Length`, `Output JSON Path`.
+
+Click **Start** to scrape. Live progress, stats, and logs are shown. **Preview Dataset** to inspect the first rows in a two-column grid.
+
+#### Synthetic Data Generation
+
+Generate Q&A pairs, chain-of-thought reasoning, or summaries from your own documents:
+
+1. Select **Synthetic** as the source
+2. Add files (PDF, DOCX, TXT, HTML) or URLs
+3. Configure:
+   - **Model**: Local LLM to use (default: `unsloth/Llama-3.2-3B-Instruct`)
+   - **Generation Type**: `qa` (Q&A pairs), `cot` (chain-of-thought), or `summary`
+   - **Num Pairs**: Target number of examples per chunk
+   - **Max Chunks**: Maximum document chunks to process
+4. Click **Start** — a snackbar appears immediately while the model loads (~30-60s on first run)
+5. Watch live progress as chunks are processed and pairs generated
+6. Results are saved to the output JSON and database
 
 Default output is `scraped_training_data.json` in the project root. Schema is a list of objects:
 
@@ -550,12 +573,12 @@ FineFoundry uses a SQLite database (`finefoundry.db`) for unified data storage:
 
 - **Settings** — HF token, RunPod API key, Ollama config, proxy settings
 - **Training Configs** — Saved hyperparameter configurations
-- **Scrape Sessions** — History of all scrape runs with metadata
-- **Scraped Pairs** — All input/output pairs from scraping
+- **Scrape Sessions** — History of all scrape runs with metadata (4chan, Reddit, Stack Exchange, Synthetic)
+- **Scraped Pairs** — All input/output pairs from scraping and synthetic generation
 
 The database is auto-created on first run. Existing JSON files (`ff_settings.json`, `saved_configs/*.json`) are automatically migrated.
 
-JSON files are still written during scraping for compatibility with the Build & Publish workflow and external tools.
+JSON files are still written during scraping/generation for compatibility with the Build & Publish workflow and external tools.
 
 <a id="dataset-artifacts"></a>
 

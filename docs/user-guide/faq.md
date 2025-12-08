@@ -81,7 +81,7 @@ ______________________________________________________________________
 
 ## Data, Scraping, and Proxies
 
-### Where is scraping behavior documented?
+### Where is scraping and synthetic data generation documented?
 
 There are two complementary places:
 
@@ -90,6 +90,7 @@ There are two complementary places:
   - [`api/fourchan-scraper.md`](../api/fourchan-scraper.md)
   - [`api/reddit-scraper.md`](../api/reddit-scraper.md)
   - [`api/stackexchange-scraper.md`](../api/stackexchange-scraper.md)
+  - Synthetic data generation is documented in the main scrapers API page
 
 ### How do I configure proxies or Tor for scraping?
 

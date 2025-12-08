@@ -1,13 +1,20 @@
 # Scrape Tab
 
-The Scrape tab lets you collect conversational training data from sources like **4chan**, and prepare it as `input` / `output` pairs for later building, analysis, and training.
+The Scrape tab lets you collect conversational training data from multiple sources and prepare it as `input` / `output` pairs for later building, analysis, and training.
+
+**Supported data sources:**
+
+- **4chan** — Scrape boards with adjacent or contextual pairing strategies
+- **Reddit** — Scrape subreddits or single posts with comment expansion
+- **Stack Exchange** — Q&A pairs from Stack Overflow and other sites
+- **Synthetic** — Generate training data from your own documents using local LLMs
 
 Use this tab to:
 
-- Configure which boards to scrape and with what parameters
-- Choose **normal** vs **contextual** pairing strategies
-- Monitor scraping progress and logs in real time
-- Quickly preview the resulting JSON dataset
+- Select a data source and configure parameters
+- Choose pairing strategies (for web scrapers) or generation types (for synthetic)
+- Monitor progress and logs in real time
+- Preview the resulting JSON dataset
 
 ![Scrape Tab](../../img/ff_scrape_tab.png)
 
@@ -17,12 +24,11 @@ ______________________________________________________________________
 
 Typical workflow:
 
-1. Select one or more **boards** to scrape.
-1. Tune **Max Threads**, **Max Pairs**, **Delay**, and other parameters.
-1. Choose a pairing **mode** (normal vs contextual) and strategy (e.g. quote_chain).
-1. Click **Start Scrape** and watch the progress / logs.
-1. When finished, use **Preview Dataset** to inspect the pairs.
-1. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
+1. Select a **data source** from the dropdown (4chan, Reddit, Stack Exchange, or Synthetic).
+2. Configure source-specific parameters.
+3. Click **Start** and watch the progress / logs.
+4. When finished, preview the dataset in the two-column grid.
+5. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
 
 The output is a JSON file like:
 
@@ -32,85 +38,128 @@ The output is a JSON file like:
 ]
 ```
 
+Or in ChatML format:
+
+```json
+[
+  {"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
+]
+```
+
 ______________________________________________________________________
 
 ## Layout at a Glance
 
-### 1. Source & Boards
+### 1. Source Selection
 
-- **Boards list**
-  - Multi-select chips for 4chan boards (e.g., `pol`, `b`, `x`).
-  - Includes convenience actions like **Select All** / **Clear**.
-- **Target JSON file**
-  - Path to the output JSON file (default is usually `scraped_training_data.json`).
+- **Source dropdown** — Choose between 4chan, Reddit, Stack Exchange, or Synthetic
+- **Source-specific controls** — Each source shows relevant configuration options
 
-### 2. Parameters
+### 2. Source-Specific Configuration
 
-Core scraping / pairing parameters:
+#### 4chan
 
-- **Max Threads** – Number of threads per board to sample; higher values increase coverage.
-- **Max Pairs** – Upper bound on how many `input` / `output` pairs to extract.
-- **Delay (s)** – Polite delay between HTTP requests.
-- **Min Length** – Minimum character count per side for a pair to be kept.
-- **Mode** – `normal` (adjacent posts) or `contextual`.
-- **Strategy** (contextual only):
-  - `quote_chain`, `cumulative`, or `last_k`.
-- **K** – Context depth for contextual mode.
-- **Max Input Chars** – Optional truncation of long contexts.
+- **Boards list** — Multi-select chips (e.g., `pol`, `b`, `x`) with Select All / Clear
+- **Mode** — `normal` (adjacent posts) or `contextual`
+- **Strategy** (contextual only) — `quote_chain`, `cumulative`, or `last_k`
 
-### 3. Progress & Logs
+#### Reddit
 
-- **Status line** – High-level state (idle, scraping, completed, error).
-- **Progress bar / counters** – Approximate thread/pair progress.
-- **Logs panel** – Streaming log messages from the scraper.
+- **URL** — Subreddit or single post URL
+- **Max Posts** — Number of posts to scrape
 
-### 4. Output & Preview
+#### Stack Exchange
 
-- **Output path** – Where the JSON file will be written.
-- **Preview button** – Opens a two-column preview of the first N `input` / `output` pairs so you can inspect data before building or training.
+- **Site** — Stack Overflow, Super User, etc.
+- **Max Pairs** — Target number of Q&A pairs
+
+#### Synthetic
+
+- **Files/URLs** — Add PDFs, DOCX, TXT, HTML files or URLs
+- **Model** — Local LLM to use (default: `unsloth/Llama-3.2-3B-Instruct`)
+- **Generation Type** — `qa` (Q&A pairs), `cot` (chain-of-thought), or `summary`
+- **Num Pairs** — Target examples per chunk
+- **Max Chunks** — Maximum document chunks to process
+- **Curate** — Enable quality filtering with threshold
+
+### 3. Common Parameters
+
+- **Target JSON file** — Path to the output JSON file (default: `scraped_training_data.json`)
+- **Dataset Format** — Standard (input/output) or ChatML (messages array)
+- **Delay (s)** — Polite delay between HTTP requests (for web scrapers)
+- **Min Length** — Minimum character count per side for a pair to be kept
+
+### 4. Progress & Logs
+
+- **Status line** — High-level state (idle, scraping, completed, error)
+- **Progress bar / counters** — Approximate thread/pair progress
+- **Logs panel** — Streaming log messages from the scraper or generator
+
+### 5. Output & Preview
+
+- **Output path** — Where the JSON file will be written
+- **Preview grid** — Two-column preview of the first N `input` / `output` pairs so you can inspect data before building or training
 
 ______________________________________________________________________
 
 ## Usage Examples
 
-### Example 1: Quick sanity-check scrape
+### Example 1: Quick 4chan scrape
 
-1. Select `pol` and `b`.
-1. Set:
+1. Select **4chan** as the source.
+2. Select boards like `pol` and `b`.
+3. Set:
    - Max Threads: `50`
    - Max Pairs: `500`
    - Delay: `0.5`
    - Min Length: `10`
-1. Leave **Mode** as `normal` (adjacent pairs).
-1. Click **Start Scrape**.
-1. When done, click **Preview Dataset** to inspect a handful of pairs.
+4. Leave **Mode** as `normal` (adjacent pairs).
+5. Click **Start** and preview the results when done.
 
 ### Example 2: Contextual quote-chain dataset
 
-1. Select a conversation-heavy board (e.g., `pol`).
-1. Set:
+1. Select **4chan** and a conversation-heavy board (e.g., `pol`).
+2. Set:
    - Mode: `contextual`
    - Strategy: `quote_chain`
    - K: `6`
    - Max Input Chars: `2000`
-1. Enable any "require question" / "merge same author" options as desired.
-1. Start the scrape and inspect the preview to confirm that `input` contains multi-turn context.
+3. Enable "require question" / "merge same author" options as desired.
+4. Start the scrape and inspect the preview to confirm multi-turn context.
 
-### Example 3: Longer, slower crawl
+### Example 3: Reddit subreddit scrape
 
-- Increase **Max Threads** and **Max Pairs** for deeper coverage.
-- Increase **Delay** slightly to be respectful of API rate limits.
-- Leave the job running while you work elsewhere, then return to preview the final dataset.
+1. Select **Reddit** as the source.
+2. Enter a subreddit URL (e.g., `https://www.reddit.com/r/LocalLLaMA/`).
+3. Set Max Posts to `50`.
+4. Click **Start** and watch the logs as posts and comments are fetched.
+
+### Example 4: Synthetic data from PDF
+
+1. Select **Synthetic** as the source.
+2. Click **Browse** and select a PDF document (research paper, manual, etc.).
+3. Configure:
+   - Model: `unsloth/Llama-3.2-3B-Instruct` (default)
+   - Generation Type: `qa`
+   - Num Pairs: `25`
+   - Max Chunks: `10`
+4. Click **Start** — a snackbar appears immediately while the model loads.
+5. Watch live progress as the document is chunked and Q&A pairs are generated.
+6. Preview the generated pairs in the two-column grid.
+
+**Note**: First run takes 30-60 seconds for model loading. Subsequent runs are faster.
 
 ______________________________________________________________________
 
 ## Tips & Best Practices
 
-- Start with **smaller** runs to validate configuration; increase Max Threads / Max Pairs later.
-- Use **contextual** mode when you care about conversational context rather than single-turn QA.
-- Watch the **logs panel** for network issues, rate limiting, or parsing errors.
-- Use **Min Length** and mode settings to reduce low-signal / spammy pairs.
-- After scraping, pass the JSON file through the **Build / Publish** and **Dataset Analysis** tabs before training.
+- **Start small** — Validate configuration with smaller runs before scaling up.
+- **Use contextual mode** — For conversational context rather than single-turn QA (4chan/Reddit).
+- **Watch the logs** — Monitor for network issues, rate limiting, or parsing errors.
+- **Min Length filter** — Reduce low-signal or spammy pairs.
+- **Synthetic generation** — Use high-quality source documents for better results.
+- **Model choice** — Larger models produce better synthetic data but require more VRAM.
+- **After generation** — Pass the JSON through **Build / Publish** and **Dataset Analysis** before training.
 
 ______________________________________________________________________
 

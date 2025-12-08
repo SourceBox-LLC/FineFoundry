@@ -50,8 +50,8 @@ Metadata for each scrape run.
 ```sql
 CREATE TABLE scrape_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,           -- "4chan", "reddit", "stackexchange"
-    source_details TEXT,            -- e.g., "boards=pol,b" or "url=..."
+    source TEXT NOT NULL,           -- "4chan", "reddit", "stackexchange", "synthetic"
+    source_details TEXT,            -- e.g., "boards=pol,b" or "url=..." or "sources=3, type=qa, model=..."
     dataset_format TEXT DEFAULT 'standard',
     pair_count INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),

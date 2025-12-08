@@ -13,6 +13,7 @@ def build_params_section(
     _mk_help_handler,
     reddit_params_row,
     se_params_row,
+    synthetic_params_row,
     max_threads,
     max_pairs,
     delay,
@@ -27,13 +28,14 @@ def build_params_section(
             section_title(
                 "Parameters",
                 getattr(ICONS, "TUNE", ICONS.SETTINGS),
-                "Set scraping limits, path, and choose turn mode (single vs multi). Outputs follow the selected dataset format (ChatML or Standard).",
-                on_help_click=_mk_help_handler("Set scraping limits, path, and choose turn mode (single vs multi). Outputs follow the selected dataset format (ChatML or Standard)."),
+                "Set scraping/generation limits, path, and output format. For synthetic data, select files and generation type.",
+                on_help_click=_mk_help_handler("Set scraping/generation limits, path, and output format. For synthetic data, select files and generation type."),
             ),
             ft.Container(
                 content=ft.Column([
                     reddit_params_row,
                     se_params_row,
+                    synthetic_params_row,
                     ft.Row([max_threads, max_pairs, delay, min_len, output_path, dataset_format_dd], wrap=True),
                     ft.Row([multiturn_sw], wrap=True),
                     scrape_actions,

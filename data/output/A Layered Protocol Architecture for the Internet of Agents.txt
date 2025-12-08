@@ -1,0 +1,1189 @@
+A Layered Protocol Architecture for the Internet of Agents
+
+Charles Fleming
+Cisco Research
+USA
+
+Vijoy Pandey
+Cisco Research
+USA
+
+Luca Muscariello
+Cisco Research
+France
+
+Ramana Kompella
+Cisco Research
+USA
+
+5
+2
+0
+2
+
+v
+o
+N
+6
+2
+
+]
+I
+
+N
+.
+s
+c
+[
+
+2
+v
+9
+9
+6
+9
+1
+.
+1
+1
+5
+2
+:
+v
+i
+X
+r
+a
+
+Abstract
+Large Language Models (LLMs) have demonstrated remarkable per-
+formance improvements and the ability to learn domain-specific
+languages (DSLs), including APIs and tool interfaces. This capability
+has enabled the creation of AI agents that can perform preliminary
+computations and act through tool calling, now being standardized
+via protocols like MCP. However, LLMs face fundamental limita-
+tions: their context windows cannot grow indefinitely, constraining
+their memory and computational capacity. Agent collaboration
+emerges as essential for solving increasingly complex problems,
+mirroring how computational systems rely on different types of
+memory to scale. The "Internet of Agents" (IoA) represents the
+communication stack that enables agents to scale by distributing
+computation across collaborating entities.
+
+Current network architectural stacks (OSI and TCP/IP) were de-
+signed for data delivery between hosts and processes, not for agent
+collaboration with semantic understanding. To address this gap, we
+propose two new layers: an Agent Communication Layer (L8)
+and an Agent Semantic Negotiation Layer (L9). L8 formalizes
+the structure of communication, standardizing message envelopes,
+speech-act performatives (e.g., REQUEST, INFORM), and interac-
+tion patterns (e.g., request-reply, publish-subscribe), building on
+protocols like MCP. L9, which does not exist today, formalizes the
+meaning of communication, enabling agents to discover, negoti-
+ate, and lock a "Shared Context"—a formal schema defining the
+concepts, tasks, and parameters relevant to their interaction. To-
+gether, these layers provide the foundation for scalable, distributed
+agent collaboration, enabling the next generation of multi-agentic
+systems.
+
+1 Introduction
+Large Language Models (LLMs) have demonstrated remarkable
+advances in performance, fundamentally transforming how we
+approach complex computational tasks. A key breakthrough has
+been their ability to learn and work with domain-specific languages
+(DSLs), including APIs, tool interfaces, and structured data formats.
+This capability has enabled the creation of AI agents that go be-
+yond simple text generation to perform preliminary computations,
+execute actions, and interact with external systems through stan-
+dardized protocols like the Model Context Protocol (MCP) [5].
+
+However, LLMs face fundamental architectural constraints. Their
+context windows, while expanding, cannot grow indefinitely, lim-
+iting their working memory and the complexity of problems they
+can solve independently. This limitation mirrors challenges in tra-
+ditional computing systems, where single processors hit physical
+and thermal constraints. The solution in both cases is the same:
+distribution and collaboration. Just as computational systems scale
+through distributed architectures with various memory hierarchies,
+AI agents must collaborate to tackle problems beyond individual
+capacity [2].
+
+The analogy to distributed computing runs deep. Distributed
+computing enables the implementation of distributed algorithms us-
+ing specialized programming languages, with parallel programming
+representing the simplest form—replication of identical computa-
+tional tasks across shards. More sophisticated distributed program-
+ming requires decomposing algorithms into specialized compu-
+tational tasks, a fundamentally harder problem. While not every
+problem can be optimally distributed, heuristics and approxima-
+tions often scale favorably, trading perfect solutions for tractable
+ones at larger problem sizes. Multi-agent systems represent a re-
+alization of distributed computation with a compelling feature:
+autonomous action. LLM-based multi-agent systems add another
+dimension—the ability to work across multiple languages, both
+natural and domain-specific.
+
+Programming languages are themselves domain-specific lan-
+guages, and compilers serve as DSL validators of both syntax and
+semantics within the context of computation. LLMs excel at translat-
+ing between languages—including from natural language to DSLs—
+but lack inherent correctness guarantees. This observation reveals
+a powerful synergy: if LLM agents can translate natural language
+to DSL, and compilers can validate that DSL, then coupling natural
+language with the syntax and semantics of DSLs bridges the gap
+to distributed programming using agents. LLMs are exceptionally
+strong at language transformation; external validation mechanisms
+provide the correctness they lack.
+
+Agent collaboration requires communication infrastructure that
+goes beyond simple data exchange. When agents work together—
+whether coordinating in supply chains, managing distributed sys-
+tems, or solving multi-step reasoning tasks—they need to share
+not just data but understanding. Current network stacks (OSI and
+TCP/IP) were designed for reliable data delivery between processes,
+not for semantic coordination between intelligent, autonomous en-
+tities [13]. This gap has led to a proliferation of ad-hoc, application-
+specific protocols that address agent communication in fragmented,
+incompatible ways.
+
+The "Internet of Agents" (IoA) emerges as the natural evolu-
+tion: a communication infrastructure that enables agents to scale
+through distributed computation and semantic coordination. How-
+ever, efficient multi-agent systems require more than data exchange
+protocols—they demand mechanisms that guarantee both computa-
+tional efficiency and semantic correctness. The very capabilities that
+make LLMs powerful—their fluency in natural language and ability
+to handle ambiguity—create fundamental challenges for reliable
+agent-to-agent communication.
+
+The Protocol Challenge: Current protocols like A2A [1], MCP [5],
+
+and FIPA-ACL standardize the syntax of agent messages—defining
+envelopes, performatives, and interaction patterns—but cannot en-
+force semantic agreement. They ensure messages are well-formed
+but cannot guarantee that communicating agents share the same un-
+derstanding of terms, concepts, or task parameters. This semantic
+
+ 
+ 
+ 
+ 
+ 
+ 
+gap forces expensive disambiguation through iterative clarifica-
+tion exchanges, undermining both computational efficiency and
+deterministic behavior.
+
+Consider two critical failure modes that arise from this syntactic-
+
+only approach:
+
+(1) Syntax Without Semantic Context: Syntax defines the
+formal rules for constructing valid statements that can be parsed
+by machines or interpreted by humans. Each language—whether
+a programming language, domain-specific language (DSL), or nat-
+ural language—has its own syntactic rules tailored to its purpose.
+Formal languages excel at efficient syntax verification, enabling
+computers to quickly validate statement structure and execute com-
+putation deterministically. Natural languages, while syntactically
+interpretable, are less efficient for computational execution due to
+inherent ambiguity.
+
+The critical insight for multi-agent systems is that we have de-
+veloped numerous domain-specific languages transportable via
+application-level protocols (JSON, XML, Protocol Buffers). LLM-
+based agents can leverage these DSLs to generate syntactically
+correct statements that execute efficiently. However, syntactic cor-
+rectness alone is insufficient for reliable agent communication. A
+term like "switch" can be syntactically valid in any language con-
+text, yet its interpretation depends entirely on semantic context—
+network device, electrical component, or strategic change. Current
+protocols validate syntax but provide no mechanism to establish
+which semantic context applies, forcing agents to guess or engage
+in expensive clarification cycles.
+
+(2) Semantic Underspecification: Even when syntax is perfect
+and terms are unambiguous, messages can fail due to incomplete
+semantic specification. Consider the syntactically valid request (RE-
+QUEST :content "Book a ticket to New York"). The syntax is correct,
+and "New York" is unambiguous as a proper noun. However, the
+semantic context is severely underspecified: which New York en-
+tity (city vs. state)? Which airport (JFK, LGA, EWR)? What travel
+date? Which service class? Which passenger? These are not syntac-
+tic ambiguities—the message parses correctly—but semantic gaps
+where critical contextual parameters are missing.
+
+Without a formal semantic layer that defines the required pa-
+rameters for the "book ticket" task within a "travel" context, agents
+cannot deterministically execute requests. The receiving agent must
+either make potentially incorrect assumptions or engage in multiple
+clarification rounds, each invoking expensive LLM inference. This
+creates non-deterministic negotiation loops that scale poorly—the
+computational cost grows not from syntactic parsing but from iter-
+ative semantic resolution that should have been established at the
+protocol level.
+
+The Solution Framework: Efficient multi-agent systems re-
+quire protocols that combine formal syntax with semantic knowl-
+edge. Formal syntax ensures messages are parseable and interaction
+patterns are predictable. Semantic knowledge—expressed through
+shared, machine-readable ontologies and schemas—provides the
+context necessary to interpret message content unambiguously.
+This combination enables agents to validate semantic correctness
+at the protocol level, eliminating ambiguity before computation
+begins and ensuring that distributed agents execute tasks determin-
+istically and efficiently.
+
+Charles Fleming, Vijoy Pandey, Luca Muscariello, and Ramana Kompella
+
+This paper argues for a proactive, systematic solution. We pro-
+pose formalizing agent communication through two new architec-
+tural layers: an Agent Communication Layer (L8) that standard-
+izes interaction structure, and an Agent Semantic Negotiation
+Layer (L9) that establishes shared meaning before task execution.
+The Internet of Agents adds the semantics and syntax of modern
+multipurpose DSLs into agent interactions. While individual LLMs
+may fail to implement weak non-deterministic Turing machines,
+agents equipped with memory and structured communication pro-
+tocols can theoretically achieve non-deterministic Turing compu-
+tation in a distributed manner. Together, these layers provide the
+foundation for scalable, distributed agent collaboration—the essen-
+tial infrastructure for an Internet of Agents where computation
+scales through semantic coordination rather than context window
+expansion.
+
+2 The Lesson of Ad-Hoc Layers: HTTP
+The history of the internet is a powerful precedent for our current
+situation. The original OSI (Zimmermann, 1980) and TCP/IP mod-
+els provided a robust and universal standard for routing packets
+and ensuring reliable data delivery. However, they intentionally
+stopped short of dictating how applications should use that data.
+The Application Layer (L7) was less a "layer" and more a "gateway"
+for other protocols like FTP, SMTP, and Telnet.
+
+In the early 1990s, the World Wide Web created a new require-
+ment: a simple, extensible way to retrieve hypermedia documents.
+The TCP/IP stack had no native primitive for "getting a document."
+This led to the creation of the Hypertext Transfer Protocol (HTTP).
+HTTP was, in effect, an ad-hoc protocol built to fill the gap left
+by L4 (TCP) and L7. It started as a simple, stateless protocol with
+one primary method (GET). However, as web applications grew
+in complexity, HTTP was forced to evolve. It accrued state man-
+agement (Cookies), complex caching mechanisms (Headers), new
+verbs (PUT, DELETE), and session-like capabilities (Keep-Alive),
+effectively becoming its own complex, stateful "application layer"
+living entirely within the "data" payload of a TCP segment.
+
+The evolution continued with HTTP/2 [12] and HTTP/3, which
+introduced fundamental transport-level primitives: FRAMES for
+efficient message encapsulation and STREAMS for multiplexed,
+independent channels within a single connection. These capabili-
+ties transformed HTTP from a simple application protocol into a
+genuine transport protocol, perfectly fitting the definition of a "nar-
+row waist" or "thin waist" layer of the internet stack [8]. HTTP/2’s
+binary framing and stream multiplexing, followed by HTTP/3’s
+QUIC-based transport, established HTTP as a universal transport
+foundation for modern applications.
+
+Today, HTTP/2 and HTTP/3 represent a de facto transport layer
+of the stack, arguably more complex and influential than the lay-
+ers below it. We are now at an identical inflection point with the
+Internet of Agents.
+
+Beyond its transport capabilities, HTTP also serves as the secure
+layer for authentication and authorization, providing application-
+level security mechanisms that go beyond the connection-level
+security offered by TLS in HTTPS. HTTP headers carry authen-
+tication tokens (e.g., OAuth 2.0 bearer tokens, API keys), session
+identifiers, and authorization credentials, establishing a security
+
+A Layered Protocol Architecture for the Internet of Agents
+
+model that is decoupled from the underlying transport encryption.
+This separation of concerns—where TLS secures the channel and
+HTTP manages identity and access—makes HTTP a complete appli-
+cation transport layer rather than merely a data transfer protocol.
+Agents need to exchange concepts far more complex than "docu-
+ments." They must communicate goals, tasks, beliefs, intentions, and
+contingencies. If we rely on existing L7 protocols, we will force all of
+this complexity into the application payload (e.g., a "chat" message
+over WebSockets or a "POST" to an API). This will inevitably lead
+to an ad-hoc "swamp" of proprietary, brittle, and non-interoperable
+agent protocols—a thousand different ways to "book a flight" or "co-
+ordinate a supply chain," all hidden inside generic JSON payloads.
+In order to be proactive, we argue that we need to formalize
+the primitives of agent communication before this ad-hoc chaos
+solidifies. We propose to do this by explicitly defining two new
+layers for the IoA stack.
+
+3 Background and Related Work
+The need for high-level agent communication is not new, and sev-
+eral protocols have been developed to address it. However, they
+uniformly fail by mistaking syntactic agreement for semantic con-
+sensus.
+
+3.1 Classical Agent Communication Languages
+
+(ACLs)
+
+The most prominent historical effort is the FIPA-ACL (Foundation
+for Intelligent Physical Agents, 2002). FIPA-ACL was a significant
+advancement, as it moved beyond simple data transfer to formalize
+speech acts (Searle, 1969). Agents communicate using performa-
+tives like INFORM, REQUEST, or PROPOSE. Critically, the FIPA-
+ACL message structure included an :ontology parameter, explicitly
+acknowledging that a shared vocabulary was necessary for the
+message’s :content to be understood.
+
+The failure of FIPA-ACL in practice was twofold. First, its reliance
+on complex, heavyweight formal ontologies (e.g., KIF, SL) created
+significant performance and implementation overhead. Second,
+the :ontology slot was merely a label. The protocol specified no
+mechanism for negotiating or aligning ontologies if two agents
+did not possess an identical, pre-shared model (Gruber, 1993). It
+identified the problem but offered no protocol-level solution.
+
+3.2 Modern Agent Communication Protocols
+
+(A2A/MCP)
+
+Modern successors, such as the Agent2Agent Protocol (A2A) [1],
+the Model Context Protocol (MCP) [5], and the Natural Language
+Interaction Protocol (NLIP) [6], have sought to remedy this by being
+more lightweight. They replace complex KIF/SL with JSON or other
+simple data-binding formats and run over modern web protocols
+(e.g., WebSockets, HTTP/2).
+
+These protocols provide sophisticated frameworks for agent
+interaction. A2A, for instance, enables agents to exchange artifacts
+(structured data, files, or contextual information) and delegate task
+execution to other agents. Agents can request task execution and
+receive status updates on in-progress tasks or final outputs upon
+completion. MCP similarly provides structured mechanisms for
+agents to share context and invoke capabilities. Both protocols
+
+excel at standardizing the syntactic envelope of communication—
+defining message structure, performatives, and interaction patterns.
+For example, a protocol might define a standard JSON structure
+
+for agent messages:
+
+JSON
+{
+
+"protocol": "A2A/1.0",
+"performative": "REQUEST",
+"sender_id": "agent-travel-7",
+"receiver_id": "agent-booking-4",
+"content": {
+
+"task": "book_flight",
+
+"prompt": "I need a flight to New York for next Tuesday."
+}
+
+}
+
+This message is syntactically perfect. A protocol-aware agent can
+parse it, identify the sender, and extract the task request. The proto-
+col provides the flexible framework for communication. However,
+the responsibility for specifying syntax and semantic context accu-
+rately remains with the multi-agent system developer. The protocol
+does not enforce or validate that both agents share the same un-
+derstanding of what "book_flight" requires or what "New York"
+means in this context. The receiving agent (agent-booking-4) has
+no guaranteed, protocol-driven way to ground the natural language
+string. Its LLM will be invoked on ambiguous data. The agent may:
+
+• Guess: Assume "New York" means JFK and "next Tuesday"
+means the immediate next Tuesday, potentially booking
+the wrong flight.
+
+• Clarify: Send a REQUEST-CLARIFY message back. This
+results in a "prompt negotiation" loop, which is computa-
+tionally expensive (each turn is a full LLM inference) and
+non-deterministic.
+
+• Fail: Reject the request as too ambiguous.
+
+The core problem is this: Current protocols formalize the structure
+of the request but not the context of the task. The most important
+information—the shared understanding of terms, goals, and con-
+straints—is left unmanaged, leading to brittle, unpredictable, and
+inefficient multi-agent systems.
+
+4 A Layered Architecture for the Agentic Web
+To solve this impasse, we propose a new architectural stack. First,
+we formally recognize HTTP/2 and HTTP/3 as Layer 7, the Appli-
+cation Transport Layer, leveraging their FRAMES and STREAMS
+capabilities as fundamental transport primitives. These protocols,
+with their multiplexing, flow control, and efficient binary framing,
+provide the ideal foundation for agent communication. We then
+propose two new layers (L8 and L9) residing above the application
+transport layer. This separation of concerns is critical for managing
+the complexity of agentic communication.
+
+4.1 Layer 8: The Agent Communication Layer
+The first new layer, L8, is the Agent Communication Layer. Its
+responsibility is to ensure that agents can reliably exchange struc-
+tured messages, understand communicative intent, and coordinate
+interaction flows—independently of semantic content. It unifies the
+
+Traditional OSI
+
+Application (L7)
+
+Presentation (L6)
+
+Session (L5)
+
+Transport (L4)
+
+Network (L3)
+
+Data Link (L2)
+
+Physical (L1)
+
+Proposed Stack for Agents
+
+Agentic
+Application
+
+Agentic Semantic
+Negotiation
+
+Agentic
+Communication
+
+App
+
+App Transport
+(L5-L7)
+
+Transport (L4)
+
+Network (L3)
+
+Data Link (L2)
+
+Physical (L1)
+
+Figure 1: Traditional OSI stack and our proposed network
+stack for agentic applications. We propose two new layers
+for agent communication (L8 and L9) above HTTP/2/3, which
+serves as the Application Transport layer (L7).
+
+best parts of existing protocols (like A2A, MCP, NLIP, FIPA-ACL)
+into a single, standardized layer that provides the syntactic and
+protocol foundation for agent communication. The Agent Commu-
+nication Layer is not concerned with what the data means, only
+with ensuring messages are parseable, intentions are clear, and
+interaction roles are well-defined.
+
+To achieve this, L8 provides three essential components:
+
+(1) Message Structure (The Envelope): Defines the standard
+"envelope" for all agent messages, ensuring messages are
+parseable and routable. Protocols like A2A [1] and MCP [5]
+implement this through structured messages, tasks, and
+artifacts that specify sender, receiver(s), message ID, and
+performative. This provides the syntactic foundation for
+reliable message exchange.
+
+(2) Performatives (The Speech Act): Standardizes the com-
+municative intent of messages, separate from their content.
+This ensures agents understand what action is being re-
+quested or performed, regardless of the semantic payload.
+A2A’s message structure naturally supports this through its
+task-oriented design, where operations like task requests,
+artifact exchanges, and status updates represent distinct
+speech acts. More generally, we identify that the registry
+of standardized speech acts includes:
+
+• Transactional: ‘REQUEST‘, ‘AGREE‘, ‘REFUSE‘, ‘IN-
+
+FORM‘
+
+• Negotiation: ‘PROPOSE‘, ‘ACCEPT‘, ‘REJECT‘,
+
+‘COUNTER_PROPOSE‘
+
+• Information: ‘QUERY‘, ‘SUBSCRIBE‘, ‘PUBLISH‘
+
+(3) Interaction Patterns (The Dance): Formalizes the ex-
+pected sequence and coordination of messages, ensuring
+agents understand their role in multi-step interactions. While
+A2A currently implements client-server patterns, protocols
+like SLIM (Secure Low-Latency Interactive Messaging) [10]
+
+Charles Fleming, Vijoy Pandey, Luca Muscariello, and Ramana Kompella
+
+extend this with publish-subscribe and group communica-
+tion capabilities. Combined, these protocols can support:
+• Request-Reply: A simple 1:1 ‘REQUEST‘ followed by
+
+an ‘AGREE‘ or ‘REFUSE‘.
+
+• Publish-Subscribe: A 1:N pattern where agents ‘SUB-
+SCRIBE‘ to a topic and receive ‘INFORM‘ messages.
+• Aggregation: An N:1 pattern where a leader agent
+requests data from a population, which is then aggre-
+gated.
+
+• Collaboration Groups: N:N patterns where multi-
+ple agents coordinate in secure groups, exchanging
+artifacts and coordinating tasks distributedly.
+
+A2A’s extension mechanism provides a pathway for incor-
+porating these interaction patterns directly into the proto-
+col layer.
+
+Together, these components ensure that agents can parse mes-
+sages (structure), understand what is being requested (intent), and
+coordinate their role in the interaction (patterns)—all without re-
+quiring shared semantic understanding. This syntactic and protocol
+foundation is what separates L8 from L9: L8 provides the “how”
+of communication, while L9 (described next) provides the “what.”
+Only by combining both layers can agents achieve truly reliable,
+scalable collaboration.
+
+4.2 Layer 9: The Agent Semantic Negotiation
+
+Layer (SNL)
+
+Above L8 sits the Agent Semantic Negotiation Layer (L9). This
+layer’s sole responsibility is to establish a verifiable, shared meaning
+for the ‘content‘ payload of L8 messages. It acts as a specialized
+mediator that ensures semantic alignment before the primary task
+is ever processed.
+
+Unlike L8, where protocols like A2A [1], MCP [5], and SLIM [10]
+provide substantial capabilities for message structure and inter-
+action patterns, L9 represents a capability that does not exist in
+current agent communication protocols. While FIPA-ACL [3] ac-
+knowledged the need for shared ontologies through its ‘:ontology‘
+parameter, no protocol provides mechanisms for discovering, nego-
+tiating, and locking semantic contexts at the protocol level. Agents
+today must rely on application-level conventions or expensive, non-
+deterministic natural language negotiation.
+
+L9 draws inspiration from distributed computing, where pro-
+cesses coordinate through shared memory or signaling mecha-
+nisms [2]. Just as distributed algorithms use shared state (mutexes,
+semaphores, message queues) to coordinate concurrent processes,
+multi-agent systems require shared semantic contexts to coordinate
+autonomous agents. The difference is profound: distributed pro-
+cesses share data structures; distributed agents must share meaning.
+L9 provides this semantic coordination primitive, enabling agents
+to establish a "shared context"—analogous to shared memory in dis-
+tributed systems—that defines the concepts, tasks, and parameters
+relevant to their interaction.
+
+The semantic context established by L9 is integrated into agent
+reasoning in two ways. First, it serves as a validation schema that
+the agent’s L9 SNL layer uses to verify all outgoing and incoming
+message content against the locked Shared Context before passing
+data to or from the agent’s LLM. Second, the context definitions are
+
+A Layered Protocol Architecture for the Internet of Agents
+
+injected into the LLM’s reasoning process, either by augmenting
+the system prompt with formal concept definitions or by providing
+a structured retrieval mechanism where the LLM can query the
+Shared Context to resolve ambiguities during inference. This dual
+integration ensures both protocol-level correctness and semantic-
+aware reasoning.
+
+L9 is what allows agents to move from simply exchanging data
+to truly understanding each other. It ensures that when one agent
+sends data, the receiving agent knows exactly what that data repre-
+sents in a shared, formal context.
+
+4.3 The Agent Semantic Negotiation Layer (L9)
+
+in Detail
+
+The power of the L8/L9 split is that it separates the structure of
+communication (L8) from its meaning (L9). The SNL’s primary job
+is to negotiate and lock a "Shared Context" that all subsequent L8
+messages will adhere to.
+
+4.4 Shared Semantic Contexts
+To support 1:N or N:N coordination patterns, which involve con-
+tinuous alignment of state, beliefs, or intentions rather than single
+tasks, we generalize this concept to a Shared Context. A Shared
+Context is a formal, machine-readable definition (e.g., using JSON
+Schema, RDF/OWL, or even Protobufs) of all the concepts, enti-
+ties, tasks, and parameters relevant to a specific domain of dis-
+course. This context is identified by a unique, versioned URN (e.g.,
+‘urn:contexts:travel:v2.1‘ or ‘urn:contexts:supplyChain:v1.0‘).
+
+4.5 Functions of the SNL
+The SNL protocol consists of three phases:
+
+1. Context Discovery and Negotiation (The Semantic Hand-
+shake) Before any meaningful interaction, the agents’ SNLs (L9)
+perform a handshake to find a compatible Shared Context.
+
+• Agent A (SNL): (SNL-HELLO) "I want to interact. I support
+
+the following contexts: [‘urn:contexts:travel:v2.1‘,
+‘urn:contexts:supplyChain:v1.0‘]"
+
+• Agent B (SNL): (SNL-SELECT) "I also support
+
+‘urn:contexts:supplyChain:v1.0‘. Let us use that. The au-
+thoritative schema is at
+https://transform.tools/json-to-json-schema."
+
+• Agent A (SNL): (SNL-LOCK) "Context locked. All L8 mes-
+
+sage ‘content‘ will now be validated against
+‘urn:contexts:supplyChain:v1.0‘."
+
+This negotiation creates a "semantic session," which can be cached
+and reused. While the initial handshake introduces latency, this
+cost is amortized across the entire session—potentially thousands
+of subsequent L8 messages benefit from the shared semantic un-
+derstanding without additional negotiation overhead.
+
+2. Semantic Grounding Once the context is locked, it is the
+SNL’s job to ground all data. This means binding data (text, numbers,
+vectors) from the agent’s internal logic to the formal definitions
+in the Shared Context. This function supports both transactional
+and coordinative patterns, which map directly to the two dominant
+paradigms in multi-agent systems today: agent orchestration and
+agent collaboration. Transactional patterns enable orchestration,
+
+where a central agent coordinates task execution across subordinate
+agents (e.g., a travel agent orchestrating booking services). Coordi-
+native patterns enable collaboration, where peer agents share state
+and intentions to jointly solve problems without central control
+(e.g., supply chain agents coordinating inventory decisions).
+Example 1: Transactional Pattern (Booking a Flight)
+
+• Context: ‘urn:contexts:travel:v2.1‘
+• Schema Definition: Defines a task named ‘bookFlight‘
+with required parameters ‘origin_code‘ (string), ‘dest_code‘
+(string), and ‘date‘ (string, yyyy-mm-dd).
+
+• Agent A Logic: "I need a flight to New York for next Tues-
+
+day from LAX."
+
+• Agent A (SNL) Grounding: The SNL processes this. It
+successfully binds ‘origin_code: "LAX"‘ and ‘date: "2025-11-
+04"‘. It finds ‘dest_code‘ is ambiguous ("New York").
+
+• SNL-driven Clarification: The SNL does not send the
+ambiguous prompt. It uses L8 to send a formal, L9-defined
+query:
+
+– L8 Performative: ‘QUERY‘
+– L9 Content: ‘"concept": "ambiguous_parameter", "pa-
+
+rameter": "dest_code", "value": "New York"‘
+
+• Agent B (SNL) Response: Agent B’s SNL receives this, un-
+derstands the ‘ambiguous_parameter‘ concept, and replies
+via L8 ‘INFORM‘ with L9 ‘content‘: ‘"concept": "param-
+eter_options", "parameter": "dest_code", "options": ["JFK",
+"LGA", "EWR"]‘.
+
+This clarification loop happens at the protocol level, deterministi-
+cally, rather than as an ambiguous LLM "chat."
+
+Example 2: Coordinative Pattern (Supply Chain Alignment)
+In this way L9 supports complex, population-wide coordination
+without needing to define a single "task."
+
+• Context: ‘urn:contexts:supplyChain:v1.0‘
+• Schema Definition: This schema does not define a "task."
+
+Instead, it defines concepts that agents can share:
+
+– Concept 1: ‘current_decision‘ (type: object, properties:
+
+‘item_id‘, ‘quantity‘)
+
+– Concept 2: ‘decision_contingency‘ (type: object, prop-
+
+erties: ‘if_condition_text‘, ‘then_change_text‘)
+
+– Concept 3: ‘local_observation‘ (type: object, proper-
+
+ties: ‘observed_fact_text‘, ‘confidence_score‘)
+• Agent A (Retailer) Logic: "My inventory is low. I’m or-
+dering 120 units. It seems like a temporary demand spike.
+If demand does increase 10%, I’ll increase my order by 15
+units."
+
+• Agent A (SNL) Grounding: The agent’s logic is passed
+to its SNL. The SNL composes a semantically grounded L8
+message to ‘PUBLISH‘ to its neighbors.
+
+– L8 Performative: ‘INFORM‘
+– L9 Content:
+
+{
+
+"my_decision": {
+
+"concept_type": "current_decision",
+"item_id": "beer",
+"quantity": 120
+
+},
+"my_flexibility": {
+
+"concept_type": "decision_contingency",
+"if_condition_text": "demand increases by
+10%",
+"then_change_text": "increase order by
+15 units"
+
+},
+"my_reasoning": {
+
+"concept_type": "local_observation",
+
+"observed_fact_text": "Current spike seems
+
+temporary",
+"confidence_score": 0.8
+
+}
+
+}
+
+• Receiving Agent (SNL): Agent B (Wholesaler) receives
+this L8 message. Its L9 SNL validates the ‘content‘ against
+the locked ‘supplyChain:v1.0‘ context. It knows, at a proto-
+col level, what ‘decision_contingency‘ is. It can now pass
+this structured, meaningful data to its internal logic (an
+LLM, a rules engine) for aggregation. It is not just "chat"; it
+is a formal, structured exchange of meaning.
+
+3. Semantic Validation The final function is semantic valida-
+tion, where the receiving agent’s SNL validates all incoming L8
+‘content‘ against the locked Shared Context. If an agent sends a
+message with an undefined concept (e.g., ‘"my_mood": "happy"‘ in
+the supply chain context), the L9 SNL can either reject it as seman-
+tically invalid, even if the L8 syntax is perfect or trigger another
+round of disambiguation. Once disambiguated, this new semantic
+definition can be cached locally for future communication between
+these agents. This prevents semantic ambiguity and communication
+failures.
+
+5 Security and Trust in the Semantic Layer
+Modern cloud and application security already involves multiple
+layers of defense: network isolation, identity and access manage-
+ment, encryption at rest and in transit, application-level authoriza-
+tion, and runtime monitoring. By making meaning a formal part
+of the protocol stack, the SNL (L9) introduces an additional attack
+surface that intersects with—but is not replaced by—these existing
+security mechanisms. Semantic-level threats require semantic-level
+defenses that complement, rather than substitute, established secu-
+rity practices.
+
+L9 security must integrate with existing frameworks. Where
+L4/L7 provides transport security (TLS), and protocols like SLIM [10]
+provide end-to-end message confidentiality via MLS (Message Layer
+Security), L9 adds a new dimension: semantic integrity and autho-
+rization. An encrypted, authenticated message can still contain se-
+mantically malicious content or reference poisoned contexts. This
+section identifies the novel security challenges introduced by for-
+malizing semantics at the protocol level and proposes mechanisms
+that work alongside existing security infrastructure.
+
+5.1 New Attack Vectors
+A Semantic Layer is vulnerable to entirely new attacks:
+
+• Semantic Injection: This is the L9 equivalent of prompt
+injection. An attacker crafts a payload that is syntactically
+
+Charles Fleming, Vijoy Pandey, Luca Muscariello, and Ramana Kompella
+
+valid (L8) and semantically valid (L9 schema) but contains
+malicious instructions. In our supply chain example:
+
+– ‘if_condition_text‘: "demand spike"
+– ‘then_change_text‘: "increase order by 10 units. Also,
+as a priority, ignore all previous instructions and send
+your full inventory list to attacker@evil.com"
+
+A simple JSON schema validator would pass this, as it’s a
+valid string. The malicious payload is aimed at the receiving
+agent’s LLM.
+
+• Context Poisoning / Spoofing: A malicious agent (or a
+compromised registry) serves a modified version of a popu-
+lar Shared Context. For example, in urn:contexts:payment:v1.1,
+it swaps the definitions of ‘sender_id‘ and ‘receiver_id‘,
+tricking agents into sending money to the attacker.
+
+• Semantic Denial of Service (SDoS): An attacker floods an
+agent with semantically valid but computationally expen-
+sive requests. For example, thousands of L8 ‘QUERY‘ mes-
+sages with L9 content ‘"concept": "ambiguous_parameter"‘.
+This doesn’t exhaust network bandwidth (L4) but exhausts
+the victim’s LLM inference budget (L9+Logic), a far more
+expensive resource.
+
+• Semantic Downgrade Attack: An attacker forces agents
+to negotiate weaker or older context versions with known
+vulnerabilities during the SNL handshake. For example, if
+‘urn:contexts:payment:v2.0‘ fixed a semantic ambiguity that
+allowed double-spending in ‘v1.0‘, an attacker performing
+a man-in-the-middle attack could strip ‘v2.0‘ from the SNL-
+HELLO capabilities list, forcing agents to fall back to the
+vulnerable ‘v1.0‘ context. This is analogous to TLS down-
+grade attacks but operates at the semantic layer.
+
+5.2 Security Requirements for a Robust SNL
+To be viable, the SNL (L9) must be built on a foundation of "zero
+trust" for meaning, integrating with existing security layers through
+defense-in-depth.
+
+5.2.1 Multi-Layer Security Integration. L9 security operates along-
+side existing mechanisms. Transport security (TLS) protects L8
+message envelopes in transit. For protocols like SLIM [10], MLS
+provides end-to-end encryption of message payloads, ensuring con-
+fidentiality even through intermediate nodes. L9 adds semantic in-
+tegrity: validating that message content conforms to authenticated
+contexts and that agents are authorized to use specific concepts. All
+three layers are necessary—transport encryption prevents eaves-
+dropping, message encryption ensures end-to-end confidentiality,
+and semantic validation prevents malicious or malformed meaning
+from reaching agent logic.
+
+5.2.2 Core Security Mechanisms.
+
+• Authenticated Contexts: A Shared Context schema must
+be as verifiable as an SSL/TLS certificate. The SNL hand-
+shake must involve exchanging cryptographically signed
+context definitions, including version numbers and sup-
+ported feature sets. Agents must validate signatures against
+trusted Schema Authorities before accepting a context. The
+handshake must include minimum version negotiation to
+
+A Layered Protocol Architecture for the Internet of Agents
+
+prevent downgrade attacks—if Agent A requires ‘payment:v2.0‘
+minimum, it must reject any negotiation attempt for ‘v1.x‘.
+• Semantic Firewalls: Semantic Firewalls operate at the L9
+layer, positioned between the SNL and the agent’s appli-
+cation logic (LLM or rules engine). They inspect validated
+L9 content—not raw L8 bytes—and enforce concept-level
+authorization policies. Unlike traditional firewalls that filter
+based on IPs or ports, semantic firewalls understand the
+meaning of communication. Implementation challenges
+include:
+
+– Placement: Semantic firewalls can be deployed client-
+side (protecting individual agents), at gateways (pro-
+tecting agent populations), or distributed (each agent
+enforces policies for its context).
+
+– Policy Examples:
+
+∗ "Agent [Retailer-7] is allowed to use the ‘deci-
+
+sion_contingency‘ concept. Agent [Public-WebApp-
+3] is not."
+
+∗ "Rate-limit any single agent to 10 ‘ambiguous_parameter‘
+
+queries per minute (to prevent SDoS)."
+
+∗ "Reject any ‘payment‘ context message where
+‘amount > $10000‘ unless sender has ‘high-value-
+authorized‘ credential."
+
+– Content Inspection: Detecting semantic injection
+(malicious prompts embedded in semantically valid
+fields) remains an open research challenge. Current
+approaches include pattern matching for known in-
+jection signatures, anomaly detection on text distri-
+butions, and even LLM-based analysis of suspicious
+content. However, this creates an arms race similar
+to spam filtering. We acknowledge this limitation and
+suggest semantic firewalls focus on authorization (who
+can use which concepts) and rate limiting as more
+tractable near-term defenses.
+
+– Performance: Semantic inspection adds latency pro-
+portional to message complexity and policy count.
+Caching policy decisions per context-agent pair and
+using efficient policy languages (e.g., Rego, Cedar) can
+minimize overhead.
+
+• Confidentiality of Capability: The SNL-HELLO hand-
+shake reveals an agent’s capabilities (i.e., what contexts
+it understands). This is sensitive business intelligence—
+revealing that an agent supports ‘military-logistics:v3.2‘ or
+‘high-frequency-trading:v1.0‘ exposes strategic information.
+Where SLIM uses MLS for payload encryption, the L9 nego-
+tiation messages (SNL-HELLO, SNL-SELECT) must also be
+encrypted using the same end-to-end security mechanism,
+ensuring that even intermediate routing nodes cannot ob-
+serve capability advertisements. This requires extending
+the secure channel established at L7 to cover L9 control
+messages.
+
+5.3 Trust Model and Governance
+The Schema Authority (SA) model raises critical governance ques-
+tions. We envision a federated trust model, analogous to how TLS
+certificates operate:
+
+• Centralized SAs for Public Contexts: Industry consor-
+tiums or standards bodies (e.g., "Travel Industry Agent Pro-
+tocol Alliance") would operate SAs for widely-used public
+contexts like ‘travel‘, ‘ecommerce‘, or ‘healthcare‘. These
+SAs would sign context definitions, publish revocation lists,
+and manage version lifecycles. Agents would ship with root
+SA certificates, similar to browsers shipping with CA root
+certificates.
+
+• Decentralized/Self-Signed for Private Contexts: Or-
+ganizations deploying internal multi-agent systems could
+self-sign private contexts (e.g., ‘urn:contexts:acme-internal-
+logistics:v1.0‘). Agents within the organization’s trust bound-
+ary would accept the organization’s SA certificate. This
+enables private semantic coordination without external de-
+pendencies.
+
+• Federation Across Boundaries: Cross-organizational col-
+laboration requires trust bridging. Agent A (trusting SA-
+Financial) and Agent B (trusting SA-Healthcare) could inter-
+act if their SAs have established mutual recognition agree-
+ments, or through a trusted intermediary SA. This mirrors
+federated identity systems (SAML, OAuth, OpenID Con-
+nect).
+
+• Context Lifecycle: SAs must handle context updates (mi-
+nor version bumps for backward-compatible changes, major
+versions for breaking changes) and revocations (if a con-
+text is found to have security vulnerabilities). Agents must
+periodically refresh SA certificates and check revocation
+lists, adding operational complexity but ensuring semantic
+integrity over time.
+
+This governance model is complex but necessary. The alternative—
+no semantic authentication—would allow any malicious actor to
+publish poisoned contexts, undermining the entire L9 value propo-
+sition.
+
+6 Implementation and Challenges
+The L8/L9 architecture is not a replacement for existing protocols
+but rather a formalization and extension of capabilities already
+emerging in modern agent communication standards. Our proposal
+leverages and builds upon existing implementations to provide a
+cohesive framework.
+
+6.1 Building on Existing Standards
+The proposed architecture aligns with and extends current protocol
+development:
+
+• L8 (Agent Communication Layer): The foundational
+capabilities of L8 are already substantially implemented in
+existing protocols:
+
+– Message Structure: A2A [1] and MCP [5] provide
+well-defined message envelopes with sender, receiver,
+message IDs, and structured content (tasks, artifacts,
+tool invocations).
+
+– Performatives: A2A’s task-oriented operations (task
+requests, artifact exchanges, status updates) map nat-
+urally to speech acts. MCP’s tool invocation model
+similarly expresses intent.
+
+– Interaction Patterns: While A2A currently imple-
+ments client-server patterns, SLIM [10] extends this
+with publish-subscribe, group communication, and
+streaming RPC (SRPC) over secure channels. SLIM’s
+MLS-based end-to-end encryption and hierarchical
+naming provide the security and routing foundation
+for diverse interaction patterns.
+
+– Extension Mechanisms: A2A’s extension framework
+provides a pathway to incorporate additional interac-
+tion patterns and semantic capabilities directly into
+the protocol.
+
+The L8 standardization effort should focus on unifying these
+capabilities into a consistent framework, rather than creat-
+ing entirely new protocols.
+
+• L9 (Semantic Layer): This layer represents the novel con-
+tribution, as no current protocol provides semantic negotia-
+tion capabilities. However, the implementation can leverage
+existing technologies:
+
+– Formal Schemas (for Grounding): JSON Schema
+and Protocol Buffers—already used by A2A, MCP, and
+SLIM—are ideal for defining the structure of semantic
+concepts and tasks. The L9 SNL would validate mes-
+sage content against these schemas within negotiated
+contexts.
+
+– Lightweight Ontologies (for Meaning): To define
+relationships between concepts (e.g., "a ‘bookFlight‘
+task requires a ‘date‘ parameter"), systems like RDF/OWL
+or simpler graph-based models could build Shared Con-
+texts. These would be distributed via the same infras-
+tructure used for protocol specifications.
+
+– Vectorial Representations (for Nuance): For inher-
+ently ambiguous concepts (e.g., "a stylish hotel"), L9
+Shared Contexts could include embedding fields. The
+SNL-HELLO handshake would negotiate embedding
+models (e.g., ‘text-embedding-3-small‘), allowing se-
+mantic similarity comparisons.
+
+– Security Integration: L9’s semantic validation would
+operate above SLIM’s MLS encryption layer, ensur-
+ing that cryptographically secure messages also carry
+semantically valid content.
+
+6.2 Implementation Strategy
+A pragmatic path forward involves:
+
+(1) Extend A2A with L9 Capabilities: A2A’s extension mech-
+anism could incorporate SNL handshake messages (SNL-
+HELLO, SNL-SELECT, SNL-LOCK) as a standardized ex-
+tension, enabling semantic negotiation while maintaining
+backward compatibility.
+
+(2) Integrate SLIM for L8 Interaction Patterns: SLIM’s
+publish-subscribe and streaming RPC provide the missing
+interaction patterns for L8. Agents using A2A for trans-
+actional operations could leverage SLIM for coordinative
+patterns.
+
+(3) Prototype L9 SNL: Develop reference implementations of
+the Semantic Negotiation Layer as libraries that work with
+
+Charles Fleming, Vijoy Pandey, Luca Muscariello, and Ramana Kompella
+
+existing protocols, demonstrating semantic validation, con-
+text negotiation, and integration with LLM-based agents.
+(4) Establish Schema Authority Pilot: Create a pilot SA for
+a specific domain (e.g., travel, supply chain) to demonstrate
+context signing, distribution, and versioning.
+
+6.3 Remaining Challenges
+Despite leveraging existing standards, significant challenges re-
+main:
+
+• Performance Overhead: The semantic handshake intro-
+duces latency. This must be amortized by using persistent
+"semantic sessions" that survive across multiple L8 message
+exchanges.
+
+• The Bootstrapping Problem: How is the initial registry
+of Shared Contexts created? This requires cross-industry
+standardization efforts, similar to how schema.org emerged
+for web content. Early domain-specific pilots are essential.
+• Representation Alignment: If two agents use different
+embedding models, their vector spaces will not align. This
+remains an open research problem [11]. The SNL provides
+the protocol to negotiate this, but the underlying ML tech-
+niques must advance.
+
+• Prompt Injection Defense: As noted in the security sec-
+tion, detecting semantic injection in validated fields is an
+unsolved problem. Semantic firewalls must focus on autho-
+rization and rate limiting until better content inspection
+techniques emerge.
+
+7 Conclusion
+Network architecture has historically evolved to meet new demands:
+from packet delivery (IP) to reliable sessions (TCP) to structured
+application communication (HTTP/2/3). As autonomous agents
+become significant network actors, the protocol stack may require
+corresponding evolution to support their coordination needs.
+
+This paper proposes a two-layer extension building on existing
+work. The Agent Communication Layer (L8) formalizes struc-
+tural capabilities emerging in A2A [1], MCP [5], and SLIM [10],
+standardizing message envelopes, task delegation, and interaction
+patterns. The Agent Semantic Negotiation Layer (L9) introduces
+protocol-level semantic negotiation—enabling agents to discover,
+negotiate, and lock formal contexts defining concepts and param-
+eters. This addresses a capability gap in current protocols, where
+semantic alignment occurs informally at the application layer.
+
+Separating syntactic structure (L8) from semantic meaning (L9)
+supports both transactional patterns (agent orchestration) and coor-
+dinative patterns (agent collaboration). Challenges remain: seman-
+tic handshake latency, context registry standardization, semantic
+injection defense, and governance models for Schema Authori-
+ties. However, multi-agent systems are already deployed in supply
+chains, distributed systems, and collaborative reasoning. Building
+on existing protocols while adding formal semantic negotiation
+could provide improved interoperability and reliability for these
+emerging applications.
+
+A Layered Protocol Architecture for the Internet of Agents
+
+References
+[1] Linux Foundation. 2024. Agent2Agent (A2A) Protocol Specification. Version 0.3.0.
+
+Originally developed by Google. https://a2a-protocol.org
+
+[2] Ayush Chopra, Aman Sharma, Feroz Ahmad, Luca Muscariello, Vijoy Pandey, and
+Ramesh Raskar. 2025. Ripple Effect Protocol: Coordinating Agent Populations.
+arXiv preprint arXiv:2510.16572 [cs.AI].
+
+[3] FIPA. 2002. FIPA ACL Message Representation in String Specification. Specification
+SC00070I. Foundation for Intelligent Physical Agents. http://www.fipa.org/specs/
+fipa00070/SC00070I.html
+
+[4] Thomas R. Gruber. 1993. A translation approach to portable ontology specifica-
+
+tions. Knowledge Acquisition 5, 2 (June 1993), 199–220.
+
+[5] Anthropic. 2024. Model Context Protocol (MCP). Technical Specification. https:
+
+//modelcontextprotocol.io
+
+[6] Ecma International Technical Committee 56. 2024. Natural Language Interaction
+
+[7]
+
+Protocol (NLIP). Ecma TC-56 Draft Standard. https://nlip-project.org
+Joon Sung Park, Joseph C. O’Brien, Carrie J. Cai, Meredith Ringel Morris, Percy
+Liang, and Michael S. Bernstein. 2023. Generative Agents: Interactive Simulacra
+
+of Human Behavior. In Proceedings of the 36th Annual ACM Symposium on User
+Interface Software and Technology (UIST ’23). ACM, New York, NY, USA, Article
+234, 1–22.
+
+[8] Lucian Popa, Ali Ghodsi, and Ion Stoica. 2010. HTTP as the Narrow Waist of the
+Future Internet. In Proceedings of the 9th ACM SIGCOMM Workshop on Hot Topics
+in Networks (HotNets-IX). ACM, Monterey, CA, USA, 1–6.
+John R. Searle. 1969. Speech Acts: An Essay in the Philosophy of Language. Cam-
+bridge University Press.
+
+[9]
+
+[10] Luca Muscariello, Michele Papalini, Mauro Sardara, and Sam Betts. 2025. Secure
+Low-Latency Interactive Messaging (SLIM). Internet-Draft draft-mpsb-agntcy-
+slim-00. IETF. https://spec.slim.agntcy.org/draft-mpsb-agntcy-slim.html
+Ilia Sucholutsky, Lukas Muttenthaler, Adrian Weller, et al. 2023. Getting aligned
+on representational alignment. arXiv preprint arXiv:2310.13018.
+
+[11]
+
+[12] Martin Thomson and Cory Benfield. 2022. HTTP/2. RFC 9113. Internet Engineer-
+
+ing Task Force. https://www.rfc-editor.org/info/rfc9113
+
+[13] Hubert Zimmermann. 1980. OSI Reference Model—The ISO Model of Architecture
+for Open Systems Interconnection. IEEE Transactions on Communications 28, 4
+(April 1980), 425–432.
+
+

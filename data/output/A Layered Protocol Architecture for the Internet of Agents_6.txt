@@ -1,0 +1,88 @@
+ memory or signaling mecha-
+nisms [2]. Just as distributed algorithms use shared state (mutexes,
+semaphores, message queues) to coordinate concurrent processes,
+multi-agent systems require shared semantic contexts to coordinate
+autonomous agents. The difference is profound: distributed pro-
+cesses share data structures; distributed agents must share meaning.
+L9 provides this semantic coordination primitive, enabling agents
+to establish a "shared context"—analogous to shared memory in dis-
+tributed systems—that defines the concepts, tasks, and parameters
+relevant to their interaction.
+
+The semantic context established by L9 is integrated into agent
+reasoning in two ways. First, it serves as a validation schema that
+the agent’s L9 SNL layer uses to verify all outgoing and incoming
+message content against the locked Shared Context before passing
+data to or from the agent’s LLM. Second, the context definitions are
+
+A Layered Protocol Architecture for the Internet of Agents
+
+injected into the LLM’s reasoning process, either by augmenting
+the system prompt with formal concept definitions or by providing
+a structured retrieval mechanism where the LLM can query the
+Shared Context to resolve ambiguities during inference. This dual
+integration ensures both protocol-level correctness and semantic-
+aware reasoning.
+
+L9 is what allows agents to move from simply exchanging data
+to truly understanding each other. It ensures that when one agent
+sends data, the receiving agent knows exactly what that data repre-
+sents in a shared, formal context.
+
+4.3 The Agent Semantic Negotiation Layer (L9)
+
+in Detail
+
+The power of the L8/L9 split is that it separates the structure of
+communication (L8) from its meaning (L9). The SNL’s primary job
+is to negotiate and lock a "Shared Context" that all subsequent L8
+messages will adhere to.
+
+4.4 Shared Semantic Contexts
+To support 1:N or N:N coordination patterns, which involve con-
+tinuous alignment of state, beliefs, or intentions rather than single
+tasks, we generalize this concept to a Shared Context. A Shared
+Context is a formal, machine-readable definition (e.g., using JSON
+Schema, RDF/OWL, or even Protobufs) of all the concepts, enti-
+ties, tasks, and parameters relevant to a specific domain of dis-
+course. This context is identified by a unique, versioned URN (e.g.,
+‘urn:contexts:travel:v2.1‘ or ‘urn:contexts:supplyChain:v1.0‘).
+
+4.5 Functions of the SNL
+The SNL protocol consists of three phases:
+
+1. Context Discovery and Negotiation (The Semantic Hand-
+shake) Before any meaningful interaction, the agents’ SNLs (L9)
+perform a handshake to find a compatible Shared Context.
+
+• Agent A (SNL): (SNL-HELLO) "I want to interact. I support
+
+the following contexts: [‘urn:contexts:travel:v2.1‘,
+‘urn:contexts:supplyChain:v1.0‘]"
+
+• Agent B (SNL): (SNL-SELECT) "I also support
+
+‘urn:contexts:supplyChain:v1.0‘. Let us use that. The au-
+thoritative schema is at
+https://transform.tools/json-to-json-schema."
+
+• Agent A (SNL): (SNL-LOCK) "Context locked. All L8 mes-
+
+sage ‘content‘ will now be validated against
+‘urn:contexts:supplyChain:v1.0‘."
+
+This negotiation creates a "semantic session," which can be cached
+and reused. While the initial handshake introduces latency, this
+cost is amortized across the entire session—potentially thousands
+of subsequent L8 messages benefit from the shared semantic un-
+derstanding without additional negotiation overhead.
+
+2. Semantic Grounding Once the context is locked, it is the
+SNL’s job to ground all data. This means binding data (text, numbers,
+vectors) from the agent’s internal logic to the formal definitions
+in the Shared Context. This function supports both transactional
+and coordinative patterns, which map directly to the two dominant
+paradigms in multi-agent systems today: agent orchestration and
+agent collaboration. Transactional patterns enable orchestration,
+
+where a central agent coordinates
