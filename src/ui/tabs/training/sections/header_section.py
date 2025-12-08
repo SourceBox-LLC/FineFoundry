@@ -1,4 +1,5 @@
 """Training tab: Target selector header section builder."""
+
 from __future__ import annotations
 
 import flet as ft

@@ -16,6 +16,7 @@ USE_ENV_PROXIES: bool = False  # If True, let requests use environment proxies
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": USER_AGENT})
 
+
 def apply_session_config() -> None:
     """Apply current proxy configuration to SESSION.
 
@@ -33,15 +34,32 @@ def apply_session_config() -> None:
     else:
         SESSION.proxies.clear()
 
+
 # Apply default proxy configuration at import time
 apply_session_config()
 
 # Static default allowlist (not used by the UI flow; kept for convenience)
 ALLOWLIST_DEFAULT: List[str] = [
-    "pol", "b", "r9k", "s4s", "soc",
-    "gif", "h", "hc", "d", "s", "aco",
-    "trash", "t", "hr", "bant", "news",
-    "v", "biz", "adv", "x"
+    "pol",
+    "b",
+    "r9k",
+    "s4s",
+    "soc",
+    "gif",
+    "h",
+    "hc",
+    "d",
+    "s",
+    "aco",
+    "trash",
+    "t",
+    "hr",
+    "bant",
+    "news",
+    "v",
+    "biz",
+    "adv",
+    "x",
 ]
 
 

@@ -25,7 +25,7 @@ from db import (
 
 def saved_configs_dir(project_root: Optional[str] = None) -> str:
     """Return path to the saved_configs directory.
-    
+
     Note: This is kept for backward compatibility but configs are now stored in SQLite.
     """
     root = project_root or os.path.dirname(os.path.dirname(__file__))
@@ -39,7 +39,7 @@ def saved_configs_dir(project_root: Optional[str] = None) -> str:
 
 def list_saved_configs(dir_path: Optional[str] = None) -> List[str]:
     """List all saved training config names.
-    
+
     Now reads from SQLite database instead of filesystem.
     """
     try:
@@ -57,13 +57,13 @@ def list_saved_configs(dir_path: Optional[str] = None) -> List[str]:
 
 def read_json_file(path: str) -> Optional[dict]:
     """Read a training config.
-    
+
     If path looks like a config name (ends with .json), tries database first.
     Otherwise falls back to filesystem.
     """
     # Extract config name from path
     name = os.path.basename(path)
-    
+
     try:
         init_db()
         config = db_get_config(name)
@@ -71,7 +71,7 @@ def read_json_file(path: str) -> Optional[dict]:
             return config
     except Exception:
         pass
-    
+
     # Fallback to filesystem
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -88,7 +88,7 @@ def save_config(name: str, config: dict) -> None:
     except Exception:
         # Fallback to filesystem
         d = saved_configs_dir()
-        path = os.path.join(d, name if name.endswith('.json') else f"{name}.json")
+        path = os.path.join(d, name if name.endswith(".json") else f"{name}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
 

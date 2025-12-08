@@ -201,6 +201,7 @@ def build_hp_from_controls(
     hp = {k: v for k, v in hp.items() if k in _allowed}
     return hp
 
+
 async def _docker_daemon_ready(page: ft.Page, status_text: ft.Text) -> bool:
     try:
         if not shutil.which("docker"):
@@ -245,10 +246,18 @@ async def _append_local_log_line(
         except Exception:
             pass
         timeline.controls.append(
-            ft.Row([
-                ft.Icon(getattr(ICONS_module, "TERMINAL", getattr(ICONS_module, "CODE", None)) if ICONS_module else None, color=color or ACCENT_COLOR, size=14),
-                ft.Text(txt),
-            ])
+            ft.Row(
+                [
+                    ft.Icon(
+                        getattr(ICONS_module, "TERMINAL", getattr(ICONS_module, "CODE", None))
+                        if ICONS_module
+                        else None,
+                        color=color or ACCENT_COLOR,
+                        size=14,
+                    ),
+                    ft.Text(txt),
+                ]
+            )
         )
         try:
             buffer.append(txt)
@@ -264,7 +273,15 @@ async def _append_local_log_line(
         pass
 
 
-async def _stream_local_logs(page: ft.Page, proc: subprocess.Popen, timeline: ft.ListView, placeholder: ft.Control, buffer: List[str], save_btn: ft.Control, ICONS_module=None):
+async def _stream_local_logs(
+    page: ft.Page,
+    proc: subprocess.Popen,
+    timeline: ft.ListView,
+    placeholder: ft.Control,
+    buffer: List[str],
+    save_btn: ft.Control,
+    ICONS_module=None,
+):
     try:
         while True:
             stdout = proc.stdout
@@ -273,7 +290,9 @@ async def _stream_local_logs(page: ft.Page, proc: subprocess.Popen, timeline: ft
             line = await asyncio.to_thread(stdout.readline)
             if not line:
                 break
-            await _append_local_log_line(page, timeline, placeholder, buffer, save_btn, line.rstrip(), ICONS_module=ICONS_module)
+            await _append_local_log_line(
+                page, timeline, placeholder, buffer, save_btn, line.rstrip(), ICONS_module=ICONS_module
+            )
     except Exception:
         pass
 
@@ -334,7 +353,9 @@ async def run_local_training(
 
     # Ensure image exists (non-blocking pull hint if missing)
     try:
-        insp = await asyncio.to_thread(lambda: subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True))
+        insp = await asyncio.to_thread(
+            lambda: subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True)
+        )
         if insp.returncode != 0:
             local_train_status.value = f"Image not found locally: {img}. Pull it first in the section above."
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
@@ -366,7 +387,15 @@ async def run_local_training(
 
     # Show the hyperparameters to confirm what will be passed as --flags
     try:
-        await _append_local_log_line(page, local_train_timeline, local_train_timeline_placeholder, local_log_buffer, local_save_logs_btn, "HP: " + json.dumps(hp, ensure_ascii=False), ICONS_module=ICONS_module)
+        await _append_local_log_line(
+            page,
+            local_train_timeline,
+            local_train_timeline_placeholder,
+            local_log_buffer,
+            local_save_logs_btn,
+            "HP: " + json.dumps(hp, ensure_ascii=False),
+            ICONS_module=ICONS_module,
+        )
     except Exception:
         pass
 
@@ -376,17 +405,21 @@ async def run_local_training(
         # Avoid trailing hyphen-only names
         cont_name = f"{cont_name}{str(abs(hash(img)))[:6]}"
     run_args: List[str] = [
-        "docker", "run", "--rm",
-        "--name", cont_name,
-        "-v", f"{host_dir}:/data",
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        cont_name,
+        "-v",
+        f"{host_dir}:/data",
     ]
     try:
-        is_beginner = ((skill_level.value or "Beginner").lower() == "beginner")
+        is_beginner = (skill_level.value or "Beginner").lower() == "beginner"
         if is_beginner:
             if bool(getattr(local_use_gpu_cb, "value", False)):
                 run_args += ["--gpus", "all"]
         else:
-            sel = (expert_gpu_dd.value or "AUTO")
+            sel = expert_gpu_dd.value or "AUTO"
             if str(sel).upper() == "AUTO":
                 run_args += ["--gpus", "all"]
             else:
@@ -397,9 +430,7 @@ async def run_local_training(
     try:
         # Prefer an explicit token from the text field; fall back to process env
         _hf_tok = (
-            (hf_token_tf.value or "")
-            or os.environ.get("HF_TOKEN", "")
-            or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
+            (hf_token_tf.value or "") or os.environ.get("HF_TOKEN", "") or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
         ).strip()
         if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
             # Match the environment variable names used by huggingface_hub and the Runpod flow
@@ -474,8 +505,25 @@ async def run_local_training(
         except Exception:
             pass
         await safe_update(page)
-        await _append_local_log_line(page, local_train_timeline, local_train_timeline_placeholder, local_log_buffer, local_save_logs_btn, "Command: " + " ".join(run_args), color=WITH_OPACITY(0.8, COLORS.BLUE), ICONS_module=None)
-        await _stream_local_logs(page, proc, local_train_timeline, local_train_timeline_placeholder, local_log_buffer, local_save_logs_btn, ICONS_module=None)
+        await _append_local_log_line(
+            page,
+            local_train_timeline,
+            local_train_timeline_placeholder,
+            local_log_buffer,
+            local_save_logs_btn,
+            "Command: " + " ".join(run_args),
+            color=WITH_OPACITY(0.8, COLORS.BLUE),
+            ICONS_module=None,
+        )
+        await _stream_local_logs(
+            page,
+            proc,
+            local_train_timeline,
+            local_train_timeline_placeholder,
+            local_log_buffer,
+            local_save_logs_btn,
+            ICONS_module=None,
+        )
         rc = proc.wait()
         if rc == 0:
             local_train_status.value = "Training finished (container exited)."
@@ -487,7 +535,7 @@ async def run_local_training(
                 abs_out_dir = ""
                 if out_dir:
                     if out_dir.startswith("/data"):
-                        rel = out_dir[len("/data"):].lstrip("/")
+                        rel = out_dir[len("/data") :].lstrip("/")
                         abs_out_dir = os.path.join(host_root, rel)
                     else:
                         abs_out_dir = os.path.join(host_root, out_dir.lstrip("/"))
@@ -563,7 +611,9 @@ async def stop_local_training(
     # Try docker stop by name first
     try:
         if cont:
-            await asyncio.to_thread(lambda: subprocess.run(["docker", "stop", cont], capture_output=True, text=True, timeout=10))
+            await asyncio.to_thread(
+                lambda: subprocess.run(["docker", "stop", cont], capture_output=True, text=True, timeout=10)
+            )
     except Exception:
         pass
     # Ensure local process terminates

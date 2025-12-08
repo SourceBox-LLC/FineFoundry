@@ -176,15 +176,15 @@ Click **Start** to scrape. Live progress, stats, and logs are shown. **Preview D
 Generate Q&A pairs, chain-of-thought reasoning, or summaries from your own documents:
 
 1. Select **Synthetic** as the source
-2. Add files (PDF, DOCX, TXT, HTML) or URLs
-3. Configure:
+1. Add files (PDF, DOCX, TXT, HTML) or URLs
+1. Configure:
    - **Model**: Local LLM to use (default: `unsloth/Llama-3.2-3B-Instruct`)
    - **Generation Type**: `qa` (Q&A pairs), `cot` (chain-of-thought), or `summary`
    - **Num Pairs**: Target number of examples per chunk
    - **Max Chunks**: Maximum document chunks to process
-4. Click **Start** — a snackbar appears immediately while the model loads (~30-60s on first run)
-5. Watch live progress as chunks are processed and pairs generated
-6. Results are saved to the output JSON and database
+1. Click **Start** — a snackbar appears immediately while the model loads (~30-60s on first run)
+1. Watch live progress as chunks are processed and pairs generated
+1. Results are saved to the output JSON and database
 
 Default output is `scraped_training_data.json` in the project root. Schema is a list of objects:
 

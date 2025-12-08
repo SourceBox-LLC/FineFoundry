@@ -25,7 +25,7 @@ from db.settings import (
 
 def load_settings() -> Dict[str, Any]:
     """Load all settings as a nested dictionary.
-    
+
     Returns settings in the format:
     {
         "huggingface": {"token": "..."},
@@ -35,10 +35,10 @@ def load_settings() -> Dict[str, Any]:
     }
     """
     init_db()
-    
+
     # Get all settings and reconstruct nested structure
     all_settings = get_all_settings()
-    
+
     result: Dict[str, Any] = {}
     for key, value in all_settings.items():
         parts = key.split(".", 1)
@@ -49,13 +49,13 @@ def load_settings() -> Dict[str, Any]:
             result[section][subkey] = value
         else:
             result[key] = value
-    
+
     return result
 
 
 def save_settings(data: Dict[str, Any]) -> None:
     """Save settings from a nested dictionary.
-    
+
     Accepts settings in the format:
     {
         "huggingface": {"token": "..."},
@@ -64,7 +64,7 @@ def save_settings(data: Dict[str, Any]) -> None:
     }
     """
     init_db()
-    
+
     for section, values in data.items():
         if isinstance(values, dict):
             for key, value in values.items():
@@ -74,6 +74,7 @@ def save_settings(data: Dict[str, Any]) -> None:
 
 
 # Convenience functions for common settings
+
 
 def load_hf_config() -> Dict[str, str]:
     """Load Hugging Face configuration."""

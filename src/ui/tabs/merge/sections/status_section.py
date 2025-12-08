@@ -1,4 +1,5 @@
 """Merge tab: Status section builder."""
+
 from __future__ import annotations
 
 import flet as ft

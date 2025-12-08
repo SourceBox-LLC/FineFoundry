@@ -4,6 +4,7 @@ This module composes the Build/Publish tab UI using controls created in main.py.
 Now delegates to per-section builders under `ui.tabs.build.sections` for clarity.
 No behavior changes.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -12,6 +13,7 @@ from ui.tabs.build.sections.dataset_params_section import build_dataset_params_s
 from ui.tabs.build.sections.push_section import build_push_section
 from ui.tabs.build.sections.model_card_section import build_model_card_section
 from ui.tabs.build.sections.status_section import build_status_section
+
 
 def build_build_tab(
     *,
@@ -122,18 +124,28 @@ def build_build_tab(
         pass
 
     return ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Column([
-                        dataset_params,
-                        model_card_section,
-                        push_section,
-                        status_section,
-                    ], spacing=12),
-                    width=1000,
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    dataset_params,
+                                    model_card_section,
+                                    push_section,
+                                    status_section,
+                                ],
+                                spacing=12,
+                            ),
+                            width=1000,
+                        )
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
                 )
-            ], alignment=ft.MainAxisAlignment.CENTER)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=0,
+        ),
         padding=16,
     )

@@ -4,6 +4,7 @@ This module composes the Scrape tab UI using controls created in main.py.
 Delegates to per-section builders under `ui.tabs.scrape.sections`.
 No behavior changes.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -14,6 +15,7 @@ from ui.tabs.scrape.sections.params_section import build_params_section
 from ui.tabs.scrape.sections.progress_section import build_progress_section
 from ui.tabs.scrape.sections.log_section import build_log_section
 from ui.tabs.scrape.sections.preview_section import build_preview_section
+
 
 def build_scrape_tab(
     *,
@@ -152,18 +154,25 @@ def build_scrape_tab(
         pass
 
     return ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    source_section,
-                    boards_section,
-                    params_section,
-                    progress_section,
-                    log_section,
-                    preview_section,
-                ], scroll=ft.ScrollMode.AUTO, spacing=12),
-                width=1000,
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER),
+        content=ft.Row(
+            [
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            source_section,
+                            boards_section,
+                            params_section,
+                            progress_section,
+                            log_section,
+                            preview_section,
+                        ],
+                        scroll=ft.ScrollMode.AUTO,
+                        spacing=12,
+                    ),
+                    width=1000,
+                )
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
         padding=16,
     )

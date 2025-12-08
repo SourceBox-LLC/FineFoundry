@@ -47,15 +47,19 @@ def _get_session() -> requests.Session:
 def html_to_text(html: str) -> str:
     """Minimal HTML→text cleaner."""
     s = unescape(html or "")
-    s = re.sub(r"<pre><code>(.*?)</code></pre>", lambda m: f"\n```\n{m.group(1).strip()}\n```\n",
-               s, flags=re.DOTALL | re.IGNORECASE)
+    s = re.sub(
+        r"<pre><code>(.*?)</code></pre>",
+        lambda m: f"\n```\n{m.group(1).strip()}\n```\n",
+        s,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
     s = s.replace("<br>", "\n").replace("<br/>", "\n").replace("<p>", "\n\n")
     s = re.sub(r"<.*?>", "", s, flags=re.DOTALL)
     lines = [ln.rstrip() for ln in s.splitlines()]
     out: List[str] = []
     last_blank = False
     for ln in lines:
-        blank = (ln.strip() == "")
+        blank = ln.strip() == ""
         if blank and last_blank:
             continue
         out.append(ln)
@@ -85,7 +89,7 @@ def fetch_answers(site: str, ids: List[int]) -> Dict[int, Dict]:
     answers: Dict[int, Dict] = {}
     sess = _get_session()
     for i in range(0, len(ids), 100):
-        chunk = ids[i:i + 100]
+        chunk = ids[i : i + 100]
         ids_str = ";".join(str(x) for x in chunk)
         params = {"order": "desc", "sort": "activity", "site": site, "filter": "withbody"}
         if STACKAPPS_KEY:
@@ -157,10 +161,12 @@ def scrape(
             if min_len and (len(q_text) < min_len or len(a_text) < min_len):
                 continue
 
-            results.append({
-                "input": q_text,
-                "output": a_text,
-            })
+            results.append(
+                {
+                    "input": q_text,
+                    "output": a_text,
+                }
+            )
             written += 1
             if qid is not None:
                 seen.add(qid)

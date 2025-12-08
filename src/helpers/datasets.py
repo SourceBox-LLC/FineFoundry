@@ -11,10 +11,24 @@ def guess_input_output_columns(names: List[str]) -> Tuple[Optional[str], Optiona
     """
     low = {n.lower(): n for n in (names or [])}
     in_cands = [
-        "input", "prompt", "question", "instruction", "source", "text", "query", "context", "post",
+        "input",
+        "prompt",
+        "question",
+        "instruction",
+        "source",
+        "text",
+        "query",
+        "context",
+        "post",
     ]
     out_cands = [
-        "output", "response", "answer", "completion", "target", "label", "reply",
+        "output",
+        "response",
+        "answer",
+        "completion",
+        "target",
+        "label",
+        "reply",
     ]
     inn = next((low[x] for x in in_cands if x in low), None)
     outn = next((low[x] for x in out_cands if x in low), None)

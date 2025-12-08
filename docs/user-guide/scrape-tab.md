@@ -25,10 +25,10 @@ ______________________________________________________________________
 Typical workflow:
 
 1. Select a **data source** from the dropdown (4chan, Reddit, Stack Exchange, or Synthetic).
-2. Configure source-specific parameters.
-3. Click **Start** and watch the progress / logs.
-4. When finished, preview the dataset in the two-column grid.
-5. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
+1. Configure source-specific parameters.
+1. Click **Start** and watch the progress / logs.
+1. When finished, preview the dataset in the two-column grid.
+1. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
 
 The output is a JSON file like:
 
@@ -107,45 +107,45 @@ ______________________________________________________________________
 ### Example 1: Quick 4chan scrape
 
 1. Select **4chan** as the source.
-2. Select boards like `pol` and `b`.
-3. Set:
+1. Select boards like `pol` and `b`.
+1. Set:
    - Max Threads: `50`
    - Max Pairs: `500`
    - Delay: `0.5`
    - Min Length: `10`
-4. Leave **Mode** as `normal` (adjacent pairs).
-5. Click **Start** and preview the results when done.
+1. Leave **Mode** as `normal` (adjacent pairs).
+1. Click **Start** and preview the results when done.
 
 ### Example 2: Contextual quote-chain dataset
 
 1. Select **4chan** and a conversation-heavy board (e.g., `pol`).
-2. Set:
+1. Set:
    - Mode: `contextual`
    - Strategy: `quote_chain`
    - K: `6`
    - Max Input Chars: `2000`
-3. Enable "require question" / "merge same author" options as desired.
-4. Start the scrape and inspect the preview to confirm multi-turn context.
+1. Enable "require question" / "merge same author" options as desired.
+1. Start the scrape and inspect the preview to confirm multi-turn context.
 
 ### Example 3: Reddit subreddit scrape
 
 1. Select **Reddit** as the source.
-2. Enter a subreddit URL (e.g., `https://www.reddit.com/r/LocalLLaMA/`).
-3. Set Max Posts to `50`.
-4. Click **Start** and watch the logs as posts and comments are fetched.
+1. Enter a subreddit URL (e.g., `https://www.reddit.com/r/LocalLLaMA/`).
+1. Set Max Posts to `50`.
+1. Click **Start** and watch the logs as posts and comments are fetched.
 
 ### Example 4: Synthetic data from PDF
 
 1. Select **Synthetic** as the source.
-2. Click **Browse** and select a PDF document (research paper, manual, etc.).
-3. Configure:
+1. Click **Browse** and select a PDF document (research paper, manual, etc.).
+1. Configure:
    - Model: `unsloth/Llama-3.2-3B-Instruct` (default)
    - Generation Type: `qa`
    - Num Pairs: `25`
    - Max Chunks: `10`
-4. Click **Start** — a snackbar appears immediately while the model loads.
-5. Watch live progress as the document is chunked and Q&A pairs are generated.
-6. Preview the generated pairs in the two-column grid.
+1. Click **Start** — a snackbar appears immediately while the model loads.
+1. Watch live progress as the document is chunked and Q&A pairs are generated.
+1. Preview the generated pairs in the two-column grid.
 
 **Note**: First run takes 30-60 seconds for model loading. Subsequent runs are faster.
 

@@ -7,6 +7,7 @@ turns a dict of hyperparameters into CLI flags.
 
 Requires: requests
 """
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,7 @@ REST = "https://rest.runpod.io/v1"
 GQL = "https://api.runpod.io/graphql"
 
 # ---------- HTTP helpers ----------
+
 
 def _headers(api_key: str) -> Dict[str, str]:
     if not api_key:
@@ -41,6 +43,7 @@ def _gql(api_key: str, query: str, variables: Optional[Dict[str, Any]] = None) -
 
 
 # ---------- Command builder from HP dict ----------
+
 
 def _shquote(v) -> str:
     s = str(v)
@@ -77,20 +80,21 @@ def build_cmd(hp: Dict[str, Any]) -> List[str]:
         "set -euo pipefail; "
         "P=; "
         "for CAND in /workspace/train.py /app/train.py /opt/train.py /usr/local/src/train.py /root/train.py; do "
-        "  if [ -f \"$CAND\" ]; then P=\"$CAND\"; break; fi; "
+        '  if [ -f "$CAND" ]; then P="$CAND"; break; fi; '
         "done; "
-        "if [ -z \"$P\" ]; then "
+        'if [ -z "$P" ]; then '
         "  echo 'ERROR: train.py not found in expected locations.' >&2; "
         "  echo 'Hint: If you mounted your network volume at /workspace, it may hide train.py baked into the image.' >&2; "
         "  echo 'Try setting the template Mount path to /data (or another path) and re-run.' >&2; "
         "  ls -la /workspace || true; ls -la /data || true; ls -la / || true; exit 1; "
         "fi; "
-        "python -u \"$P\" " + flags_str
+        'python -u "$P" ' + flags_str
     )
     return ["bash", "-lc", script]
 
 
 # ---------- Volume / DC helpers ----------
+
 
 def get_volume(api_key: str, volume_id: str) -> Dict[str, Any]:
     vols = _req("GET", "/networkvolumes", api_key).json()
@@ -102,9 +106,10 @@ def get_volume(api_key: str, volume_id: str) -> Dict[str, Any]:
 
 # ---------- GPU discovery ----------
 
+
 def discover_best_gpu(api_key: str, dc_id: str, prefer_spot: bool, gpu_count: int) -> Tuple[str, bool]:
     """Return (gpu_type_id, chosen_spot_bool). Raises if none available."""
-    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")['gpuTypes']
+    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")["gpuTypes"]
 
     q = (
         "\n"  # noqa: W291
@@ -125,23 +130,27 @@ def discover_best_gpu(api_key: str, dc_id: str, prefer_spot: bool, gpu_count: in
     def probe(secure: bool):
         candidates: List[Dict[str, Any]] = []
         for t in types:
-            row = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": secure, "count": int(gpu_count)})["gpuTypes"][0]
+            row = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": secure, "count": int(gpu_count)})["gpuTypes"][
+                0
+            ]
             lp = row.get("lowestPrice")
             if not lp:
                 continue
             maxu = lp.get("maxUnreservedGpuCount") or 0
             stock = (lp.get("stockStatus") or "").lower()
             if maxu >= int(gpu_count) and stock in {"high", "medium", "low"}:
-                candidates.append({
-                    "id": row["id"],
-                    "mem": row.get("memoryInGb") or 0,
-                    "spot": (not secure),
-                    "avail": maxu,
-                })
+                candidates.append(
+                    {
+                        "id": row["id"],
+                        "mem": row.get("memoryInGb") or 0,
+                        "spot": (not secure),
+                        "avail": maxu,
+                    }
+                )
         candidates.sort(key=lambda c: (c["mem"], c["avail"]), reverse=True)
         return candidates[0] if candidates else None
 
-    order = ([False, True] if not prefer_spot else [True, False])  # False=secure first if prefer_spot=False
+    order = [False, True] if not prefer_spot else [True, False]  # False=secure first if prefer_spot=False
     for secure in order:
         pick = probe(secure)
         if pick:
@@ -155,7 +164,7 @@ def discover_cheapest_gpu(api_key: str, dc_id: str, gpu_count: int) -> Tuple[str
     Prefers spot (interruptible) if available and cheaper, otherwise falls back to secure.
     Raises if none available.
     """
-    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")['gpuTypes']
+    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")["gpuTypes"]
 
     q = (
         "\n"  # noqa: W291
@@ -177,7 +186,9 @@ def discover_cheapest_gpu(api_key: str, dc_id: str, gpu_count: int) -> Tuple[str
 
     def probe(secure: bool):
         for t in types:
-            row = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": secure, "count": int(gpu_count)})["gpuTypes"][0]
+            row = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": secure, "count": int(gpu_count)})["gpuTypes"][
+                0
+            ]
             lp = row.get("lowestPrice")
             if not lp:
                 continue
@@ -191,16 +202,18 @@ def discover_cheapest_gpu(api_key: str, dc_id: str, gpu_count: int) -> Tuple[str
                 except Exception:
                     # If price missing, skip this candidate
                     continue
-                candidates.append({
-                    "id": row["id"],
-                    "mem": row.get("memoryInGb") or 0,
-                    "spot": (not secure),
-                    "price": price,
-                })
+                candidates.append(
+                    {
+                        "id": row["id"],
+                        "mem": row.get("memoryInGb") or 0,
+                        "spot": (not secure),
+                        "price": price,
+                    }
+                )
 
     # Probe spot first (usually cheapest), then secure
     probe(False)  # secure=False => spot
-    probe(True)   # secure=True  => secure
+    probe(True)  # secure=True  => secure
 
     if not candidates:
         raise RuntimeError(f"No GPUs available in DC {dc_id} right now.")
@@ -217,7 +230,7 @@ def list_available_gpus(api_key: str, dc_id: str, gpu_count: int = 1) -> List[Di
     Each item: {id, displayName, memoryInGb, secureAvailable: bool, spotAvailable: bool}
     Filters out types with no capacity for the requested gpu_count.
     """
-    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")['gpuTypes']
+    types = _gql(api_key, "query { gpuTypes { id displayName memoryInGb } }")["gpuTypes"]
 
     q = (
         "\n"  # noqa: W291
@@ -234,8 +247,13 @@ def list_available_gpus(api_key: str, dc_id: str, gpu_count: int = 1) -> List[Di
 
     out: List[Dict[str, Any]] = []
     for t in types:
-        row_secure = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": True, "count": int(gpu_count)})["gpuTypes"][0]
-        row_spot = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": False, "count": int(gpu_count)})["gpuTypes"][0]
+        row_secure = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": True, "count": int(gpu_count)})[
+            "gpuTypes"
+        ][0]
+        row_spot = _gql(api_key, q, {"id": t["id"], "dc": dc_id, "secure": False, "count": int(gpu_count)})["gpuTypes"][
+            0
+        ]
+
         def _avail(row: Dict[str, Any]) -> bool:
             lp = row.get("lowestPrice") or {}
             try:
@@ -244,22 +262,27 @@ def list_available_gpus(api_key: str, dc_id: str, gpu_count: int = 1) -> List[Di
                 maxu = 0
             stock = (lp.get("stockStatus") or "").lower()
             return maxu >= int(gpu_count) and stock in {"high", "medium", "low"}
+
         sec_ok = _avail(row_secure)
         spot_ok = _avail(row_spot)
         if not (sec_ok or spot_ok):
             continue
-        out.append({
-            "id": t["id"],
-            "displayName": t.get("displayName") or t["id"],
-            "memoryInGb": t.get("memoryInGb") or 0,
-            "secureAvailable": bool(sec_ok),
-            "spotAvailable": bool(spot_ok),
-        })
+        out.append(
+            {
+                "id": t["id"],
+                "displayName": t.get("displayName") or t["id"],
+                "memoryInGb": t.get("memoryInGb") or 0,
+                "secureAvailable": bool(sec_ok),
+                "spotAvailable": bool(spot_ok),
+            }
+        )
     # Prefer larger memory first
     out.sort(key=lambda r: float(r.get("memoryInGb") or 0), reverse=True)
     return out
 
+
 # ---------- Pod operations ----------
+
 
 def create_pod(
     *,
@@ -279,7 +302,9 @@ def create_pod(
     chosen_spot = bool(interruptible)
 
     if str(gpu_type_id).upper() == "AUTO":
-        chosen_gpu, chosen_spot = discover_best_gpu(api_key, dc_id=dc, prefer_spot=bool(interruptible), gpu_count=int(gpu_count))
+        chosen_gpu, chosen_spot = discover_best_gpu(
+            api_key, dc_id=dc, prefer_spot=bool(interruptible), gpu_count=int(gpu_count)
+        )
 
     body = {
         "name": pod_name,

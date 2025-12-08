@@ -42,8 +42,10 @@ async def run_stackexchange_scrape(
     dataset_format: str,
 ) -> None:
     """Run the Stack Exchange scraper in a worker thread and integrate results into the UI."""
+
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
+
     await safe_update(page)
 
     # Apply proxy settings from UI (overrides env/defaults)
@@ -55,29 +57,31 @@ async def run_stackexchange_scrape(
 
     prog.value = 0
     labels.get("threads").value = "Pages processed: 0"
-    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
-    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
+    pairs_output = str(dataset_format or "ChatML").strip().lower() == "standard"
+    labels.get("pairs").value = "Pairs Found: 0" if pairs_output else "Conversations Found: 0"
     await safe_update(page)
 
     log(f"Starting StackExchange scrape (site={site}, max_pairs={max_pairs})...")
     await safe_update(page)
 
     # Kick off the blocking scraper in a background thread with cancellation support
-    fut = asyncio.create_task(asyncio.to_thread(
-        sx.scrape,
-        site=site or "stackoverflow",
-        max_pairs=int(max_pairs),
-        delay=float(delay),
-        min_len=int(min_len_val),
-        cancel_cb=lambda: bool(cancel_flag.get("cancelled")),
-    ))
+    fut = asyncio.create_task(
+        asyncio.to_thread(
+            sx.scrape,
+            site=site or "stackoverflow",
+            max_pairs=int(max_pairs),
+            delay=float(delay),
+            min_len=int(min_len_val),
+            cancel_cb=lambda: bool(cancel_flag.get("cancelled")),
+        )
+    )
 
     # Progress pulse and cooperative cancellation monitor
     async def pulse_and_watch():
         try:
             while not fut.done():
                 # Nothing to force-cancel; cancel_cb will be polled in the worker
-                cur = (prog.value or 0.0)
+                cur = prog.value or 0.0
                 cur = 0.4 if cur >= 0.9 else (cur + 0.04)
                 prog.value = cur
                 await safe_update(page)
@@ -176,7 +180,11 @@ async def run_stackexchange_scrape(
                             assistant_text = text
                             break
                     if not (user_text and assistant_text):
-                        texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                        texts = [
+                            (m.get("content") or "").strip()
+                            for m in msgs
+                            if isinstance(m, dict) and (m.get("content") or "").strip()
+                        ]
                         if len(texts) >= 2:
                             user_text, assistant_text = texts[0], texts[1]
                         elif len(texts) == 1:
@@ -215,7 +223,11 @@ async def run_stackexchange_scrape(
                                     a = text
                                     break
                             if not (u and a):
-                                texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                                texts = [
+                                    (m.get("content") or "").strip()
+                                    for m in msgs
+                                    if isinstance(m, dict) and (m.get("content") or "").strip()
+                                ]
                                 if len(texts) >= 2:
                                     u, a = texts[0], texts[1]
                                 elif len(texts) == 1:
@@ -231,7 +243,7 @@ async def run_stackexchange_scrape(
         log(f"Failed to write results: {e}")
     await safe_update(page)
 
-    labels.get("pairs").value = (f"Pairs Found: {count}" if pairs_output else f"Conversations Found: {count}")
+    labels.get("pairs").value = f"Pairs Found: {count}" if pairs_output else f"Conversations Found: {count}"
     labels.get("threads").value = f"Questions processed: {count}"
 
     # Populate preview grid
@@ -274,8 +286,10 @@ async def run_reddit_scrape(
     dataset_format: str,
 ) -> None:
     """Run the Reddit scraper in a worker thread and integrate results into the UI."""
+
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
+
     await safe_update(page)
 
     if rdt is None:
@@ -323,8 +337,8 @@ async def run_reddit_scrape(
 
     prog.value = 0
     labels.get("threads").value = "Threads Visited: 0"
-    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
-    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
+    pairs_output = str(dataset_format or "ChatML").strip().lower() == "standard"
+    labels.get("pairs").value = "Pairs Found: 0" if pairs_output else "Conversations Found: 0"
     await safe_update(page)
 
     log("Starting Reddit scrape...")
@@ -342,7 +356,7 @@ async def run_reddit_scrape(
                     rdt.MAX_REQUESTS_TOTAL = 0
                     rdt.STOP_AFTER_SECONDS = 0
                 # Pulse progress to indicate activity
-                cur = (prog.value or 0.0)
+                cur = prog.value or 0.0
                 cur = 0.4 if cur >= 0.9 else (cur + 0.04)
                 prog.value = cur
                 await safe_update(page)
@@ -395,7 +409,7 @@ async def run_reddit_scrape(
             threads_count = 0
             if idx_path and os.path.exists(idx_path):
                 idx = await asyncio.to_thread(lambda: json.load(open(idx_path, "r", encoding="utf-8")))
-                for item in (idx.get("posts") or []):
+                for item in idx.get("posts") or []:
                     rel_json = item.get("json")
                     if not rel_json:
                         continue
@@ -469,9 +483,7 @@ async def run_reddit_scrape(
         os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
         payload = chatml_convs if not pairs_output else standard_pairs
         await asyncio.to_thread(
-            lambda: open(dest_abs, "w", encoding="utf-8").write(
-                json.dumps(payload, ensure_ascii=False, indent=4)
-            )
+            lambda: open(dest_abs, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
         )
         # Save to database
         try:
@@ -526,7 +538,11 @@ async def run_reddit_scrape(
                             assistant_text = text
                             break
                     if not (user_text and assistant_text):
-                        texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                        texts = [
+                            (m.get("content") or "").strip()
+                            for m in msgs
+                            if isinstance(m, dict) and (m.get("content") or "").strip()
+                        ]
                         if len(texts) >= 2:
                             user_text, assistant_text = texts[0], texts[1]
                         elif len(texts) == 1:
@@ -549,9 +565,7 @@ async def run_reddit_scrape(
     except Exception:
         pass
 
-    labels.get("pairs").value = (
-        f"Pairs Found: {pairs_count}" if pairs_output else f"Conversations Found: {conv_count}"
-    )
+    labels.get("pairs").value = f"Pairs Found: {pairs_count}" if pairs_output else f"Conversations Found: {conv_count}"
 
     # Populate preview grid from ChatML-derived sample pairs
     try:
@@ -586,7 +600,11 @@ async def run_reddit_scrape(
                                     a = text
                                     break
                             if not (u and a):
-                                texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                                texts = [
+                                    (m.get("content") or "").strip()
+                                    for m in msgs
+                                    if isinstance(m, dict) and (m.get("content") or "").strip()
+                                ]
                                 if len(texts) >= 2:
                                     u, a = texts[0], texts[1]
                                 elif len(texts) == 1:
@@ -646,6 +664,7 @@ async def run_real_scrape(
 ) -> None:
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
+
     await safe_update(page)
 
     total_boards = len(boards)
@@ -655,9 +674,9 @@ async def run_real_scrape(
     pairs_accum: List[dict] = []
     conversations_accum: List[dict] = []
     chatml_enabled = bool(multiturn)
-    pairs_output = (str(dataset_format or "ChatML").strip().lower() == "standard")
+    pairs_output = str(dataset_format or "ChatML").strip().lower() == "standard"
     # Initialize counters label
-    labels.get("pairs").value = ("Pairs Found: 0" if pairs_output else "Conversations Found: 0")
+    labels.get("pairs").value = "Pairs Found: 0" if pairs_output else "Conversations Found: 0"
 
     # Apply proxy settings from UI (overrides env/defaults)
     try:
@@ -674,7 +693,7 @@ async def run_real_scrape(
             await safe_update(page)
             return
 
-        remaining = (max_pairs_total - (len(conversations_accum) if chatml_enabled else len(pairs_accum)))
+        remaining = max_pairs_total - (len(conversations_accum) if chatml_enabled else len(pairs_accum))
         if remaining <= 0:
             break
 
@@ -815,10 +834,14 @@ async def run_real_scrape(
             boards_str = ",".join(boards[:5]) + ("..." if len(boards) > 5 else "")
             if pairs_output:
                 # Convert to standard pairs if needed
-                db_pairs = payload if isinstance(payload, list) and payload and isinstance(payload[0], dict) and "input" in payload[0] else []
+                db_pairs = (
+                    payload
+                    if isinstance(payload, list) and payload and isinstance(payload[0], dict) and "input" in payload[0]
+                    else []
+                )
                 if not db_pairs and chatml_enabled:
                     # Extract from conversations
-                    for conv in (conversations_accum or []):
+                    for conv in conversations_accum or []:
                         msgs = conv.get("messages", []) or []
                         user_text = assistant_text = None
                         for m in msgs:
@@ -851,7 +874,11 @@ async def run_real_scrape(
         except Exception as db_err:
             log(f"Database save warning: {db_err}")
         log(
-            (f"Wrote {len(payload)} pairs to {output_path}" if pairs_output else f"Wrote {len(payload)} conversations to {output_path}")
+            (
+                f"Wrote {len(payload)} pairs to {output_path}"
+                if pairs_output
+                else f"Wrote {len(payload)} conversations to {output_path}"
+            )
         )
     except Exception as e:
         log(f"Failed to write {output_path}: {e}")
@@ -915,7 +942,11 @@ async def run_real_scrape(
                                     a = text
                                     break
                             if not (u and a):
-                                texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                                texts = [
+                                    (m.get("content") or "").strip()
+                                    for m in msgs
+                                    if isinstance(m, dict) and (m.get("content") or "").strip()
+                                ]
                                 if len(texts) >= 2:
                                     u, a = texts[0], texts[1]
                                 elif len(texts) == 1:
@@ -955,7 +986,11 @@ async def run_real_scrape(
                         assistant_text = text
                         break
                 if not (user_text and assistant_text):
-                    texts = [(m.get("content") or "").strip() for m in msgs if isinstance(m, dict) and (m.get("content") or "").strip()]
+                    texts = [
+                        (m.get("content") or "").strip()
+                        for m in msgs
+                        if isinstance(m, dict) and (m.get("content") or "").strip()
+                    ]
                     if len(texts) >= 2:
                         user_text, assistant_text = texts[0], texts[1]
                     elif len(texts) == 1:

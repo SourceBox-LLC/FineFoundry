@@ -23,10 +23,14 @@ def WITH_OPACITY(opacity: float, color):
 
 def pill(text: str, color: str, icon: Optional[str] = None) -> ft.Container:
     return ft.Container(
-        content=ft.Row([
-            ft.Icon(icon, size=14, color=COLORS.WHITE) if icon else ft.Container(),
-            ft.Text(text, size=12, weight=ft.FontWeight.W_600, color=COLORS.WHITE),
-        ], spacing=6, alignment=ft.MainAxisAlignment.CENTER),
+        content=ft.Row(
+            [
+                ft.Icon(icon, size=14, color=COLORS.WHITE) if icon else ft.Container(),
+                ft.Text(text, size=12, weight=ft.FontWeight.W_600, color=COLORS.WHITE),
+            ],
+            spacing=6,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
         bgcolor=color,
         padding=ft.padding.symmetric(6, 6),
         border_radius=999,
@@ -70,7 +74,9 @@ def make_board_chip(text: str, selected: bool, base_color):
     )
 
 
-def section_title(title: str, icon: str, help_text: Optional[str] = None, on_help_click: Optional[Callable[..., None]] = None) -> ft.Row:
+def section_title(
+    title: str, icon: str, help_text: Optional[str] = None, on_help_click: Optional[Callable[..., None]] = None
+) -> ft.Row:
     controls = [
         ft.Icon(icon, color=ACCENT_COLOR),
         ft.Text(title, size=16, weight=ft.FontWeight.BOLD),
@@ -121,8 +127,9 @@ def make_wrap(controls: list, spacing: int = 6, run_spacing: int = 6):
             pass
     # Next: Row with wrap
     try:
-        return ft.Row(controls, wrap=True, spacing=spacing, run_spacing=run_spacing,
-                      alignment=ft.MainAxisAlignment.START)
+        return ft.Row(
+            controls, wrap=True, spacing=spacing, run_spacing=run_spacing, alignment=ft.MainAxisAlignment.START
+        )
     except TypeError:
         # Older Row without run_spacing or wrap
         try:
@@ -133,7 +140,9 @@ def make_wrap(controls: list, spacing: int = 6, run_spacing: int = 6):
     return ft.Column(controls, spacing=spacing)
 
 
-def make_selectable_pill(label: str, selected: bool = False, base_color: Optional[str] = None, on_change=None) -> ft.Container:
+def make_selectable_pill(
+    label: str, selected: bool = False, base_color: Optional[str] = None, on_change=None
+) -> ft.Container:
     """Create a selectable pill using a Container, compatible with older Flet builds."""
     base_color = base_color or ACCENT_COLOR
     pill = ft.Container(
@@ -222,9 +231,14 @@ def _estimate_two_col_ratio(samples: list[tuple[str, str]]) -> float:
     return max(0.35, min(0.65, r))
 
 
-def compute_two_col_widths(page: ft.Page, samples: list[tuple[str, str]], *,
-                           total_px: int | None = None, spacing_px: int = 16,
-                           min_px_each: int = 180) -> tuple[int, int]:
+def compute_two_col_widths(
+    page: ft.Page,
+    samples: list[tuple[str, str]],
+    *,
+    total_px: int | None = None,
+    spacing_px: int = 16,
+    min_px_each: int = 180,
+) -> tuple[int, int]:
     """Compute two column widths that sum to available width minus spacing.
     If total_px isn't provided, derive from page width conservatively.
     """
@@ -252,11 +266,18 @@ def compute_two_col_flex(samples: list[tuple[str, str]]) -> tuple[int, int]:
     return left, max(1, 100 - left)
 
 
-def two_col_header(left: str = "Input", right: str = "Output", *, left_flex: int = 50, right_flex: int = 50) -> ft.Container:
-    hdr = ft.Row([
-        ft.Container(ft.Text(left, weight=ft.FontWeight.BOLD, size=13), expand=left_flex, padding=4),
-        ft.Container(ft.Text(right, weight=ft.FontWeight.BOLD, size=13), expand=right_flex, padding=4),
-    ], spacing=12, alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START)
+def two_col_header(
+    left: str = "Input", right: str = "Output", *, left_flex: int = 50, right_flex: int = 50
+) -> ft.Container:
+    hdr = ft.Row(
+        [
+            ft.Container(ft.Text(left, weight=ft.FontWeight.BOLD, size=13), expand=left_flex, padding=4),
+            ft.Container(ft.Text(right, weight=ft.FontWeight.BOLD, size=13), expand=right_flex, padding=4),
+        ],
+        spacing=12,
+        alignment=ft.MainAxisAlignment.START,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
     return ft.Container(
         content=hdr,
         padding=ft.padding.only(left=6, right=6, bottom=6),
@@ -270,12 +291,16 @@ def two_col_row(a: str, b: str, left_flex: int, right_flex: int) -> ft.Container
     COL_SPACING = 12
 
     def scroll_cell(text: str) -> ft.Container:
-        inner = ft.Column([
-            ft.Text(text or "", no_wrap=False, max_lines=None, size=13)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0)
-        return ft.Container(content=inner, height=CELL_H, padding=6,
-                            border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
-                            border_radius=6)
+        inner = ft.Column(
+            [ft.Text(text or "", no_wrap=False, max_lines=None, size=13)], scroll=ft.ScrollMode.AUTO, spacing=0
+        )
+        return ft.Container(
+            content=inner,
+            height=CELL_H,
+            padding=6,
+            border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),
+            border_radius=6,
+        )
 
     row = ft.Row(
         [
@@ -291,6 +316,7 @@ def two_col_row(a: str, b: str, left_flex: int, right_flex: int) -> ft.Container
         padding=ft.padding.symmetric(6, 6),
         border=ft.border.only(bottom=ft.border.BorderSide(1, WITH_OPACITY(0.06, BORDER_BASE))),
     )
+
 
 __all__ = [
     "WITH_OPACITY",

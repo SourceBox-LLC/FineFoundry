@@ -6,6 +6,7 @@ handlers, keeping `src/main.py` smaller.
 Layout composition still lives in `tab_scrape.py`; this module focuses
 on behavior and state wiring.
 """
+
 from __future__ import annotations
 
 from typing import List
@@ -81,8 +82,7 @@ def build_scrape_tab_with_logic(
     boards = load_4chan_boards()
     default_sel = {"pol", "b", "x"}
     board_pills: List[ft.Container] = [
-        make_selectable_pill(b, selected=b in default_sel, base_color=COLORS.AMBER)
-        for b in boards
+        make_selectable_pill(b, selected=b in default_sel, base_color=COLORS.AMBER) for b in boards
     ]
     boards_wrap = make_wrap(board_pills, spacing=6, run_spacing=6)
     board_warning = ft.Text("", color=COLORS.RED)
@@ -121,7 +121,7 @@ def build_scrape_tab_with_logic(
         value="stackoverflow",
         width=260,
     )
-    
+
     # Synthetic data controls
     synthetic_files = ft.TextField(
         label="Files/URLs (comma-separated or directory)",
@@ -131,7 +131,7 @@ def build_scrape_tab_with_logic(
     )
     synthetic_file_picker = ft.FilePicker()
     synthetic_selected_files: List[str] = []
-    
+
     def on_synthetic_files_picked(e: ft.FilePickerResultEvent):
         if e.files:
             paths = [f.path for f in e.files if f.path]
@@ -140,10 +140,10 @@ def build_scrape_tab_with_logic(
             synthetic_files.value = ", ".join(paths)
             update_board_validation()
             page.update()
-    
+
     synthetic_file_picker.on_result = on_synthetic_files_picked
     page.overlay.append(synthetic_file_picker)
-    
+
     synthetic_browse_btn = ft.ElevatedButton(
         "Browse",
         icon=ICONS.FOLDER_OPEN if hasattr(ICONS, "FOLDER_OPEN") else ICONS.FOLDER,
@@ -190,7 +190,7 @@ def build_scrape_tab_with_logic(
         value="unsloth/Llama-3.2-3B-Instruct",
         width=300,
     )
-    
+
     max_threads = ft.TextField(
         label="Max Threads",
         value="50",
@@ -226,8 +226,7 @@ def build_scrape_tab_with_logic(
         value="ChatML",
         width=200,
         tooltip=(
-            "Select output dataset format: ChatML (multi-turn conversations) or "
-            "Standard (raw input/output pairs)."
+            "Select output dataset format: ChatML (multi-turn conversations) or Standard (raw input/output pairs)."
         ),
     )
 
@@ -328,9 +327,7 @@ def build_scrape_tab_with_logic(
         else:
             any_selected = any(p.data and p.data.get("selected") for p in board_pills)
             start_button.disabled = not any_selected
-            board_warning.value = (
-                "Select at least one board to scrape." if not any_selected else ""
-            )
+            board_warning.value = "Select at least one board to scrape." if not any_selected else ""
         page.update()
 
     def select_all_boards(_):
@@ -343,9 +340,7 @@ def build_scrape_tab_with_logic(
             except Exception:
                 base_color = None
             try:
-                pill_ctl.bgcolor = (
-                    WITH_OPACITY(0.15, base_color) if base_color is not None else None
-                )
+                pill_ctl.bgcolor = WITH_OPACITY(0.15, base_color) if base_color is not None else None
             except Exception:
                 pass
         page.update()
@@ -381,7 +376,7 @@ def build_scrape_tab_with_logic(
         is_se = src == "stackexchange"
         is_synthetic = src == "synthetic"
         is_4chan = src == "4chan"
-        
+
         try:
             boards_wrap.visible = is_4chan
             board_actions.visible = is_4chan
@@ -468,7 +463,7 @@ def build_scrape_tab_with_logic(
 
     async def on_start_scrape():
         cancel_state["cancelled"] = False
-        
+
         # Show immediate snackbar for synthetic (before any processing)
         if source_dd.value == "synthetic":
             page.snack_bar = ft.SnackBar(
@@ -477,7 +472,7 @@ def build_scrape_tab_with_logic(
             )
             page.open(page.snack_bar)
             page.update()  # Force immediate display
-        
+
         log_list.controls.clear()
         preview_host.controls.clear()
         scrape_prog.value = 0
@@ -488,9 +483,7 @@ def build_scrape_tab_with_logic(
         # Force UI update immediately so user sees the reset
         await safe_update(page)
         # Collect selected boards (only for 4chan)
-        selected_boards = [
-            p.data.get("label") for p in board_pills if p.data and p.data.get("selected")
-        ]
+        selected_boards = [p.data.get("label") for p in board_pills if p.data and p.data.get("selected")]
         if source_dd.value == "4chan" and not selected_boards:
             page.snack_bar = ft.SnackBar(ft.Text("Select at least one board to scrape."))
             page.open(page.snack_bar)
@@ -517,17 +510,13 @@ def build_scrape_tab_with_logic(
         out_path = output_path.value or "scraped_training_data.json"
         # Context params
         multiturn = bool(multiturn_sw.value)
-        strat_val = (strategy_dd.value or "cumulative")
+        strat_val = strategy_dd.value or "cumulative"
         try:
             k_val = int(k_field.value or 6)
         except Exception:
             k_val = 6
         try:
-            max_chars_val = (
-                int(max_chars_field.value)
-                if (max_chars_field.value or "").strip() != ""
-                else None
-            )
+            max_chars_val = int(max_chars_field.value) if (max_chars_field.value or "").strip() != "" else None
         except Exception:
             max_chars_val = None
 
@@ -547,8 +536,7 @@ def build_scrape_tab_with_logic(
         else:
             log_list.controls.append(
                 ft.Text(
-                    "Boards: "
-                    f"{', '.join(selected_boards[:20])}{' ...' if len(selected_boards) > 20 else ''}",
+                    f"Boards: {', '.join(selected_boards[:20])}{' ...' if len(selected_boards) > 20 else ''}",
                 ),
             )
         # Log chosen dataset format
@@ -565,11 +553,7 @@ def build_scrape_tab_with_logic(
         # Disable Start while running
         start_button.disabled = True
         start_button.text = "Running..."
-        start_button.icon = (
-            ICONS.HOURGLASS_TOP
-            if hasattr(ICONS, "HOURGLASS_TOP")
-            else ICONS.HOURGLASS_EMPTY
-        )
+        start_button.icon = ICONS.HOURGLASS_TOP if hasattr(ICONS, "HOURGLASS_TOP") else ICONS.HOURGLASS_EMPTY
         await safe_update(page)
 
         try:
@@ -630,7 +614,7 @@ def build_scrape_tab_with_logic(
                         item = item.strip()
                         if item and item not in sources_list:
                             sources_list.append(item)
-                
+
                 # Parse synthetic params
                 try:
                     syn_num_pairs = int(synthetic_num_pairs.value or 25)
@@ -644,7 +628,7 @@ def build_scrape_tab_with_logic(
                     syn_threshold = float(synthetic_threshold.value or 7.5)
                 except Exception:
                     syn_threshold = 7.5
-                
+
                 await run_synthetic_generation(
                     page=page,
                     log_view=log_list,
@@ -724,8 +708,7 @@ def build_scrape_tab_with_logic(
         # Reload boards from API and rebuild chips
         boards = load_4chan_boards()
         new_pills: List[ft.Container] = [
-            make_selectable_pill(b, selected=(b in {"pol", "b", "x"}), base_color=COLORS.AMBER)
-            for b in boards
+            make_selectable_pill(b, selected=(b in {"pol", "b", "x"}), base_color=COLORS.AMBER) for b in boards
         ]
         board_pills = new_pills
         if hasattr(boards_wrap, "controls"):
@@ -845,9 +828,7 @@ def build_scrape_tab_with_logic(
             end = min(start + page_size, total)
             grid_list.controls.clear()
             # Compute dynamic flex for current page
-            page_samples = [
-                _extract_pair(r if isinstance(r, dict) else {}) for r in data[start:end]
-            ]
+            page_samples = [_extract_pair(r if isinstance(r, dict) else {}) for r in data[start:end]]
             lfx, rfx = compute_two_col_flex(page_samples)
             hdr_left = "User" if is_chatml_dataset else "Input"
             hdr_right = "Assistant" if is_chatml_dataset else "Output"
@@ -856,9 +837,7 @@ def build_scrape_tab_with_logic(
             )
             for a, b in page_samples:
                 grid_list.controls.append(two_col_row(a, b, lfx, rfx))
-            info_text.value = (
-                f"Page {state['page']+1}/{total_pages} • Showing {start+1}-{end} of {total}"
-            )
+            info_text.value = f"Page {state['page'] + 1}/{total_pages} • Showing {start + 1}-{end} of {total}"
             prev_btn.disabled = state["page"] <= 0
             next_btn.disabled = state["page"] >= (total_pages - 1)
             page.update()
@@ -1045,24 +1024,34 @@ def build_scrape_tab_with_logic(
     # Rows that are toggled by update_source_controls()
     reddit_params_row = ft.Row([reddit_url, reddit_max_posts], wrap=True, visible=False)
     se_params_row = ft.Row([se_site], wrap=True, visible=False)
-    synthetic_params_row = ft.Column([
-        ft.Row([synthetic_files, synthetic_browse_btn], wrap=True),
-        ft.Row([
-            synthetic_gen_type,
-            synthetic_num_pairs,
-            synthetic_max_chunks,
-        ], wrap=True),
-        ft.Row([
-            synthetic_curate_cb,
-            synthetic_threshold,
-            synthetic_multimodal_cb,
-        ], wrap=True),
-        ft.Row([synthetic_model], wrap=True),
-    ], spacing=8, visible=False)
-    
+    synthetic_params_row = ft.Column(
+        [
+            ft.Row([synthetic_files, synthetic_browse_btn], wrap=True),
+            ft.Row(
+                [
+                    synthetic_gen_type,
+                    synthetic_num_pairs,
+                    synthetic_max_chunks,
+                ],
+                wrap=True,
+            ),
+            ft.Row(
+                [
+                    synthetic_curate_cb,
+                    synthetic_threshold,
+                    synthetic_multimodal_cb,
+                ],
+                wrap=True,
+            ),
+            ft.Row([synthetic_model], wrap=True),
+        ],
+        spacing=8,
+        visible=False,
+    )
+
     # Wire up validation when synthetic files change
     synthetic_files.on_change = lambda e: update_board_validation()
-    
+
     # Initialize source-specific visibility now that rows exist
     try:
         update_source_controls()

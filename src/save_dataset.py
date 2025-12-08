@@ -5,20 +5,20 @@
 # Configuration (edit me)
 # =========================
 DATA_FILE = "scraped_training_data.json"  # path to JSON list of {"input","output"}
-SAVE_DIR = "hf_dataset"                   # output directory for save_to_disk
+SAVE_DIR = "hf_dataset"  # output directory for save_to_disk
 
 SEED = 42
 SHUFFLE = True
 
-VAL_SIZE = 0.01                           # fraction for validation split
-TEST_SIZE = 0.0                           # fraction for test split
-MIN_LEN = 1                               # min length for input/output after strip
+VAL_SIZE = 0.01  # fraction for validation split
+TEST_SIZE = 0.0  # fraction for test split
+MIN_LEN = 1  # min length for input/output after strip
 
 # Hugging Face Hub settings
-PUSH_TO_HUB = True                       # set True to push to Hub
-REPO_ID = "sbussiso/4chan-pairs"                              # e.g. "username/my-4chan-pairs"
-PRIVATE = True                            # create/keep private repo if pushing
-HF_TOKEN = None                         # if None, will use env HF_TOKEN or cached login
+PUSH_TO_HUB = True  # set True to push to Hub
+REPO_ID = "sbussiso/4chan-pairs"  # e.g. "username/my-4chan-pairs"
+PRIVATE = True  # create/keep private repo if pushing
+HF_TOKEN = None  # if None, will use env HF_TOKEN or cached login
 # =========================
 
 

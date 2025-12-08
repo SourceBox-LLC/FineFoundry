@@ -3,6 +3,7 @@
 This module builds the Settings tab UI using control instances created in main.py.
 No behavior or logic is changed; we only compose the layout here to keep main.py slim.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -107,7 +108,9 @@ def build_settings_tab(
                                         color=WITH_OPACITY(0.7, BORDER_BASE),
                                     ),
                                     ft.Row([runpod_key_tf], wrap=True),
-                                    ft.Row([runpod_test_btn, runpod_save_btn, runpod_remove_btn], spacing=10, wrap=True),
+                                    ft.Row(
+                                        [runpod_test_btn, runpod_save_btn, runpod_remove_btn], spacing=10, wrap=True
+                                    ),
                                     runpod_status,
                                     ft.Divider(),
                                     # Ollama
@@ -127,7 +130,9 @@ def build_settings_tab(
                                     ft.Row([ollama_enable_cb], wrap=True),
                                     ft.Row([ollama_base_url_tf, ollama_default_model_tf], wrap=True),
                                     ft.Row([ollama_models_dd], wrap=True),
-                                    ft.Row([ollama_test_btn, ollama_refresh_btn, ollama_save_btn], spacing=10, wrap=True),
+                                    ft.Row(
+                                        [ollama_test_btn, ollama_refresh_btn, ollama_save_btn], spacing=10, wrap=True
+                                    ),
                                     ollama_status,
                                 ],
                                 spacing=12,

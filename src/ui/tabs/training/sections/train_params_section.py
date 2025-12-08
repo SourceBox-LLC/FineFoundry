@@ -3,6 +3,7 @@
 Composes the training parameters block using controls created in main.py.
 Layout-only; no logic moved.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -38,19 +39,25 @@ def build_train_params_section(
     visible: bool = False,
 ) -> ft.Container:
     return ft.Container(
-        content=ft.Column([
-            section_title(
-                "Training Params",
-                getattr(ICONS, "SETTINGS", ICONS.DESCRIPTION),
-                "Basic hyperparameters and LoRA toggle for training.",
-                on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
-            ),
-            ft.Row([skill_level, beginner_mode_dd], wrap=True),
-            ft.Row([expert_gpu_dd, expert_gpu_busy, expert_spot_cb, expert_gpu_refresh_btn], wrap=True),
-            ft.Row([base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf], wrap=True),
-            ft.Row([packing_row, auto_resume_row, push_row, hf_repo_row, resume_from_row], wrap=True),
-            advanced_params_section,
-            ft.Divider(),
-        ], spacing=0),
+        content=ft.Column(
+            [
+                section_title(
+                    "Training Params",
+                    getattr(ICONS, "SETTINGS", ICONS.DESCRIPTION),
+                    "Basic hyperparameters and LoRA toggle for training.",
+                    on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
+                ),
+                ft.Row([skill_level, beginner_mode_dd], wrap=True),
+                ft.Row([expert_gpu_dd, expert_gpu_busy, expert_spot_cb, expert_gpu_refresh_btn], wrap=True),
+                ft.Row(
+                    [base_model, epochs_tf, lr_tf, batch_tf, grad_acc_tf, max_steps_tf, use_lora_cb, out_dir_tf],
+                    wrap=True,
+                ),
+                ft.Row([packing_row, auto_resume_row, push_row, hf_repo_row, resume_from_row], wrap=True),
+                advanced_params_section,
+                ft.Divider(),
+            ],
+            spacing=0,
+        ),
         visible=visible,
     )

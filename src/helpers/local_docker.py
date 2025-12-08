@@ -61,10 +61,16 @@ async def on_docker_pull(
                 pass
             try:
                 page.snack_bar = ft.SnackBar(
-                    content=ft.Row([
-                        ft.Icon(getattr(ICONS, "ERROR_OUTLINE", getattr(ICONS, "ERROR", ICONS.WARNING)), color=COLORS.WHITE),
-                        ft.Text(nice_msg, color=COLORS.WHITE),
-                    ], spacing=8),
+                    content=ft.Row(
+                        [
+                            ft.Icon(
+                                getattr(ICONS, "ERROR_OUTLINE", getattr(ICONS, "ERROR", ICONS.WARNING)),
+                                color=COLORS.WHITE,
+                            ),
+                            ft.Text(nice_msg, color=COLORS.WHITE),
+                        ],
+                        spacing=8,
+                    ),
                     bgcolor=getattr(COLORS, "RED_400", getattr(COLORS, "RED", None)),
                 )
                 page.open(page.snack_bar)
@@ -190,11 +196,20 @@ async def on_docker_pull(
                 try:
                     ref = repo
                     if ref.startswith("docker.io/"):
-                        ref = ref[len("docker.io/"):]
-                    ls = subprocess.run([
-                        "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}",
-                        "--filter", f"reference={ref}:*"
-                    ], capture_output=True, text=True)
+                        ref = ref[len("docker.io/") :]
+                    ls = subprocess.run(
+                        [
+                            "docker",
+                            "image",
+                            "ls",
+                            "--format",
+                            "{{.Repository}}:{{.Tag}}",
+                            "--filter",
+                            f"reference={ref}:*",
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
                     lines = [line.strip() for line in (ls.stdout or "").splitlines() if line.strip()]
                     if lines:
                         hints.append("Local tags found: " + ", ".join(lines[:8]))
@@ -204,7 +219,7 @@ async def on_docker_pull(
                 try:
                     hub_repo = repo
                     if hub_repo.startswith("docker.io/"):
-                        hub_repo = hub_repo[len("docker.io/"):]
+                        hub_repo = hub_repo[len("docker.io/") :]
                     url = f"https://hub.docker.com/v2/repositories/{hub_repo}/tags?page_size=10"
                     r = httpx.get(url, timeout=5.0)
                     if r.status_code == 200:

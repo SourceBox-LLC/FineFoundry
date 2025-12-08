@@ -3,11 +3,13 @@
 This module composes the Training tab UI using controls created in main.py.
 No logic changes; only layout composition is centralized here.
 """
+
 from __future__ import annotations
 
 import flet as ft
 
 from ui.tabs.training.sections.header_section import build_target_selector_section
+
 
 def build_training_tab(
     *,
@@ -27,10 +29,14 @@ def build_training_tab(
     target_selector = build_target_selector_section(train_target_dd=train_target_dd)
 
     return ft.Container(
-        content=ft.Column([
-            ft.Row([target_selector], alignment=ft.MainAxisAlignment.CENTER),
-            pod_content_container,
-            local_specs_container,
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
+        content=ft.Column(
+            [
+                ft.Row([target_selector], alignment=ft.MainAxisAlignment.CENTER),
+                pod_content_container,
+                local_specs_container,
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=0,
+        ),
         padding=16,
     )

@@ -3,6 +3,7 @@
 This module composes the Inference tab UI using controls created in main.py.
 No behavior changes; only layout composition is centralized here.
 """
+
 from __future__ import annotations
 
 import flet as ft

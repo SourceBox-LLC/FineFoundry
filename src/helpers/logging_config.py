@@ -6,6 +6,7 @@ This module provides a unified logging setup with:
 - Configurable log levels
 - Structured logging format
 """
+
 import logging
 import os
 from logging.handlers import RotatingFileHandler

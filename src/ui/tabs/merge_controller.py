@@ -4,6 +4,7 @@ This module builds the Merge tab controls and wires up all merge and
 preview handlers, keeping `src/main.py` slimmer. Layout composition
 still lives in `tab_merge.py` and its per-section builders.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -152,9 +153,7 @@ def build_merge_tab_with_logic(
         }
 
         def on_source_change(_):
-            is_hf = (
-                getattr(source_dd, "value", "Hugging Face") or "Hugging Face"
-            ) == "Hugging Face"
+            is_hf = (getattr(source_dd, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
             ds_id.visible = is_hf
             split.visible = is_hf
             config.visible = is_hf

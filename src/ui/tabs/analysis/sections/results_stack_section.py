@@ -2,6 +2,7 @@
 
 Composes the sequence of result blocks and dividers into a single column.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -21,16 +22,19 @@ def build_results_stack_section(
     div_samples: ft.Divider,
     samples_block: ft.Container,
 ) -> ft.Column:
-    return ft.Column([
-        analysis_overview_note,
-        div_overview,
-        overview_block,
-        div_sentiment,
-        sentiment_block,
-        div_class,
-        class_balance_block,
-        div_extra,
-        extra_metrics_block,
-        div_samples,
-        samples_block,
-    ], spacing=12)
+    return ft.Column(
+        [
+            analysis_overview_note,
+            div_overview,
+            overview_block,
+            div_sentiment,
+            sentiment_block,
+            div_class,
+            class_balance_block,
+            div_extra,
+            extra_metrics_block,
+            div_samples,
+            samples_block,
+        ],
+        spacing=12,
+    )

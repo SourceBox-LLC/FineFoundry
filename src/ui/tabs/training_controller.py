@@ -5,6 +5,7 @@ state wiring, keeping `src/main.py` slimmer. Layout composition remains
 in `tab_training.py` and the per-section builders under
 `ui/tabs/training/sections/`.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -50,7 +51,10 @@ from helpers.training_config import (
     validate_config as validate_config_helper,
 )
 from helpers.local_docker import on_docker_pull as on_docker_pull_helper
-from helpers.local_specs import gather_local_specs as gather_local_specs_helper, refresh_local_gpus as refresh_local_gpus_helper
+from helpers.local_specs import (
+    gather_local_specs as gather_local_specs_helper,
+    refresh_local_gpus as refresh_local_gpus_helper,
+)
 from ui.tabs.tab_training import build_training_tab
 from ui.tabs.training.sections.config_section import build_config_section
 from ui.tabs.training.sections.dataset_section import build_dataset_section
@@ -71,6 +75,7 @@ except Exception:  # pragma: no cover - defensive
 
     __sys2.path.append(os.path.dirname(__file__))
     from runpod import runpod_pod as rp_pod
+
     try:
         from runpod import ensure_infra as rp_infra
     except Exception:  # pragma: no cover - defensive
@@ -163,7 +168,7 @@ def build_training_tab_with_logic(
         train_hf_repo.visible = is_hf
         train_hf_split.visible = is_hf
         train_hf_config.visible = is_hf
-        train_json_path.visible = (not is_hf)
+        train_json_path.visible = not is_hf
         try:
             page.update()
         except Exception:  # pragma: no cover - UI best-effort
@@ -202,8 +207,7 @@ def build_training_tab_with_logic(
         width=260,
         visible=False,
         tooltip=(
-            "Pick a GPU type available in the selected datacenter. "
-            "'AUTO' will pick the best available secure GPU."
+            "Pick a GPU type available in the selected datacenter. 'AUTO' will pick the best available secure GPU."
         ),
     )
     expert_spot_cb = ft.Checkbox(
@@ -216,7 +220,11 @@ def build_training_tab_with_logic(
         icon=getattr(
             ICONS,
             "REFRESH",
-            getattr(ICONS, "AUTORENEW", getattr(ICONS, "UPDATE", getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", ICONS.REFRESH)))),
+            getattr(
+                ICONS,
+                "AUTORENEW",
+                getattr(ICONS, "UPDATE", getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", ICONS.REFRESH))),
+            ),
         ),
         tooltip="Refresh available GPUs from Runpod",
         visible=False,
@@ -227,7 +235,7 @@ def build_training_tab_with_logic(
 
     def _update_expert_spot_enabled(_=None):
         try:
-            gid = (expert_gpu_dd.value or "AUTO")
+            gid = expert_gpu_dd.value or "AUTO"
             flags = expert_gpu_avail.get(gid) or {}
             sec_ok = bool(flags.get("secureAvailable"))
             spot_ok = bool(flags.get("spotAvailable"))
@@ -368,7 +376,9 @@ def build_training_tab_with_logic(
 
     # Group each control with its info icon
     packing_row = ft.Row([packing_cb, packing_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    auto_resume_row = ft.Row([auto_resume_cb, auto_resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    auto_resume_row = ft.Row(
+        [auto_resume_cb, auto_resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER
+    )
     push_row = ft.Row([push_cb, push_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     hf_repo_row = ft.Row([hf_repo_id_tf, hf_repo_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     resume_from_row = ft.Row([resume_from_tf, resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
@@ -468,7 +478,11 @@ def build_training_tab_with_logic(
                     pass
 
             # 2) Step/total patterns (Step 100/1000, global_step 12/500, Iteration 5 of 20)
-            m = re.search(r"(?:global[_ ]?step|steps?|iter(?:ation)?|it(?:er)?)\s*[:=]?\s*(\d+)\s*(?:/|of)\s*(\d+)", s, re.IGNORECASE)
+            m = re.search(
+                r"(?:global[_ ]?step|steps?|iter(?:ation)?|it(?:er)?)\s*[:=]?\s*(\d+)\s*(?:/|of)\s*(\d+)",
+                s,
+                re.IGNORECASE,
+            )
             if m:
                 try:
                     cur = int(m.group(1))
@@ -525,16 +539,16 @@ def build_training_tab_with_logic(
 
     def _update_skill_controls(_=None):
         level = (skill_level.value or "Beginner").lower()
-        is_beginner = (level == "beginner")
+        is_beginner = level == "beginner"
         # Hide some tweak knobs for beginners
         for ctl in [lr_tf, batch_tf, grad_acc_tf, max_steps_tf]:
             try:
-                ctl.visible = (not is_beginner)
+                ctl.visible = not is_beginner
             except Exception:
                 pass
         # Advanced block
         try:
-            advanced_params_section.visible = (not is_beginner)
+            advanced_params_section.visible = not is_beginner
         except Exception:
             pass
         # Beginner target control visibility
@@ -544,17 +558,17 @@ def build_training_tab_with_logic(
             pass
         # Expert GPU picker visibility
         try:
-            expert_gpu_dd.visible = (not is_beginner)
+            expert_gpu_dd.visible = not is_beginner
             # Spot is only meaningful for Runpod target
             tgt = (train_target_dd.value or "Runpod - Pod").lower()
             if tgt.startswith("runpod - pod"):
-                expert_spot_cb.visible = (not is_beginner)
+                expert_spot_cb.visible = not is_beginner
                 expert_spot_cb.disabled = False
             else:
                 expert_spot_cb.value = False
                 expert_spot_cb.disabled = True
                 expert_spot_cb.visible = False
-            expert_gpu_refresh_btn.visible = (not is_beginner)
+            expert_gpu_refresh_btn.visible = not is_beginner
             if is_beginner:
                 expert_gpu_busy.visible = False
         except Exception:
@@ -726,11 +740,7 @@ def build_training_tab_with_logic(
                 "infra_ui": _collect_infra_ui_state(),
                 "meta": {
                     "skill_level": skill_level.value,
-                    "beginner_mode": (
-                        beginner_mode_dd.value
-                        if (skill_level.value or "") == "Beginner"
-                        else ""
-                    ),
+                    "beginner_mode": (beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else ""),
                 },
                 "pod": {
                     "gpu_type_id": chosen_gpu_type_id,
@@ -748,15 +758,11 @@ def build_training_tab_with_logic(
                 try:
                     with open(path, "w", encoding="utf-8") as f:
                         json.dump(payload, f, indent=2)
-                    page.snack_bar = ft.SnackBar(
-                        ft.Text(f"Saved config: {os.path.basename(path)}")
-                    )
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
                     page.snack_bar.open = True
                     _refresh_config_list()
                 except Exception as ex:
-                    page.snack_bar = ft.SnackBar(
-                        ft.Text(f"Failed to save config: {ex}")
-                    )
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Failed to save config: {ex}"))
                     page.snack_bar.open = True
                 try:
                     dlg.open = False
@@ -908,11 +914,7 @@ def build_training_tab_with_logic(
                         try:
                             await asyncio.to_thread(
                                 rp_pod.delete_pod,
-                                (
-                                    train_state.get("api_key")
-                                    or os.environ.get("RUNPOD_API_KEY")
-                                    or ""
-                                ).strip(),
+                                (train_state.get("api_key") or os.environ.get("RUNPOD_API_KEY") or "").strip(),
                                 pod_id,
                             )
                         finally:
@@ -1119,8 +1121,7 @@ def build_training_tab_with_logic(
     rp_resize_info = ft.IconButton(
         icon=getattr(ICONS, "INFO_OUTLINE", getattr(ICONS, "INFO", getattr(ICONS, "HELP_OUTLINE", None))),
         tooltip=(
-            "If enabled, an existing volume smaller than the requested size will be expanded. "
-            "It never shrinks volumes."
+            "If enabled, an existing volume smaller than the requested size will be expanded. It never shrinks volumes."
         ),
         on_click=_mk_help_handler(
             "When ensuring the Runpod Network Volume: if a volume with this name already exists and its size "
@@ -1130,9 +1131,7 @@ def build_training_tab_with_logic(
     )
 
     # Keep the info icon on the right of the checkbox by grouping them together
-    rp_resize_row = ft.Row(
-        [rp_resize_cb, rp_resize_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER
-    )
+    rp_resize_row = ft.Row([rp_resize_cb, rp_resize_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     rp_tpl_name_tf = ft.TextField(label="Template name", value="unsloth-trainer-template", width=260)
     rp_image_tf = ft.TextField(
@@ -1151,9 +1150,7 @@ def build_training_tab_with_logic(
         label="Mount path",
         value="/data",
         width=220,
-        tooltip=(
-            "Avoid mounting at /workspace to prevent hiding train.py inside the image. /data is recommended."
-        ),
+        tooltip=("Avoid mounting at /workspace to prevent hiding train.py inside the image. /data is recommended."),
     )
     rp_category_tf = ft.TextField(label="Category", value="NVIDIA", width=160)
     rp_public_cb = ft.Checkbox(label="Public template", value=False)
@@ -1164,9 +1161,7 @@ def build_training_tab_with_logic(
         password=True,
         can_reveal_password=True,
         width=420,
-        tooltip=(
-            "Optional. Overrides Settings key for this run. You can also set RUNPOD_API_KEY env var."
-        ),
+        tooltip=("Optional. Overrides Settings key for this run. You can also set RUNPOD_API_KEY env var."),
     )
 
     # Info icon for "Public template": clarifies visibility and considerations
@@ -1179,9 +1174,7 @@ def build_training_tab_with_logic(
             "Avoid putting sensitive environment variables in the template.",
         ),
     )
-    rp_public_row = ft.Row(
-        [rp_public_cb, rp_public_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER
-    )
+    rp_public_row = ft.Row([rp_public_cb, rp_public_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     # (SSH exposure option removed by request)
     rp_infra_busy = ft.ProgressRing(visible=False)
@@ -1345,6 +1338,7 @@ def build_training_tab_with_logic(
                 page.run_task(refresh_local_gpus)
         except Exception:
             pass
+
     try:
         expert_gpu_refresh_btn.on_click = on_click_expert_gpu_refresh
     except Exception:
@@ -1450,10 +1444,7 @@ def build_training_tab_with_logic(
     save_config_bottom_btn = ft.TextButton(
         "Save current setup",
         icon=getattr(ICONS, "SAVE", ICONS.CHECK),
-        tooltip=(
-            "Save the current training setup (dataset, hyperparameters, target, and infra) "
-            "as a reusable config."
-        ),
+        tooltip=("Save the current training setup (dataset, hyperparameters, target, and infra) as a reusable config."),
         on_click=lambda e: page.run_task(on_save_current_config),
     )
     train_actions = ft.Row(
@@ -1644,12 +1635,12 @@ def build_training_tab_with_logic(
         except Exception:
             pass
         try:
-            dataset_section.visible = (not is_cfg)
-            train_params_section.visible = (not is_cfg)
+            dataset_section.visible = not is_cfg
+            train_params_section.visible = not is_cfg
             rp_infra_panel.visible = (not is_cfg) and is_pod_target
             rp_infra_compact_row.visible = is_cfg and is_pod_target
             try:
-                ds_tp_group_container.visible = (not is_cfg)
+                ds_tp_group_container.visible = not is_cfg
             except Exception:
                 pass
         except Exception:
@@ -1997,19 +1988,14 @@ def build_training_tab_with_logic(
         try:
             info = train_state.get("local_infer") or {}
             adapter_path = (info.get("adapter_path") or "").strip()
-            base_model_name = (
-                info.get("base_model")
-                or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-            ).strip()
+            base_model_name = (info.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
             if adapter_path and os.path.isdir(adapter_path):
                 local_infer_group_container.visible = True
                 local_infer_status.value = (
                     "Training finished  Quick Local Inference is ready. "
                     "Enter a prompt below to test your fine-tuned model."
                 )
-                local_infer_meta.value = (
-                    f"Adapter: {adapter_path}  Base model: {base_model_name}"
-                )
+                local_infer_meta.value = f"Adapter: {adapter_path}  Base model: {base_model_name}"
             else:
                 local_infer_status.value = (
                     "Quick local inference not available yet. Ensure training completed successfully."
@@ -2033,33 +2019,22 @@ def build_training_tab_with_logic(
     async def on_local_infer_generate(e=None):
         prompt = (local_infer_prompt_tf.value or "").strip()
         if not prompt:
-            local_infer_status.value = (
-                "Enter a prompt to test the latest local adapter."
-            )
+            local_infer_status.value = "Enter a prompt to test the latest local adapter."
             await safe_update(page)
             return
         info = train_state.get("local_infer") or {}
         adapter_path = (info.get("adapter_path") or "").strip()
-        base_model_name = (
-            info.get("base_model")
-            or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        ).strip()
+        base_model_name = (info.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
         if (not adapter_path) or (not os.path.isdir(adapter_path)):
-            local_infer_status.value = (
-                "Quick local inference is not ready. Run a successful local training first."
-            )
+            local_infer_status.value = "Quick local inference is not ready. Run a successful local training first."
             await safe_update(page)
             return
         try:
-            max_tokens = int(
-                getattr(local_infer_max_tokens_slider, "value", 256) or 256
-            )
+            max_tokens = int(getattr(local_infer_max_tokens_slider, "value", 256) or 256)
         except Exception:
             max_tokens = 256
         try:
-            temperature = float(
-                getattr(local_infer_temp_slider, "value", 0.7) or 0.7
-            )
+            temperature = float(getattr(local_infer_temp_slider, "value", 0.7) or 0.7)
         except Exception:
             temperature = 0.7
         if max_tokens <= 0:
@@ -2073,13 +2048,9 @@ def build_training_tab_with_logic(
         except Exception:
             pass
         if not loaded:
-            local_infer_status.value = (
-                "Loading fine-tuned model and generating response..."
-            )
+            local_infer_status.value = "Loading fine-tuned model and generating response..."
         else:
-            local_infer_status.value = (
-                "Generating response from fine-tuned model..."
-            )
+            local_infer_status.value = "Generating response from fine-tuned model..."
         await safe_update(page)
         try:
             text = await asyncio.to_thread(
@@ -2256,15 +2227,15 @@ def build_training_tab_with_logic(
     def _collect_local_ui_state() -> dict:
         data: dict = {}
         try:
-            data["host_dir"] = (local_host_dir_tf.value or "")
+            data["host_dir"] = local_host_dir_tf.value or ""
         except Exception:
             data["host_dir"] = ""
         try:
-            data["container_name"] = (local_container_name_tf.value or "")
+            data["container_name"] = local_container_name_tf.value or ""
         except Exception:
             data["container_name"] = ""
         try:
-            data["docker_image"] = (docker_image_tf.value or "")
+            data["docker_image"] = docker_image_tf.value or ""
         except Exception:
             data["docker_image"] = ""
         try:
@@ -2326,7 +2297,7 @@ def build_training_tab_with_logic(
                 pass
             return
         try:
-            default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(payload.get('hp', {}).get('base_model','model')).replace('/', '_')}.json"
+            default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(payload.get('hp', {}).get('base_model', 'model')).replace('/', '_')}.json"
         except Exception:
             default_name = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
         name_tf = ft.TextField(label="Save as", value=default_name, width=420)
@@ -2337,7 +2308,7 @@ def build_training_tab_with_logic(
                 if not name:
                     return
                 d = _saved_configs_dir()
-                path = os.path.join(d, name if name.endswith('.json') else f"{name}.json")
+                path = os.path.join(d, name if name.endswith(".json") else f"{name}.json")
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, indent=2, ensure_ascii=False)
                     f.write("\n")
@@ -2515,7 +2486,9 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
             try:
-                local_pass_hf_token_cb.value = bool(lu.get("pass_hf_token", getattr(local_pass_hf_token_cb, "value", False)))
+                local_pass_hf_token_cb.value = bool(
+                    lu.get("pass_hf_token", getattr(local_pass_hf_token_cb, "value", False))
+                )
             except Exception:
                 pass
         except Exception:
@@ -2597,7 +2570,7 @@ def build_training_tab_with_logic(
                 new_name = (new_tf.value or name).strip()
                 if not new_name:
                     return
-                if not new_name.lower().endswith('.json'):
+                if not new_name.lower().endswith(".json"):
                     new_name = f"{new_name}.json"
                 d = _saved_configs_dir()
                 src = os.path.join(d, name)
@@ -2637,7 +2610,10 @@ def build_training_tab_with_logic(
             modal=True,
             title=ft.Row(
                 [
-                    ft.Icon(getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)), color=ACCENT_COLOR),
+                    ft.Icon(
+                        getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)),
+                        color=ACCENT_COLOR,
+                    ),
                     ft.Text("Rename configuration"),
                 ],
                 alignment=ft.MainAxisAlignment.START,
@@ -3181,7 +3157,7 @@ def build_training_tab_with_logic(
             # Always show the wrapper; toggle inner sections as needed
             pod_content_container.visible = True
             # Show Local Specs when local
-            local_specs_container.visible = (not is_pod)
+            local_specs_container.visible = not is_pod
             # Toggle Runpod-only panels and pod log/actions
             try:
                 rp_infra_panel.visible = is_pod
@@ -3229,13 +3205,9 @@ def build_training_tab_with_logic(
                                 ),
                             ),
                             ft.Container(
-                                content=ft.Column(
-                                    [dataset_section, train_params_section], spacing=0
-                                ),
+                                content=ft.Column([dataset_section, train_params_section], spacing=0),
                                 width=1000,
-                                border=ft.border.all(
-                                    1, WITH_OPACITY(0.1, BORDER_BASE)
-                                ),
+                                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                                 border_radius=8,
                                 padding=10,
                             ),
@@ -3258,13 +3230,9 @@ def build_training_tab_with_logic(
                                 ),
                             ),
                             ft.Container(
-                                content=ft.Column(
-                                    [dataset_section, train_params_section], spacing=0
-                                ),
+                                content=ft.Column([dataset_section, train_params_section], spacing=0),
                                 width=1000,
-                                border=ft.border.all(
-                                    1, WITH_OPACITY(0.1, BORDER_BASE)
-                                ),
+                                border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
                                 border_radius=8,
                                 padding=10,
                             ),
@@ -3284,21 +3252,15 @@ def build_training_tab_with_logic(
             # Restore Runpod spot visibility depending on skill
             try:
                 expert_spot_cb.disabled = False
-                expert_spot_cb.visible = (
-                    (skill_level.value or "Beginner").lower() != "beginner"
-                )
+                expert_spot_cb.visible = (skill_level.value or "Beginner").lower() != "beginner"
             except Exception:
                 pass
             # If switching back to Runpod and expert GPU list looks local/unpopulated, refresh Runpod GPUs
             try:
-                is_beginner = (
-                    (skill_level.value or "Beginner").lower() == "beginner"
-                )
+                is_beginner = (skill_level.value or "Beginner").lower() == "beginner"
                 if not is_beginner:
-                    opts = (getattr(expert_gpu_dd, "options", []) or [])
-                    dd_tip = (
-                        getattr(expert_gpu_dd, "tooltip", "") or ""
-                    ).lower()
+                    opts = getattr(expert_gpu_dd, "options", []) or []
+                    dd_tip = (getattr(expert_gpu_dd, "tooltip", "") or "").lower()
                     if (len(opts) <= 1) or ("local" in dd_tip):
                         if hasattr(page, "run_task"):
                             page.run_task(refresh_expert_gpus)
@@ -3327,21 +3289,15 @@ def build_training_tab_with_logic(
                 pass
             # Show/hide local GPU checkbox based on skill (beginner uses checkbox, expert uses dropdown)
             try:
-                is_beginner = (
-                    (skill_level.value or "Beginner").lower() == "beginner"
-                )
+                is_beginner = (skill_level.value or "Beginner").lower() == "beginner"
                 local_use_gpu_cb.visible = is_beginner
             except Exception:
                 pass
             # If expert mode and dropdown not populated with locals yet, populate
             try:
-                if (
-                    (skill_level.value or "Beginner").lower() != "beginner"
-                    and len(
-                        (getattr(expert_gpu_dd, "options", []) or [])
-                    )
-                    <= 1
-                ):
+                if (skill_level.value or "Beginner").lower() != "beginner" and len(
+                    (getattr(expert_gpu_dd, "options", []) or [])
+                ) <= 1:
                     if hasattr(page, "run_task"):
                         page.run_task(refresh_local_gpus)
             except Exception:

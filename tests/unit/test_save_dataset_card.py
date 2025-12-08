@@ -36,9 +36,11 @@ def test_truncate_handles_newlines_and_length():
 
 def test_build_dataset_card_content_includes_counts_and_example():
     # Single-record train set so sampling is deterministic
-    train = Dataset.from_list([
-        {"input": "hello", "output": "world"},
-    ])
+    train = Dataset.from_list(
+        [
+            {"input": "hello", "output": "world"},
+        ]
+    )
     dd = DatasetDict({"train": train})
 
     md = sd.build_dataset_card_content(dd, "user/ds")

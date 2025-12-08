@@ -1,4 +1,3 @@
-import random
 
 import pytest
 
@@ -34,10 +33,7 @@ def test_normalize_records_chatml_user_assistant_pair():
 
 @pytest.mark.parametrize("val_size,test_size", [(0.2, 0.1), (0.0, 0.0)])
 def test_build_dataset_dict_splits_cover_all_examples(val_size: float, test_size: float):
-    examples = [
-        {"input": f"in-{i}", "output": f"out-{i}"}
-        for i in range(10)
-    ]
+    examples = [{"input": f"in-{i}", "output": f"out-{i}"} for i in range(10)]
 
     # Use deterministic seed and no shuffle by default so counts are stable
     dd = sd.build_dataset_dict(

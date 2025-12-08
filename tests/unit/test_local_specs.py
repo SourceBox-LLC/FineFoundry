@@ -2,7 +2,7 @@ import helpers.local_specs as ls
 
 
 def test_bytes_to_gb_basic():
-    one_gb = 1024 ** 3
+    one_gb = 1024**3
     assert ls._bytes_to_gb(one_gb) == 1.0
     assert ls._bytes_to_gb(0) == 0.0
 

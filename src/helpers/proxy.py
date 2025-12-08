@@ -2,6 +2,7 @@ import os
 from typing import Optional
 
 from scrapers import fourchan_scraper as sc
+
 try:
     from scrapers import reddit_scraper as rdt
 except Exception:
@@ -72,7 +73,9 @@ def apply_proxy_from_env() -> str:
 
     # No env overrides provided; report module defaults
     try:
-        eff_env = bool(getattr(sc, "USE_ENV_PROXIES", False)) or bool(getattr(rdt, "USE_ENV_PROXIES", False) if rdt is not None else False)
+        eff_env = bool(getattr(sc, "USE_ENV_PROXIES", False)) or bool(
+            getattr(rdt, "USE_ENV_PROXIES", False) if rdt is not None else False
+        )
     except Exception:
         eff_env = False
     if eff_env:
@@ -143,6 +146,7 @@ def apply_proxy_from_ui(enabled: bool, proxy_url: Optional[str], use_env: bool) 
     if proxy_url:
         return f"Proxy: routing via {proxy_url} (UI)"
     return "Proxy: disabled (no proxy URL provided)"
+
 
 __all__ = [
     "_env_truthy",

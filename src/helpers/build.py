@@ -15,6 +15,7 @@ try:
     import save_dataset as sd
 except Exception:  # pragma: no cover - fallback for alternate runtimes
     import sys as _sys
+
     _sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     import save_dataset as sd
 
@@ -108,7 +109,7 @@ async def run_build(
     token_val = saved_tok or token_val_ui_s
 
     # If using locally merged dataset, skip JSON pipeline and load from disk
-    if (source_val == "Merged dataset"):
+    if source_val == "Merged dataset":
         add_step(f"Loading merged dataset from: {merged_path}", COLORS.BLUE, ICONS.UPLOAD_FILE)
         await safe_update(page)
         try:
@@ -142,7 +143,9 @@ async def run_build(
         train_n = len(dd.get("train", []))
         val_n = len(dd.get("validation", [])) if "validation" in dd else 0
         test_n = len(dd.get("test", [])) if "test" in dd else 0
-        split_badges["train"].content = pill(f"Train: {train_n}", split_meta["train"][0], split_meta["train"][1]).content
+        split_badges["train"].content = pill(
+            f"Train: {train_n}", split_meta["train"][0], split_meta["train"][1]
+        ).content
         split_badges["val"].content = pill(f"Val: {val_n}", split_meta["val"][0], split_meta["val"][1]).content
         split_badges["test"].content = pill(f"Test: {test_n}", split_meta["test"][0], split_meta["test"][1]).content
         await safe_update(page)
@@ -151,7 +154,9 @@ async def run_build(
         save_text = ft.Text(f"Saving dataset to {out_dir}")
         timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), save_text]))
         await safe_update(page)
-        save_task = asyncio.create_task(asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir))))
+        save_task = asyncio.create_task(
+            asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
+        )
         i = 0
         while not save_task.done():
             if cancel_build["cancelled"]:
@@ -207,7 +212,9 @@ async def run_build(
                 await push_task
 
                 if cancel_build["cancelled"]:
-                    timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")]))
+                    timeline.controls.append(
+                        ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")])
+                    )
                     await safe_update(page)
                     return
 
@@ -241,10 +248,12 @@ async def run_build(
 
                 _url = f"https://huggingface.co/datasets/{repo}"
                 timeline.controls.append(
-                    ft.Row([
-                        ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
-                        ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
-                    ])
+                    ft.Row(
+                        [
+                            ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
+                            ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
+                        ]
+                    )
                 )
                 add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
                 page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
@@ -332,7 +341,9 @@ async def run_build(
     save_text = ft.Text(f"Saving dataset to {out_dir}")
     timeline.controls.append(ft.Row([ft.Icon(ICONS.SAVE_ALT, color=COLORS.BLUE), save_text]))
     await safe_update(page)
-    save_task = asyncio.create_task(asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir))))
+    save_task = asyncio.create_task(
+        asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
+    )
     i = 0
     while not save_task.done():
         if cancel_build["cancelled"]:
@@ -393,7 +404,9 @@ async def run_build(
             await push_task
 
             if cancel_build["cancelled"]:
-                timeline.controls.append(ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")]))
+                timeline.controls.append(
+                    ft.Row([ft.Icon(ICONS.CANCEL, color=COLORS.RED), ft.Text("Build cancelled by user")])
+                )
                 await safe_update(page)
                 return
 
@@ -428,10 +441,12 @@ async def run_build(
 
             _url = f"https://huggingface.co/datasets/{repo}"
             timeline.controls.append(
-                ft.Row([
-                    ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
-                    ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
-                ])
+                ft.Row(
+                    [
+                        ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
+                        ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
+                    ]
+                )
             )
             add_step("Push complete!", COLORS.GREEN, ICONS.CHECK_CIRCLE)
             page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))
@@ -440,6 +455,7 @@ async def run_build(
         except Exception as e:
             add_step(f"Push failed: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
             await safe_update(page)
+
 
 async def run_push_async(
     *,
@@ -488,13 +504,17 @@ async def run_push_async(
     for ctl in build_actions.controls:
         if isinstance(ctl, ft.TextButton) and "Push + Upload README" in getattr(ctl, "text", ""):
             ctl.disabled = True
-    timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), ft.Text(f"Pushing to Hub: {repo}")]))
+    timeline.controls.append(
+        ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), ft.Text(f"Pushing to Hub: {repo}")])
+    )
     await safe_update(page)
     update_status_placeholder()
 
     try:
         await asyncio.to_thread(sd.push_to_hub, dd, repo, bool(private.value), tok)
-        timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Dataset pushed to Hub")]))
+        timeline.controls.append(
+            ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Dataset pushed to Hub")])
+        )
         await safe_update(page)
 
         _custom_enabled = bool(getattr(use_custom_card, "value", False))
@@ -504,14 +524,18 @@ async def run_push_async(
         else:
             readme = await asyncio.to_thread(sd.build_dataset_card_content, dd, repo)
         await asyncio.to_thread(sd.upload_readme, repo, tok, readme)
-        timeline.controls.append(ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.GREEN), ft.Text("Uploaded dataset card (README)")]))
+        timeline.controls.append(
+            ft.Row([ft.Icon(ICONS.ARTICLE, color=COLORS.GREEN), ft.Text("Uploaded dataset card (README)")])
+        )
         # Add link to dataset on Hub
         _url = f"https://huggingface.co/datasets/{repo}"
         timeline.controls.append(
-            ft.Row([
-                ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
-                ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
-            ])
+            ft.Row(
+                [
+                    ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
+                    ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
+                ]
+            )
         )
         timeline.controls.append(ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Push complete!")]))
         page.snack_bar = ft.SnackBar(ft.Text("Pushed to Hub 🚀"))

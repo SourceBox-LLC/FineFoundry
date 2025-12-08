@@ -13,7 +13,7 @@ import flet as ft
 
 def _bytes_to_gb(b: int) -> float:
     try:
-        return round(float(b) / (1024 ** 3), 1)
+        return round(float(b) / (1024**3), 1)
     except Exception:
         return 0.0
 
@@ -22,8 +22,10 @@ def _total_ram_bytes() -> Optional[int]:
     # Try POSIX sysconf
     try:
         if (
-            hasattr(os, "sysconf") and hasattr(os, "sysconf_names")
-            and "SC_PAGE_SIZE" in os.sysconf_names and "SC_PHYS_PAGES" in os.sysconf_names
+            hasattr(os, "sysconf")
+            and hasattr(os, "sysconf_names")
+            and "SC_PAGE_SIZE" in os.sysconf_names
+            and "SC_PHYS_PAGES" in os.sysconf_names
         ):
             page_size = os.sysconf("SC_PAGE_SIZE")
             phys_pages = os.sysconf("SC_PHYS_PAGES")
@@ -34,6 +36,7 @@ def _total_ram_bytes() -> Optional[int]:
     # Windows via ctypes
     try:
         if platform.system().lower().startswith("win"):
+
             class MEMORYSTATUSEX(ctypes.Structure):
                 _fields_ = [
                     ("dwLength", ctypes.c_uint),
@@ -46,9 +49,14 @@ def _total_ram_bytes() -> Optional[int]:
                     ("ullAvailVirtual", ctypes.c_ulonglong),
                     ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
                 ]
+
             stat = MEMORYSTATUSEX()
             stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-            if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "kernel32") and hasattr(ctypes.windll.kernel32, "GlobalMemoryStatusEx"):
+            if (
+                hasattr(ctypes, "windll")
+                and hasattr(ctypes.windll, "kernel32")
+                and hasattr(ctypes.windll.kernel32, "GlobalMemoryStatusEx")
+            ):
                 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
                     return int(stat.ullTotalPhys)
     except Exception:
@@ -56,6 +64,7 @@ def _total_ram_bytes() -> Optional[int]:
     # Optional psutil fallback if installed
     try:
         import psutil
+
         return int(getattr(psutil, "virtual_memory")().total)
     except Exception:
         return None
@@ -67,6 +76,7 @@ def _probe_gpus_via_torch():
     torch_ok = False
     try:
         import torch
+
         torch_ok = True
         cuda_ok = bool(torch.cuda.is_available())
         if cuda_ok:
@@ -88,11 +98,16 @@ def _probe_gpus_via_nvidia_smi():
     gpus: List[dict] = []
     try:
         if shutil.which("nvidia-smi"):
-            out = subprocess.check_output(
-                ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                stderr=subprocess.STDOUT,
-                timeout=3,
-            ).decode("utf-8", errors="ignore").strip().splitlines()
+            out = (
+                subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+                    stderr=subprocess.STDOUT,
+                    timeout=3,
+                )
+                .decode("utf-8", errors="ignore")
+                .strip()
+                .splitlines()
+            )
             for idx, line in enumerate(out):
                 try:
                     parts = [p.strip() for p in line.split(",")]
@@ -211,14 +226,14 @@ async def refresh_local_gpus(
                 idx = g.get("index")
                 name = str(g.get("name") or f"GPU {idx}")
                 vram = g.get("vram_gb")
-                mem_txt = (f" {vram}GB" if isinstance(vram, (int, float)) and vram is not None else "")
+                mem_txt = f" {vram}GB" if isinstance(vram, (int, float)) and vram is not None else ""
                 if idx is not None:
                     opts.append(ft.dropdown.Option(text=f"GPU {idx}: {name}{mem_txt}", key=str(idx)))
             except Exception:
                 pass
         expert_gpu_avail.clear()
-        cur = (expert_gpu_dd.value or "AUTO")
-        keys = {getattr(o, 'key', None) or o.text for o in opts}
+        cur = expert_gpu_dd.value or "AUTO"
+        keys = {getattr(o, "key", None) or o.text for o in opts}
         expert_gpu_dd.options = opts
         expert_gpu_dd.value = "AUTO" if cur not in keys else cur
         try:

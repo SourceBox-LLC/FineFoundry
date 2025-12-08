@@ -4,6 +4,7 @@ This module composes the Dataset Analysis tab UI using controls created in main.
 Delegates to per-section builders under `ui.tabs.analysis.sections`.
 No behavior changes.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -13,6 +14,7 @@ from ui.tabs.analysis.sections.dataset_chooser_section import build_dataset_choo
 from ui.tabs.analysis.sections.modules_section import build_modules_section
 from ui.tabs.analysis.sections.runtime_section import build_runtime_section
 from ui.tabs.analysis.sections.results_stack_section import build_results_stack_section
+
 
 def build_analysis_tab(
     *,
@@ -109,16 +111,25 @@ def build_analysis_tab(
     )
 
     return ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    header,
-                    dataset_chooser,
-                    modules_section,
-                    runtime_section,
-                    results_stack,
-                ], scroll=ft.ScrollMode.AUTO, spacing=12),
-                width=1000,
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START, expand=1)
+        content=ft.Row(
+            [
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            header,
+                            dataset_chooser,
+                            modules_section,
+                            runtime_section,
+                            results_stack,
+                        ],
+                        scroll=ft.ScrollMode.AUTO,
+                        spacing=12,
+                    ),
+                    width=1000,
+                )
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+            expand=1,
+        )
     )

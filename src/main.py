@@ -11,6 +11,7 @@ try:
     from runpod import ensure_infra as rp_infra
 except Exception:
     import sys as __sys2
+
     __sys2.path.append(os.path.dirname(__file__))
     try:
         from runpod import ensure_infra as rp_infra
@@ -64,10 +65,6 @@ from db.migrate import is_migration_complete
 set_terminal_title("PYTHON: MAIN")
 
 APP_TITLE = "FineFoundry"
-
-
-
-
 
 
 def main(page: ft.Page):
@@ -280,7 +277,9 @@ Tabs:
             if icon_const is not None:
                 # Use page.run_task if target is async; otherwise call directly
                 if getattr(on_click_cb, "__name__", "").endswith("_async"):
-                    return ft.IconButton(icon=icon_const, tooltip=tooltip, on_click=lambda e: page.run_task(on_click_cb))
+                    return ft.IconButton(
+                        icon=icon_const, tooltip=tooltip, on_click=lambda e: page.run_task(on_click_cb)
+                    )
                 return ft.IconButton(icon=icon_const, tooltip=tooltip, on_click=lambda e: on_click_cb(e))
         except Exception:
             pass
@@ -290,7 +289,9 @@ Tabs:
 
     page.appbar = ft.AppBar(
         leading=ft.IconButton(
-            icon=getattr(ICONS, "DATASET_LINKED_OUTLINED", getattr(ICONS, "DATASET", getattr(ICONS, "DESCRIPTION", None))),
+            icon=getattr(
+                ICONS, "DATASET_LINKED_OUTLINED", getattr(ICONS, "DATASET", getattr(ICONS, "DESCRIPTION", None))
+            ),
             tooltip="Open FineFoundry website",
             on_click=lambda e: page.launch_url("https://finefoundry.fly.dev/"),
         ),
@@ -298,7 +299,12 @@ Tabs:
         center_title=False,
         bgcolor=WITH_OPACITY(0.03, COLORS.AMBER),
         actions=[
-            _appbar_action(REFRESH_ICON or getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", None)), "Refresh app", refresh_app, text_fallback="Refresh"),
+            _appbar_action(
+                REFRESH_ICON or getattr(ICONS, "SYNC", getattr(ICONS, "CACHED", None)),
+                "Refresh app",
+                refresh_app,
+                text_fallback="Refresh",
+            ),
             _appbar_action(
                 getattr(ICONS, "DARK_MODE", getattr(ICONS, "BRIGHTNESS_4", getattr(ICONS, "NIGHTS_STAY", None))),
                 "Toggle theme",
@@ -321,6 +327,7 @@ Tabs:
                 open_user_guide(None)
         except Exception:
             pass
+
     try:
         page.on_keyboard_event = _kb
     except Exception:
@@ -342,7 +349,9 @@ Tabs:
                     page.open(page.snack_bar)
                 except Exception:
                     pass
+
         return _handler
+
     # ---------- SCRAPE TAB ----------
     # Built via ui.tabs.scrape_controller.build_scrape_tab_with_logic (controller-based wiring)
 
@@ -504,8 +513,10 @@ Tabs:
         last_err = None
         for u in urls:
             try:
+
                 def do_req():
                     return httpx.get(u, headers={"Authorization": f"Bearer {key}"}, timeout=6)
+
                 resp = await asyncio.to_thread(do_req)
                 if resp.status_code == 200:
                     runpod_status.value = "Valid ✓ — endpoints accessible"
@@ -545,7 +556,9 @@ Tabs:
         runpod_status.value = "Removed"
         page.update()
 
-    runpod_test_btn = ft.ElevatedButton("Test key", icon=ICONS.CHECK_CIRCLE, on_click=lambda e: page.run_task(on_test_runpod))
+    runpod_test_btn = ft.ElevatedButton(
+        "Test key", icon=ICONS.CHECK_CIRCLE, on_click=lambda e: page.run_task(on_test_runpod)
+    )
     runpod_save_btn = ft.OutlinedButton("Save", icon=ICONS.SAVE, on_click=on_save_runpod)
     runpod_remove_btn = ft.TextButton("Remove", icon=getattr(ICONS, "DELETE", ICONS.CANCEL), on_click=on_remove_runpod)
 
@@ -560,9 +573,15 @@ Tabs:
     }
 
     ollama_enable_cb = ft.Checkbox(label="Enable Ollama connection", value=_ollama_cfg.get("enabled", False))
-    ollama_base_url_tf = ft.TextField(label="Ollama base URL", value=_ollama_cfg.get("base_url", "http://127.0.0.1:11434"), width=420)
-    ollama_default_model_tf = ft.TextField(label="Preferred model (optional)", value=_ollama_cfg.get("default_model", ""), width=300)
-    ollama_models_dd = ft.Dropdown(label="Available models", options=[], value=_ollama_cfg.get("selected_model") or None, width=420, disabled=True)
+    ollama_base_url_tf = ft.TextField(
+        label="Ollama base URL", value=_ollama_cfg.get("base_url", "http://127.0.0.1:11434"), width=420
+    )
+    ollama_default_model_tf = ft.TextField(
+        label="Preferred model (optional)", value=_ollama_cfg.get("default_model", ""), width=300
+    )
+    ollama_models_dd = ft.Dropdown(
+        label="Available models", options=[], value=_ollama_cfg.get("selected_model") or None, width=420, disabled=True
+    )
     ollama_status = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
 
     def update_ollama_controls(_=None):
@@ -608,8 +627,12 @@ Tabs:
             pass
         page.update()
 
-    ollama_test_btn = ft.ElevatedButton("Test connection", icon=ICONS.CHECK_CIRCLE, on_click=lambda e: page.run_task(on_test_ollama))
-    ollama_refresh_btn = ft.TextButton("Refresh models", icon=REFRESH_ICON, on_click=lambda e: page.run_task(on_refresh_models))
+    ollama_test_btn = ft.ElevatedButton(
+        "Test connection", icon=ICONS.CHECK_CIRCLE, on_click=lambda e: page.run_task(on_test_ollama)
+    )
+    ollama_refresh_btn = ft.TextButton(
+        "Refresh models", icon=REFRESH_ICON, on_click=lambda e: page.run_task(on_refresh_models)
+    )
     ollama_save_btn = ft.OutlinedButton("Save", icon=ICONS.SAVE, on_click=on_save_ollama)
 
     try:
@@ -713,7 +736,11 @@ Tabs:
             ft.Tab(text="Dataset Analysis", icon=getattr(ICONS, "INSIGHTS", ICONS.ANALYTICS), content=analysis_tab),
             ft.Tab(text="Merge Datasets", icon=getattr(ICONS, "MERGE_TYPE", ICONS.TABLE_VIEW), content=merge_tab),
             ft.Tab(text="Training", icon=getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE), content=training_tab),
-            ft.Tab(text="Inference", icon=getattr(ICONS, "PSYCHOLOGY", getattr(ICONS, "CHAT", ICONS.PLAY_CIRCLE)), content=inference_tab),
+            ft.Tab(
+                text="Inference",
+                icon=getattr(ICONS, "PSYCHOLOGY", getattr(ICONS, "CHAT", ICONS.PLAY_CIRCLE)),
+                content=inference_tab,
+            ),
             ft.Tab(text="Settings", icon=ICONS.SETTINGS, content=settings_tab),
         ],
         expand=1,
@@ -740,18 +767,27 @@ Tabs:
             pass
 
     welcome_logo = ft.Image(src="img/FineForge-logo.png", width=240, height=240, fit=ft.ImageFit.CONTAIN)
-    welcome_tagline = ft.Text("Curate, analyze, and fine‑tune datasets with a beautiful desktop UI.", color=WITH_OPACITY(0.8, BORDER_BASE))
-    start_btn = ft.FilledButton("Start", icon=getattr(ICONS, "PLAY_ARROW", getattr(ICONS, "PLAY_CIRCLE", None)), on_click=show_main_app)
+    welcome_tagline = ft.Text(
+        "Curate, analyze, and fine‑tune datasets with a beautiful desktop UI.", color=WITH_OPACITY(0.8, BORDER_BASE)
+    )
+    start_btn = ft.FilledButton(
+        "Start", icon=getattr(ICONS, "PLAY_ARROW", getattr(ICONS, "PLAY_CIRCLE", None)), on_click=show_main_app
+    )
 
     welcome_view = ft.Container(
         expand=1,
-        content=ft.Column([
-            welcome_logo,
-            ft.Container(height=8),
-            welcome_tagline,
-            ft.Container(height=16),
-            start_btn,
-        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6),
+        content=ft.Column(
+            [
+                welcome_logo,
+                ft.Container(height=8),
+                welcome_tagline,
+                ft.Container(height=16),
+                start_btn,
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=6,
+        ),
         alignment=ft.alignment.center,
         padding=20,
     )
@@ -763,6 +799,7 @@ Tabs:
         page.update()
     except Exception:
         pass
+
 
 if __name__ == "__main__":
     ft.app(target=main)

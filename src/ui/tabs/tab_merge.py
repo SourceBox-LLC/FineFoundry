@@ -4,6 +4,7 @@ This module composes the Merge tab UI using controls created in main.py.
 Delegates to per-section builders under `ui.tabs.merge.sections`.
 No behavior changes.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -13,6 +14,7 @@ from ui.tabs.merge.sections.datasets_section import build_datasets_section
 from ui.tabs.merge.sections.output_section import build_output_section
 from ui.tabs.merge.sections.preview_section import build_preview_section
 from ui.tabs.merge.sections.status_section import build_status_section
+
 
 def build_merge_tab(
     *,
@@ -102,20 +104,30 @@ def build_merge_tab(
         pass
 
     return ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Container(
-                    content=ft.Column([
-                        op_section,
-                        datasets_section,
-                        output_section,
-                        preview_section,
-                        ft.Divider(),
-                        status_section,
-                    ], spacing=12),
-                    width=1000,
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    op_section,
+                                    datasets_section,
+                                    output_section,
+                                    preview_section,
+                                    ft.Divider(),
+                                    status_section,
+                                ],
+                                spacing=12,
+                            ),
+                            width=1000,
+                        )
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
                 )
-            ], alignment=ft.MainAxisAlignment.CENTER)
-        ], scroll=ft.ScrollMode.AUTO, spacing=0),
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=0,
+        ),
         padding=16,
     )

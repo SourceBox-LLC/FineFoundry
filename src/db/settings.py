@@ -14,25 +14,25 @@ from .core import get_connection, init_db
 
 def get_setting(key: str, default: Any = None, db_path: Optional[str] = None) -> Any:
     """Get a setting value by key.
-    
+
     Args:
         key: Setting key (e.g., "huggingface.token", "runpod.api_key")
         default: Default value if key doesn't exist
         db_path: Optional database path
-        
+
     Returns:
         The setting value (parsed from JSON) or default
     """
     init_db(db_path)
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
     row = cursor.fetchone()
-    
+
     if row is None:
         return default
-    
+
     try:
         return json.loads(row["value"])
     except (json.JSONDecodeError, TypeError):
@@ -41,7 +41,7 @@ def get_setting(key: str, default: Any = None, db_path: Optional[str] = None) ->
 
 def set_setting(key: str, value: Any, db_path: Optional[str] = None) -> None:
     """Set a setting value.
-    
+
     Args:
         key: Setting key
         value: Value to store (will be JSON-encoded)
@@ -50,65 +50,69 @@ def set_setting(key: str, value: Any, db_path: Optional[str] = None) -> None:
     init_db(db_path)
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
+
     # JSON-encode the value
     json_value = json.dumps(value, ensure_ascii=False)
-    
-    cursor.execute("""
+
+    cursor.execute(
+        """
         INSERT INTO settings (key, value, updated_at)
         VALUES (?, ?, datetime('now'))
         ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = datetime('now')
-    """, (key, json_value))
-    
+    """,
+        (key, json_value),
+    )
+
     conn.commit()
 
 
 def get_all_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
     """Get all settings as a dictionary.
-    
+
     Returns:
         Dictionary of all settings with parsed values
     """
     init_db(db_path)
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT key, value FROM settings")
     rows = cursor.fetchall()
-    
+
     result = {}
     for row in rows:
         try:
             result[row["key"]] = json.loads(row["value"])
         except (json.JSONDecodeError, TypeError):
             result[row["key"]] = row["value"]
-    
+
     return result
 
 
 def delete_setting(key: str, db_path: Optional[str] = None) -> bool:
     """Delete a setting.
-    
+
     Args:
         key: Setting key to delete
         db_path: Optional database path
-        
+
     Returns:
         True if setting was deleted, False if it didn't exist
     """
     init_db(db_path)
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
+
     cursor.execute("DELETE FROM settings WHERE key = ?", (key,))
     conn.commit()
-    
+
     return cursor.rowcount > 0
 
 
 # Convenience functions for common settings
+
 
 def get_hf_token(db_path: Optional[str] = None) -> str:
     """Get Hugging Face token."""

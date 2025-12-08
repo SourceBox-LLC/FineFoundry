@@ -12,6 +12,7 @@ Output example per conversation:
   ]
 }
 """
+
 from __future__ import annotations
 
 import re
@@ -249,22 +250,26 @@ def reddit_thread_to_chatml_conversations(
                 steps += 1
             elif cur_parent_id.startswith("t3_"):
                 # Root reached — include the post
-                chain_nodes.append({
-                    "__type": "post",
-                    "text": _post_text(post),
-                    "author": post.get("author") or "",
-                })
+                chain_nodes.append(
+                    {
+                        "__type": "post",
+                        "text": _post_text(post),
+                        "author": post.get("author") or "",
+                    }
+                )
                 break
             else:
                 break
 
         if not chain_nodes:
             # Fallback: use the post as minimal context
-            chain_nodes.append({
-                "__type": "post",
-                "text": _post_text(post),
-                "author": post.get("author") or "",
-            })
+            chain_nodes.append(
+                {
+                    "__type": "post",
+                    "text": _post_text(post),
+                    "author": post.get("author") or "",
+                }
+            )
 
         # Oldest -> newest
         chain_nodes = list(reversed(chain_nodes))
@@ -276,7 +281,7 @@ def reddit_thread_to_chatml_conversations(
                 a = node.get("author") or ""
                 t = (node.get("text") or "").strip()
             else:
-                a = (node.get("author") or "")
+                a = node.get("author") or ""
                 t = rs.clean_text(node.get("body") or "")
             if len(t) >= min_len:
                 ctx_chunks.append({"text": t, "author": a})

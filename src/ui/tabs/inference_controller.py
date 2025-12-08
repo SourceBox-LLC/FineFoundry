@@ -6,6 +6,7 @@ and chat handlers, keeping `src/main.py` smaller.
 Layout composition still lives in `tab_inference.py`; this module focuses
 on behavior and state wiring.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -85,18 +86,14 @@ def build_inference_tab_with_logic(
             return False
 
         adapter_path = (infer_adapter_dir_tf.value or "").strip()
-        base_model_name = (
-            infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        ).strip()
+        base_model_name = (infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
         try:
             infer_busy_ring.visible = True
             await safe_update(page)
         except Exception:  # pragma: no cover - UI best-effort
             pass
         if (not adapter_path) or (not os.path.isdir(adapter_path)):
-            infer_status.value = (
-                "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
-            )
+            infer_status.value = "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
             try:
                 infer_status.color = getattr(
                     COLORS,
@@ -213,9 +210,7 @@ def build_inference_tab_with_logic(
         try:
             adapter_path = (info.get("adapter_path") or "").strip()
             base_model_name = (
-                info.get("base_model")
-                or infer_base_model_tf.value
-                or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
+                info.get("base_model") or infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
             ).strip()
             if adapter_path and os.path.isdir(adapter_path):
                 infer_adapter_dir_tf.value = adapter_path
@@ -239,9 +234,7 @@ def build_inference_tab_with_logic(
                 except Exception:
                     pass
             else:
-                infer_status.value = (
-                    "Latest local training adapter not found. Run a local training job first."
-                )
+                infer_status.value = "Latest local training adapter not found. Run a local training job first."
                 try:
                     infer_status.color = getattr(
                         COLORS,
@@ -529,14 +522,10 @@ def build_inference_tab_with_logic(
             infer_status.value = "Enter a prompt to run inference."
             await safe_update(page)
             return
-        base_model_name = (
-            infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        ).strip()
+        base_model_name = (infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
         adapter_path = (infer_adapter_dir_tf.value or "").strip()
         if (not adapter_path) or (not os.path.isdir(adapter_path)):
-            infer_status.value = (
-                "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
-            )
+            infer_status.value = "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
             try:
                 infer_status.color = getattr(
                     COLORS,
@@ -596,9 +585,11 @@ def build_inference_tab_with_logic(
         if temperature <= 0:
             temperature = 0.1
         info = train_state.get("inference") or {}
-        loaded = bool(info.get("model_loaded")) and (
-            (info.get("adapter_path") or "").strip() == adapter_path
-        ) and ((info.get("base_model") or "").strip() == base_model_name)
+        loaded = (
+            bool(info.get("model_loaded"))
+            and ((info.get("adapter_path") or "").strip() == adapter_path)
+            and ((info.get("base_model") or "").strip() == base_model_name)
+        )
         infer_generate_btn.disabled = True
         try:
             infer_busy_ring.visible = True
@@ -820,14 +811,10 @@ def build_inference_tab_with_logic(
         msg = (infer_chat_input.value or "").strip()
         if not msg:
             return
-        base_model_name = (
-            infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-        ).strip()
+        base_model_name = (infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
         adapter_path = (infer_adapter_dir_tf.value or "").strip()
         if (not adapter_path) or (not os.path.isdir(adapter_path)):
-            infer_status.value = (
-                "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
-            )
+            infer_status.value = "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
             try:
                 infer_status.color = getattr(
                     COLORS,
@@ -886,9 +873,11 @@ def build_inference_tab_with_logic(
         if temperature <= 0:
             temperature = 0.1
         info = train_state.get("inference") or {}
-        loaded = bool(info.get("model_loaded")) and (
-            (info.get("adapter_path") or "").strip() == adapter_path
-        ) and ((info.get("base_model") or "").strip() == base_model_name)
+        loaded = (
+            bool(info.get("model_loaded"))
+            and ((info.get("adapter_path") or "").strip() == adapter_path)
+            and ((info.get("base_model") or "").strip() == base_model_name)
+        )
         infer_chat_send_btn.disabled = True
         try:
             infer_chat_busy_ring.visible = True

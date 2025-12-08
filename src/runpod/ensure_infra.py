@@ -6,6 +6,7 @@ Exposes simple functions for the app to call. Reads API key from param or RUNPOD
 
 Based on a standalone script version used during testing.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 API = "https://rest.runpod.io/v1"
+
 
 class RunpodError(Exception):
     pass
@@ -31,7 +33,9 @@ def _req(method: str, path: str, api_key: Optional[str] = None, **kw) -> request
     r.raise_for_status()
     return r
 
+
 # ---------- Volume ops ----------
+
 
 def list_volumes(api_key: Optional[str] = None) -> List[Dict[str, Any]]:
     return _req("GET", "/networkvolumes", api_key=api_key).json()
@@ -42,7 +46,9 @@ def create_volume(name: str, size_gb: int, datacenter_id: str, api_key: Optional
     return _req("POST", "/networkvolumes", api_key=api_key, data=json.dumps(body)).json()
 
 
-def resize_volume(vol_id: str, new_size_gb: int, keep_name: Optional[str] = None, api_key: Optional[str] = None) -> Dict[str, Any]:
+def resize_volume(
+    vol_id: str, new_size_gb: int, keep_name: Optional[str] = None, api_key: Optional[str] = None
+) -> Dict[str, Any]:
     body: Dict[str, Any] = {"size": int(new_size_gb)}
     if keep_name:
         body["name"] = keep_name
@@ -64,6 +70,7 @@ def delete_volume(vol_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
         return r.json()
     except Exception:
         return {"deleted": True, "id": vol_id}
+
 
 def ensure_volume(
     *,
@@ -91,7 +98,9 @@ def ensure_volume(
     vol = create_volume(volume_name, int(volume_size_gb), datacenter_id, api_key=api_key)
     return {"action": "created", "volume": vol}
 
+
 # ---------- Template ops ----------
+
 
 def list_templates(api_key: Optional[str] = None) -> List[Dict[str, Any]]:
     return _req("GET", "/templates", api_key=api_key).json()
@@ -188,6 +197,7 @@ def delete_template(template_id: str, api_key: Optional[str] = None) -> Dict[str
     except Exception:
         return {"deleted": True, "id": template_id}
 
+
 def ensure_template(
     *,
     template_name: str,
@@ -229,6 +239,7 @@ def ensure_template(
 
 
 # ---------- High-level helper ----------
+
 
 def ensure_infrastructure(
     *,
@@ -336,8 +347,19 @@ def ensure_infrastructure(
             # Non-fatal; continue with original template info
             pass
         return {
-            "volume": {"action": vres["action"], "id": vol.get("id"), "name": vol.get("name"), "dc": vol.get("dataCenterId"), "size": vol.get("size")},
-            "template": {"action": tres["action"], "id": tpl.get("id"), "name": tpl.get("name"), "image": tpl.get("imageName")},
+            "volume": {
+                "action": vres["action"],
+                "id": vol.get("id"),
+                "name": vol.get("name"),
+                "dc": vol.get("dataCenterId"),
+                "size": vol.get("size"),
+            },
+            "template": {
+                "action": tres["action"],
+                "id": tpl.get("id"),
+                "name": tpl.get("name"),
+                "image": tpl.get("imageName"),
+            },
         }
     except requests.HTTPError as e:
         try:

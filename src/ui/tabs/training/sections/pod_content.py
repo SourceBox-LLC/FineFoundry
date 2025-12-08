@@ -3,6 +3,7 @@
 This module composes the main Runpod training content using pre-built sections
 provided by main.py. No logic; layout-only composition.
 """
+
 from __future__ import annotations
 
 import flet as ft
@@ -18,19 +19,25 @@ def build_pod_content_container(
     train_actions: ft.Control,
 ) -> ft.Container:
     return ft.Container(
-        content=ft.Row([
-            ft.Container(
-                content=ft.Column([
-                    config_section,
-                    rp_infra_panel,
-                    ft.Divider(),
-                    ds_tp_group_container,
-                    pod_logs_section,
-                    teardown_section,
-                    train_actions,
-                ], spacing=12),
-                width=1000,
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER),
+        content=ft.Row(
+            [
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            config_section,
+                            rp_infra_panel,
+                            ft.Divider(),
+                            ds_tp_group_container,
+                            pod_logs_section,
+                            teardown_section,
+                            train_actions,
+                        ],
+                        spacing=12,
+                    ),
+                    width=1000,
+                )
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
         visible=True,
     )

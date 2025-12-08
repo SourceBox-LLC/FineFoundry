@@ -4,6 +4,7 @@ This module builds the Dataset Analysis tab controls and wires up all
 analysis handlers, keeping `src/main.py` slimmer. Layout composition
 still lives in `tab_analysis.py` and its section builders.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -60,11 +61,7 @@ def build_analysis_tab_with_logic(
     # ---- Dataset Analysis tab: UI controls for builder ----
     def kpi_tile(title: str, value, subtitle: str = "", icon=None):
         # Accept either a string or a Flet control for value, so we can update it dynamically later.
-        val_ctrl = (
-            value
-            if isinstance(value, ft.Control)
-            else ft.Text(str(value), size=18, weight=ft.FontWeight.W_600)
-        )
+        val_ctrl = value if isinstance(value, ft.Control) else ft.Text(str(value), size=18, weight=ft.FontWeight.W_600)
         return ft.Container(
             content=ft.Row(
                 [
@@ -179,12 +176,8 @@ def build_analysis_tab_with_logic(
         data_row_min_height=40,
         heading_row_height=40,
         columns=[
-            ft.DataColumn(
-                ft.Container(width=SAMPLE_INPUT_W, content=ft.Text("Input"))
-            ),
-            ft.DataColumn(
-                ft.Container(width=SAMPLE_OUTPUT_W, content=ft.Text("Output"))
-            ),
+            ft.DataColumn(ft.Container(width=SAMPLE_INPUT_W, content=ft.Text("Input"))),
+            ft.DataColumn(ft.Container(width=SAMPLE_OUTPUT_W, content=ft.Text("Output"))),
             ft.DataColumn(
                 ft.Container(
                     width=SAMPLE_LEN_W,
@@ -297,15 +290,11 @@ def build_analysis_tab_with_logic(
     cb_basic_stats = ft.Checkbox(
         label="Basic Stats",
         value=True,
-        tooltip=(
-            "Record count and average input/output lengths."
-        ),
+        tooltip=("Record count and average input/output lengths."),
     )
     cb_duplicates = ft.Checkbox(
         label="Duplicates & Similarity",
-        tooltip=(
-            "Approximate duplicate/similarity detection via hashing heuristics."
-        ),
+        tooltip=("Approximate duplicate/similarity detection via hashing heuristics."),
     )
     cb_sentiment = ft.Checkbox(
         label="Sentiment",
@@ -319,9 +308,7 @@ def build_analysis_tab_with_logic(
     )
     cb_coverage_overlap = ft.Checkbox(
         label="Coverage Overlap",
-        tooltip=(
-            "Overlap of input and output tokens (higher may indicate copying)."
-        ),
+        tooltip=("Overlap of input and output tokens (higher may indicate copying)."),
     )
     cb_data_leakage = ft.Checkbox(
         label="Data Leakage Check",
@@ -333,9 +320,7 @@ def build_analysis_tab_with_logic(
     )
     cb_speaker_balance = ft.Checkbox(
         label="Speaker Balance",
-        tooltip=(
-            "Balance of speakers/roles when such tags exist."
-        ),
+        tooltip=("Balance of speakers/roles when such tags exist."),
     )
     cb_question_statement = ft.Checkbox(
         label="Question vs Statement",
@@ -347,9 +332,7 @@ def build_analysis_tab_with_logic(
     )
     cb_ner = ft.Checkbox(
         label="NER",
-        tooltip=(
-            "Counts of proper nouns/capitalized tokens as NER proxy."
-        ),
+        tooltip=("Counts of proper nouns/capitalized tokens as NER proxy."),
     )
     cb_toxicity = ft.Checkbox(
         label="Toxicity / Safety",
@@ -402,29 +385,19 @@ def build_analysis_tab_with_logic(
         jpath = (analysis_json_path.value or "").strip()
         if src == "Hugging Face":
             valid = bool(repo)
-            desc = (
-                f"Selected: HF {repo} "
-                f"[{(analysis_hf_split.value or 'train').strip()}]"
-            )
+            desc = f"Selected: HF {repo} [{(analysis_hf_split.value or 'train').strip()}]"
         else:
             valid = bool(jpath)
-            desc = (
-                f"Selected: JSON {jpath}" if jpath else "Select a JSON file path"
-            )
+            desc = f"Selected: JSON {jpath}" if jpath else "Select a JSON file path"
         analyze_btn.disabled = not valid
-        analysis_dataset_hint.value = (
-            desc if valid else "Select a dataset to analyze."
-        )
+        analysis_dataset_hint.value = desc if valid else "Select a dataset to analyze."
         try:
             page.update()
         except Exception:
             pass
 
     def _update_analysis_source(_=None):
-        is_hf = (
-            getattr(analysis_source_dd, "value", "Hugging Face")
-            or "Hugging Face"
-        ) == "Hugging Face"
+        is_hf = (getattr(analysis_source_dd, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
         analysis_hf_repo.visible = is_hf
         analysis_hf_split.visible = is_hf
         analysis_hf_config.visible = is_hf
@@ -433,8 +406,7 @@ def build_analysis_tab_with_logic(
 
     def _update_analysis_backend(_=None):
         use_api = (
-            getattr(analysis_backend_dd, "value", "HF Inference API")
-            or "HF Inference API"
+            getattr(analysis_backend_dd, "value", "HF Inference API") or "HF Inference API"
         ) == "HF Inference API"
         analysis_hf_token_tf.visible = use_api
         try:
@@ -472,9 +444,7 @@ def build_analysis_tab_with_logic(
 
     def _sync_select_all_modules():
         try:
-            select_all_modules_cb.value = all(
-                bool(getattr(m, "value", False)) for m in _all_analysis_modules()
-            )
+            select_all_modules_cb.value = all(bool(getattr(m, "value", False)) for m in _all_analysis_modules())
             page.update()
         except Exception:
             pass
@@ -541,9 +511,7 @@ def build_analysis_tab_with_logic(
             cfg = (analysis_hf_config.value or "").strip() or None
             jpath = (analysis_json_path.value or "").strip()
             try:
-                sample_size = int(
-                    float((analysis_sample_size_tf.value or "5000").strip())
-                )
+                sample_size = int(float((analysis_sample_size_tf.value or "5000").strip()))
                 sample_size = max(1, min(250000, sample_size))
             except Exception:
                 sample_size = 5000
@@ -554,13 +522,9 @@ def build_analysis_tab_with_logic(
 
             if src == "Hugging Face":
                 if load_dataset is None:
-                    raise RuntimeError(
-                        "datasets library not available — cannot load from Hub"
-                    )
+                    raise RuntimeError("datasets library not available — cannot load from Hub")
 
-                async def _load_hf(
-                    repo_id: str, sp: str, name: Optional[str]
-                ) -> Any:
+                async def _load_hf(repo_id: str, sp: str, name: Optional[str]) -> Any:
                     def do_load():
                         return load_dataset(repo_id, split=sp, name=name)
 
@@ -569,17 +533,11 @@ def build_analysis_tab_with_logic(
                     except Exception as e:  # pragma: no cover - runtime path
                         msg = str(e).lower()
                         auto_loaded = False
-                        if (
-                            get_dataset_config_names is not None
-                            and (
-                                "config name is missing" in msg
-                                or "config name is required" in msg
-                            )
+                        if get_dataset_config_names is not None and (
+                            "config name is missing" in msg or "config name is required" in msg
                         ):
                             try:
-                                cfgs = await asyncio.to_thread(
-                                    lambda: get_dataset_config_names(repo_id)
-                                )
+                                cfgs = await asyncio.to_thread(lambda: get_dataset_config_names(repo_id))
                             except Exception:
                                 cfgs = []
                             pick = None
@@ -590,6 +548,7 @@ def build_analysis_tab_with_logic(
                             if not pick and cfgs:
                                 pick = cfgs[0]
                             if pick:
+
                                 def do_load_cfg():
                                     return load_dataset(repo_id, split=sp, name=pick)
 
@@ -611,8 +570,7 @@ def build_analysis_tab_with_logic(
                         inn, outn = "input", "output"
                     else:
                         raise RuntimeError(
-                            "Could not resolve input/output columns for "
-                            f"{repo} (have: {', '.join(names)})"
+                            f"Could not resolve input/output columns for {repo} (have: {', '.join(names)})"
                         )
 
                 # Prepare two-column view
@@ -620,12 +578,8 @@ def build_analysis_tab_with_logic(
                     srcs = batch.get(inn, [])
                     tgts = batch.get(outn, [])
                     return {
-                        "input": [
-                            "" if v is None else str(v).strip() for v in srcs
-                        ],
-                        "output": [
-                            "" if v is None else str(v).strip() for v in tgts
-                        ],
+                        "input": ["" if v is None else str(v).strip() for v in srcs],
+                        "output": ["" if v is None else str(v).strip() for v in tgts],
                     }
 
                 try:
@@ -633,9 +587,7 @@ def build_analysis_tab_with_logic(
                         lambda: ds.map(
                             mapper,
                             batched=True,
-                            remove_columns=list(
-                                getattr(ds, "column_names", []) or []
-                            ),
+                            remove_columns=list(getattr(ds, "column_names", []) or []),
                         )
                     )
                 except Exception:
@@ -644,17 +596,11 @@ def build_analysis_tab_with_logic(
                     for r in ds:
                         tmp.append(
                             {
-                                "input": ""
-                                if r.get(inn) is None
-                                else str(r.get(inn)).strip(),
-                                "output": ""
-                                if r.get(outn) is None
-                                else str(r.get(outn)).strip(),
+                                "input": "" if r.get(inn) is None else str(r.get(inn)).strip(),
+                                "output": "" if r.get(outn) is None else str(r.get(outn)).strip(),
                             }
                         )
-                    from_list = await asyncio.to_thread(
-                        lambda: Dataset.from_list(tmp) if Dataset is not None else None
-                    )
+                    from_list = await asyncio.to_thread(lambda: Dataset.from_list(tmp) if Dataset is not None else None)
                     mapped = from_list if from_list is not None else tmp
 
                 # Select sample
@@ -664,11 +610,7 @@ def build_analysis_tab_with_logic(
                     total_records = 0
                 if hasattr(mapped, "select"):
                     k = min(sample_size, total_records)
-                    idxs = (
-                        list(range(total_records))
-                        if k >= total_records
-                        else random.sample(range(total_records), k)
-                    )
+                    idxs = list(range(total_records)) if k >= total_records else random.sample(range(total_records), k)
                     batch = await asyncio.to_thread(lambda: mapped.select(idxs))
                     examples = [
                         {
@@ -743,12 +685,7 @@ def build_analysis_tab_with_logic(
 
             dup_pct: Optional[float] = None
             if do_dupe:
-                unique_pairs = len(
-                    {
-                        (str(x.get("input", "")), str(x.get("output", "")))
-                        for x in examples
-                    }
-                )
+                unique_pairs = len({(str(x.get("input", "")), str(x.get("output", ""))) for x in examples})
                 dup_pct = 100.0 * (1.0 - (unique_pairs / max(1, used_n)))
 
             # Sentiment proxy via tiny lexicon (gated)
@@ -780,10 +717,8 @@ def build_analysis_tab_with_logic(
             pos = neu = neg = 0
             if do_sent:
                 for ex in examples:
-                    txt = f"{ex.get('input','')} {ex.get('output','')}".lower()
-                    score = sum(1 for w in POS if w in txt) - sum(
-                        1 for w in NEG if w in txt
-                    )
+                    txt = f"{ex.get('input', '')} {ex.get('output', '')}".lower()
+                    score = sum(1 for w in POS if w in txt) - sum(1 for w in NEG if w in txt)
                     if score > 0:
                         pos += 1
                     elif score < 0:
@@ -809,15 +744,9 @@ def build_analysis_tab_with_logic(
 
             # Update UI controls
             kpi_total_value.value = f"{used_n:,}" if do_basic else "—"
-            kpi_avg_in_value.value = (
-                f"{avg_in:.0f} chars" if do_basic else "—"
-            )
-            kpi_avg_out_value.value = (
-                f"{avg_out:.0f} chars" if do_basic else "—"
-            )
-            kpi_dupe_value.value = (
-                f"{dup_pct:.1f}%" if (do_dupe and dup_pct is not None) else "—"
-            )
+            kpi_avg_in_value.value = f"{avg_in:.0f} chars" if do_basic else "—"
+            kpi_avg_out_value.value = f"{avg_out:.0f} chars" if do_basic else "—"
+            kpi_dupe_value.value = f"{dup_pct:.1f}%" if (do_dupe and dup_pct is not None) else "—"
 
             # Sentiment section
             sentiment_section.visible = do_sent
@@ -874,9 +803,7 @@ def build_analysis_tab_with_logic(
             ):
                 # Precompute tokens
                 in_tokens = [_token_set(str(ex.get("input", ""))) for ex in examples]
-                out_tokens = [
-                    _token_set(str(ex.get("output", ""))) for ex in examples
-                ]
+                out_tokens = [_token_set(str(ex.get("output", ""))) for ex in examples]
 
                 if do_cov:
                     cover_vals: List[float] = []
@@ -888,7 +815,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Coverage overlap")),
-                                ft.DataCell(ft.Text(f"{cover_avg*100:.1f}%")),
+                                ft.DataCell(ft.Text(f"{cover_avg * 100:.1f}%")),
                             ]
                         )
                     )
@@ -902,7 +829,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Alignment (Jaccard)")),
-                                ft.DataCell(ft.Text(f"{jac_avg*100:.1f}%")),
+                                ft.DataCell(ft.Text(f"{jac_avg * 100:.1f}%")),
                             ]
                         )
                     )
@@ -919,7 +846,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Data leakage risk")),
-                                ft.DataCell(ft.Text(f"{leak_p*100:.1f}%")),
+                                ft.DataCell(ft.Text(f"{leak_p * 100:.1f}%")),
                             ]
                         )
                     )
@@ -928,18 +855,13 @@ def build_analysis_tab_with_logic(
 
                     def _turns(text: str) -> int:
                         tl = text.lower()
-                        m = len(
-                            re.findall(r"\b(user|assistant|system)\s*:", tl)
-                        )
+                        m = len(re.findall(r"\b(user|assistant|system)\s*:", tl))
                         if m:
                             return m
                         lines = [ln for ln in text.splitlines() if ln.strip()]
                         return max(1, len(lines))
 
-                    turns = [
-                        max(_turns(str(ex.get("input", ""))), 1)
-                        for ex in examples
-                    ]
+                    turns = [max(_turns(str(ex.get("input", ""))), 1) for ex in examples]
                     avg_turns = sum(turns) / len(turns)
                     extra_rows.append(
                         ft.DataRow(
@@ -961,10 +883,8 @@ def build_analysis_tab_with_logic(
                     extra_rows.append(
                         ft.DataRow(
                             cells=[
-                                ft.DataCell(
-                                    ft.Text("Speaker balance (input share)")
-                                ),
-                                ft.DataCell(ft.Text(f"{share_avg*100:.1f}%")),
+                                ft.DataCell(ft.Text("Speaker balance (input share)")),
+                                ft.DataCell(ft.Text(f"{share_avg * 100:.1f}%")),
                             ]
                         )
                     )
@@ -980,7 +900,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Questions (inputs)")),
-                                ft.DataCell(ft.Text(f"{q_p*100:.1f}%")),
+                                ft.DataCell(ft.Text(f"{q_p * 100:.1f}%")),
                             ]
                         )
                     )
@@ -1001,14 +921,9 @@ def build_analysis_tab_with_logic(
                         )
                         syll = sum(_syllables(t) for t in toks)
                         # Flesch Reading Ease (approx)
-                        return 206.835 - 1.015 * (words / sentences) - 84.6 * (
-                            syll / words
-                        )
+                        return 206.835 - 1.015 * (words / sentences) - 84.6 * (syll / words)
 
-                    scores = [
-                        _readability(str(ex.get("input", "")))
-                        for ex in examples
-                    ]
+                    scores = [_readability(str(ex.get("input", ""))) for ex in examples]
                     score_avg = sum(scores) / len(scores)
                     extra_rows.append(
                         ft.DataRow(
@@ -1028,9 +943,7 @@ def build_analysis_tab_with_logic(
                         toks = re.findall(r"\b[A-Z][a-z]+\b", text)
                         return len(toks)
 
-                    ents = [
-                        _capwords(str(ex.get("input", ""))) for ex in examples
-                    ]
+                    ents = [_capwords(str(ex.get("input", ""))) for ex in examples]
                     ents_avg = sum(ents) / len(ents)
                     extra_rows.append(
                         ft.DataRow(
@@ -1044,7 +957,7 @@ def build_analysis_tab_with_logic(
                 if do_toxic:
                     tox = 0
                     for ex in examples:
-                        txt = f"{ex.get('input','')} {ex.get('output','')}".lower()
+                        txt = f"{ex.get('input', '')} {ex.get('output', '')}".lower()
                         if any(w in txt for w in NEG):
                             tox += 1
                     tox_p = tox / used_n
@@ -1052,7 +965,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Toxicity flagged")),
-                                ft.DataCell(ft.Text(f"{tox_p*100:.1f}%")),
+                                ft.DataCell(ft.Text(f"{tox_p * 100:.1f}%")),
                             ]
                         )
                     )
@@ -1069,7 +982,7 @@ def build_analysis_tab_with_logic(
                     }
                     pol = 0
                     for ex in examples:
-                        txt = f"{ex.get('input','')} {ex.get('output','')}".lower()
+                        txt = f"{ex.get('input', '')} {ex.get('output', '')}".lower()
                         if any(w in txt for w in POLITE):
                             pol += 1
                     pol_p = pol / used_n
@@ -1077,7 +990,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Politeness flagged")),
-                                ft.DataCell(ft.Text(f"{pol_p*100:.1f}%")),
+                                ft.DataCell(ft.Text(f"{pol_p * 100:.1f}%")),
                             ]
                         )
                     )
@@ -1110,11 +1023,7 @@ def build_analysis_tab_with_logic(
                         ft.DataRow(
                             cells=[
                                 ft.DataCell(ft.Text("Dialogue acts (Q/C/S)")),
-                                ft.DataCell(
-                                    ft.Text(
-                                        f"{int(q_p*100)}/{int(c_p*100)}/{int(s_p*100)}%"
-                                    )
-                                ),
+                                ft.DataCell(ft.Text(f"{int(q_p * 100)}/{int(c_p * 100)}/{int(s_p * 100)}%")),
                             ]
                         )
                     )
@@ -1149,17 +1058,8 @@ def build_analysis_tab_with_logic(
                     }
                     freq: Counter[str] = Counter()
                     for ex in examples:
-                        freq.update(
-                            [
-                                t
-                                for t in _tokens(str(ex.get("input", "")))
-                                if t not in STOP and len(t) > 2
-                            ]
-                        )
-                    top = (
-                        ", ".join([w for w, _ in freq.most_common(5)])
-                        or "(none)"
-                    )
+                        freq.update([t for t in _tokens(str(ex.get("input", ""))) if t not in STOP and len(t) > 2])
+                    top = ", ".join([w for w, _ in freq.most_common(5)]) or "(none)"
                     extra_rows.append(
                         ft.DataRow(
                             cells=[
@@ -1287,18 +1187,10 @@ def build_analysis_tab_with_logic(
                     modules_used.append("Topics / Clustering")
                 if do_align:
                     modules_used.append("Alignment (Similarity/NLI)")
-                mod_txt = (
-                    " | Modules: " + ", ".join(modules_used)
-                    if modules_used
-                    else ""
-                )
+                mod_txt = " | Modules: " + ", ".join(modules_used) if modules_used else ""
                 analysis_overview_note.value = (
                     f"Analyzed {used_n:,} records"
-                    + (
-                        f" (sampled from {total_records:,})"
-                        if total_records > used_n
-                        else ""
-                    )
+                    + (f" (sampled from {total_records:,})" if total_records > used_n else "")
                     + mod_txt
                 )
             except Exception:
@@ -1393,16 +1285,8 @@ def build_analysis_tab_with_logic(
 
         for i in range(0, len(mods), 3):
             c1 = ft.DataCell(_cell_with_help(mods[i]))
-            c2 = (
-                ft.DataCell(_cell_with_help(mods[i + 1]))
-                if i + 1 < len(mods)
-                else ft.DataCell(ft.Container())
-            )
-            c3 = (
-                ft.DataCell(_cell_with_help(mods[i + 2]))
-                if i + 2 < len(mods)
-                else ft.DataCell(ft.Container())
-            )
+            c2 = ft.DataCell(_cell_with_help(mods[i + 1])) if i + 1 < len(mods) else ft.DataCell(ft.Container())
+            c3 = ft.DataCell(_cell_with_help(mods[i + 2])) if i + 2 < len(mods) else ft.DataCell(ft.Container())
             rows.append(ft.DataRow(cells=[c1, c2, c3]))
         return ft.DataTable(columns=columns, rows=rows)
 

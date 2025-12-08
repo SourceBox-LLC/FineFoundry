@@ -31,27 +31,27 @@ def get_db_path(project_root: Optional[str] = None) -> str:
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     """Get a thread-local database connection.
-    
+
     Creates the connection if it doesn't exist for this thread.
     Connections are reused within the same thread.
     """
     if db_path is None:
         db_path = get_db_path()
-    
+
     # Normalize path for consistent caching
     db_path = os.path.abspath(db_path)
-    
+
     # Check if we have a connection for this path in this thread
     if not hasattr(_local, "connections"):
         _local.connections = {}
-    
+
     if db_path not in _local.connections:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         # Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON")
         _local.connections[db_path] = conn
-    
+
     return _local.connections[db_path]
 
 
@@ -68,12 +68,12 @@ def close_all_connections() -> None:
 
 def init_db(db_path: Optional[str] = None) -> None:
     """Initialize the database schema.
-    
+
     Creates all tables if they don't exist. Safe to call multiple times.
     """
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
+
     # Settings table - key/value store for app settings
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
@@ -82,7 +82,7 @@ def init_db(db_path: Optional[str] = None) -> None:
             updated_at TEXT DEFAULT (datetime('now'))
         )
     """)
-    
+
     # Training configs table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS training_configs (
@@ -94,7 +94,7 @@ def init_db(db_path: Optional[str] = None) -> None:
             updated_at TEXT DEFAULT (datetime('now'))
         )
     """)
-    
+
     # Last used config tracking
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS app_state (
@@ -102,7 +102,7 @@ def init_db(db_path: Optional[str] = None) -> None:
             value TEXT
         )
     """)
-    
+
     # Scrape sessions table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scrape_sessions (
@@ -115,7 +115,7 @@ def init_db(db_path: Optional[str] = None) -> None:
             metadata_json TEXT
         )
     """)
-    
+
     # Scraped pairs table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scraped_pairs (
@@ -129,18 +129,18 @@ def init_db(db_path: Optional[str] = None) -> None:
             FOREIGN KEY (session_id) REFERENCES scrape_sessions(id) ON DELETE CASCADE
         )
     """)
-    
+
     # Create indexes for common queries
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_scraped_pairs_session 
         ON scraped_pairs(session_id)
     """)
-    
+
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_training_configs_target 
         ON training_configs(train_target)
     """)
-    
+
     conn.commit()
 
 
@@ -160,8 +160,5 @@ def set_schema_version(version: int, db_path: Optional[str] = None) -> None:
     """Set the schema version."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR REPLACE INTO app_state (key, value) VALUES ('schema_version', ?)",
-        (str(version),)
-    )
+    cursor.execute("INSERT OR REPLACE INTO app_state (key, value) VALUES ('schema_version', ?)", (str(version),))
     conn.commit()

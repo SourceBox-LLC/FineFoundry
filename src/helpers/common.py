@@ -4,6 +4,7 @@ import platform
 import ctypes
 import flet as ft
 
+
 async def safe_update(page: ft.Page):
     """Update the page across Flet versions (async if available, else sync)."""
     if hasattr(page, "update_async"):
@@ -36,5 +37,6 @@ def set_terminal_title(title: str):
             pass
     except Exception:
         pass
+
 
 __all__ = ["safe_update", "set_terminal_title"]

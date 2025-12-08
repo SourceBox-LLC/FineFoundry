@@ -4,6 +4,7 @@ This module builds the Build/Publish tab controls and wires up all build
 and push handlers, keeping `src/main.py` slimmer. Layout composition
 still lives in `tab_build.py` and its section builders.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -364,9 +365,7 @@ def build_build_tab_with_logic(
     def _on_preview_toggle(_):
         try:
             if hasattr(card_preview_md, "visible"):
-                card_preview_md.visible = bool(card_preview_switch.value) and bool(
-                    use_custom_card.value
-                )
+                card_preview_md.visible = bool(card_preview_switch.value) and bool(use_custom_card.value)
         except Exception:
             pass
         _update_preview()
@@ -432,9 +431,7 @@ def build_build_tab_with_logic(
         cfg = load_ollama_config_helper()
         base_url = (cfg.get("base_url") or "http://127.0.0.1:11434").strip()
         model_name = (
-            (ollama_models_dd.value or "")
-            or (cfg.get("selected_model") or "")
-            or (cfg.get("default_model") or "")
+            (ollama_models_dd.value or "") or (cfg.get("selected_model") or "") or (cfg.get("default_model") or "")
         ).strip()
         if not model_name:
             page.snack_bar = ft.SnackBar(
@@ -468,11 +465,7 @@ def build_build_tab_with_logic(
         total_n = len(records)
         # Sample a small subset for context
         k = min(8, total_n)
-        idxs = (
-            random.sample(range(total_n), k)
-            if total_n >= k
-            else list(range(total_n))
-        )
+        idxs = random.sample(range(total_n), k) if total_n >= k else list(range(total_n))
         samples: list[dict[str, str]] = []
         for i in idxs:
             rec = records[i] if isinstance(records[i], dict) else {}
@@ -498,15 +491,7 @@ def build_build_tab_with_logic(
                 else (
                     "1K<n<10K"
                     if total_n < 10_000
-                    else (
-                        "10K<n<100K"
-                        if total_n < 100_000
-                        else (
-                            "100K<n<1M"
-                            if total_n < 1_000_000
-                            else "n>1M"
-                        )
-                    )
+                    else ("10K<n<100K" if total_n < 100_000 else ("100K<n<1M" if total_n < 1_000_000 else "n>1M"))
                 )
             )
 
@@ -529,9 +514,7 @@ def build_build_tab_with_logic(
             "Output ONLY valid Markdown starting with YAML frontmatter."
         )
 
-        ollama_gen_status.value = (
-            f"Generating with Ollama model '{model_name}'…"
-        )
+        ollama_gen_status.value = f"Generating with Ollama model '{model_name}'…"
         await safe_update(page)
         try:
             md = await ollama_chat_helper(
@@ -607,17 +590,13 @@ def build_build_tab_with_logic(
         push_ring.visible = False
         # Re-enable push button if it was disabled
         for ctl in build_actions.controls:
-            if isinstance(ctl, ft.TextButton) and "Push + Upload README" in getattr(
-                ctl, "text", ""
-            ):
+            if isinstance(ctl, ft.TextButton) and "Push + Upload README" in getattr(ctl, "text", ""):
                 ctl.disabled = False
         update_status_placeholder()
 
     async def on_build():
         # Delegate to helper to keep controller slim
-        hf_cfg_token = (
-            (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
-        )
+        hf_cfg_token = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
         return await run_build_helper(
             page=page,
             source_mode=source_mode,
@@ -647,9 +626,7 @@ def build_build_tab_with_logic(
 
     async def on_push_async():
         # Delegate to helper to keep controller slim
-        hf_cfg_token = (
-            (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
-        )
+        hf_cfg_token = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
         return await run_push_async_helper(
             page=page,
             repo_id=repo_id,
