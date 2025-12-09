@@ -9,7 +9,8 @@ sources:
 
 # Output settings
 output: synthetic_data.json
-format: chatml  # or "standard" for input/output pairs
+format: chatml       # or "standard" for input/output pairs
+output_type: json    # json, hf (HuggingFace datasets), or parquet
 
 # Generation settings
 type: qa        # qa, cot, or summary
@@ -23,9 +24,14 @@ threshold: 7.5  # 1-10 scale
 
 # Processing options
 multimodal: false  # enable for images in documents
+dedupe: false      # remove duplicate entries
+resume: false      # resume from previous run
 
 # Storage options
 save_to_db: true   # save to FineFoundry database
+
+# Performance options
+keep_server: false  # keep vLLM server running for batch runs
 
 # Output verbosity
 quiet: false

@@ -24,6 +24,14 @@ from synthetic_cli import (
     load_config_file,
     create_progress_bar,
     check_vllm_running,
+    deduplicate_data,
+    load_existing_data,
+    save_output,
+    compute_dataset_stats,
+    run_with_retry,
+    save_progress,
+    load_progress,
+    clear_progress,
     main,
 )
 
@@ -469,3 +477,486 @@ class TestKeepServerFlag:
 
         args = parser.parse_args([])
         assert args.keep_server is False
+
+
+# =============================================================================
+# deduplicate_data() tests
+# =============================================================================
+
+
+class TestDeduplicateData:
+    """Tests for deduplicate_data function."""
+
+    def test_dedupe_standard_format(self):
+        """Test deduplication with standard format."""
+        data = [
+            {"input": "What is Python?", "output": "A programming language."},
+            {"input": "What is Python?", "output": "A snake."},  # Duplicate
+            {"input": "What is Java?", "output": "Another language."},
+        ]
+        result = deduplicate_data(data, "standard")
+        assert len(result) == 2
+        assert result[0]["input"] == "What is Python?"
+        assert result[1]["input"] == "What is Java?"
+
+    def test_dedupe_chatml_format(self):
+        """Test deduplication with ChatML format."""
+        data = [
+            {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]},
+            {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hey"}]},  # Dup
+            {"messages": [{"role": "user", "content": "Goodbye"}, {"role": "assistant", "content": "Bye"}]},
+        ]
+        result = deduplicate_data(data, "chatml")
+        assert len(result) == 2
+
+    def test_dedupe_case_insensitive(self):
+        """Test deduplication is case-insensitive."""
+        data = [
+            {"input": "What is Python?", "output": "A language."},
+            {"input": "WHAT IS PYTHON?", "output": "A snake."},  # Same when lowercased
+        ]
+        result = deduplicate_data(data, "standard")
+        assert len(result) == 1
+
+    def test_dedupe_empty_list(self):
+        """Test deduplication with empty list."""
+        result = deduplicate_data([], "standard")
+        assert result == []
+
+    def test_dedupe_preserves_order(self):
+        """Test deduplication preserves first occurrence."""
+        data = [
+            {"input": "First", "output": "A"},
+            {"input": "Second", "output": "B"},
+            {"input": "First", "output": "C"},  # Duplicate
+        ]
+        result = deduplicate_data(data, "standard")
+        assert len(result) == 2
+        assert result[0]["output"] == "A"  # First occurrence kept
+
+
+# =============================================================================
+# load_existing_data() tests
+# =============================================================================
+
+
+class TestLoadExistingData:
+    """Tests for load_existing_data function."""
+
+    def test_load_json_file(self, tmp_path):
+        """Test loading existing JSON file."""
+        import json
+        data = [{"input": "test", "output": "data"}]
+        json_file = tmp_path / "existing.json"
+        json_file.write_text(json.dumps(data))
+        
+        result = load_existing_data(str(json_file), "json")
+        assert result == data
+
+    def test_load_nonexistent_file(self, tmp_path):
+        """Test loading non-existent file returns empty list."""
+        result = load_existing_data(str(tmp_path / "nonexistent.json"), "json")
+        assert result == []
+
+    def test_load_invalid_json(self, tmp_path):
+        """Test loading invalid JSON returns empty list."""
+        json_file = tmp_path / "invalid.json"
+        json_file.write_text("not valid json")
+        
+        result = load_existing_data(str(json_file), "json")
+        assert result == []
+
+
+# =============================================================================
+# save_output() tests
+# =============================================================================
+
+
+class TestSaveOutput:
+    """Tests for save_output function."""
+
+    def test_save_json(self, tmp_path):
+        """Test saving to JSON format."""
+        import json
+        data = [{"input": "test", "output": "data"}]
+        output_path = str(tmp_path / "output.json")
+        
+        result = save_output(data, output_path, "json", "standard", quiet=True)
+        
+        assert result is True
+        assert Path(output_path).exists()
+        with open(output_path) as f:
+            saved = json.load(f)
+        assert saved == data
+
+    def test_save_json_creates_file(self, tmp_path):
+        """Test save_output creates the file."""
+        data = [{"messages": [{"role": "user", "content": "Hi"}]}]
+        output_path = str(tmp_path / "new_output.json")
+        
+        save_output(data, output_path, "json", "chatml", quiet=True)
+        
+        assert Path(output_path).exists()
+
+
+# =============================================================================
+# New argument parsing tests
+# =============================================================================
+
+
+class TestOutputTypeFlag:
+    """Tests for --output-type flag parsing."""
+
+    def test_output_type_choices(self):
+        """Test output-type accepts valid choices."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--output-type", choices=["json", "hf", "parquet"], default="json")
+
+        for choice in ["json", "hf", "parquet"]:
+            args = parser.parse_args(["--output-type", choice])
+            assert args.output_type == choice
+
+    def test_output_type_default(self):
+        """Test output-type defaults to json."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--output-type", choices=["json", "hf", "parquet"], default="json")
+
+        args = parser.parse_args([])
+        assert args.output_type == "json"
+
+
+class TestDedupeFlag:
+    """Tests for --dedupe flag parsing."""
+
+    def test_dedupe_flag_parsing(self):
+        """Test dedupe flag is parsed correctly."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--dedupe", action="store_true")
+
+        args = parser.parse_args(["--dedupe"])
+        assert args.dedupe is True
+
+    def test_dedupe_default_false(self):
+        """Test dedupe defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--dedupe", action="store_true")
+
+        args = parser.parse_args([])
+        assert args.dedupe is False
+
+
+class TestResumeFlag:
+    """Tests for --resume flag parsing."""
+
+    def test_resume_flag_parsing(self):
+        """Test resume flag is parsed correctly."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--resume", action="store_true")
+
+        args = parser.parse_args(["--resume"])
+        assert args.resume is True
+
+    def test_resume_default_false(self):
+        """Test resume defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--resume", action="store_true")
+
+        args = parser.parse_args([])
+        assert args.resume is False
+
+
+# =============================================================================
+# compute_dataset_stats() tests
+# =============================================================================
+
+
+class TestComputeDatasetStats:
+    """Tests for compute_dataset_stats function."""
+
+    def test_stats_empty_data(self):
+        """Test stats with empty data."""
+        result = compute_dataset_stats([], "standard")
+        assert result["count"] == 0
+
+    def test_stats_standard_format(self):
+        """Test stats with standard format."""
+        data = [
+            {"input": "Hello", "output": "Hi there"},
+            {"input": "How are you?", "output": "I'm fine, thanks!"},
+        ]
+        result = compute_dataset_stats(data, "standard")
+        
+        assert result["count"] == 2
+        assert result["total_chars"] > 0
+        assert "avg_input_len" in result
+        assert "avg_output_len" in result
+        assert "estimated_tokens" in result
+
+    def test_stats_chatml_format(self):
+        """Test stats with ChatML format."""
+        data = [
+            {"messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there"}
+            ]},
+        ]
+        result = compute_dataset_stats(data, "chatml")
+        
+        assert result["count"] == 1
+        assert result["total_chars"] == len("Hello") + len("Hi there")
+
+    def test_stats_min_max(self):
+        """Test min/max calculations."""
+        data = [
+            {"input": "a", "output": "b"},
+            {"input": "aaaaaaaaaa", "output": "bbbbbbbbbb"},
+        ]
+        result = compute_dataset_stats(data, "standard")
+        
+        assert result["min_input_len"] == 1
+        assert result["max_input_len"] == 10
+        assert result["min_output_len"] == 1
+        assert result["max_output_len"] == 10
+
+    def test_stats_token_estimate(self):
+        """Test token estimation (~4 chars per token)."""
+        data = [
+            {"input": "a" * 100, "output": "b" * 100},
+        ]
+        result = compute_dataset_stats(data, "standard")
+        
+        # 200 chars / 4 = 50 tokens
+        assert result["estimated_tokens"] == 50
+
+
+# =============================================================================
+# run_with_retry() tests
+# =============================================================================
+
+
+class TestRunWithRetry:
+    """Tests for run_with_retry function."""
+
+    def test_success_first_try(self):
+        """Test successful execution on first try."""
+        def success_func():
+            return "success"
+        
+        result = run_with_retry(success_func, max_retries=3, quiet=True)
+        assert result == "success"
+
+    def test_retry_on_connection_error(self):
+        """Test retry on connection error."""
+        call_count = [0]
+        
+        def flaky_func():
+            call_count[0] += 1
+            if call_count[0] < 2:
+                raise Exception("connection timeout")
+            return "success"
+        
+        result = run_with_retry(flaky_func, max_retries=3, delay=0.01, quiet=True)
+        assert result == "success"
+        assert call_count[0] == 2
+
+    def test_no_retry_on_non_retryable_error(self):
+        """Test no retry on non-retryable errors."""
+        call_count = [0]
+        
+        def fail_func():
+            call_count[0] += 1
+            raise ValueError("invalid input")
+        
+        try:
+            run_with_retry(fail_func, max_retries=3, delay=0.01, quiet=True)
+        except ValueError:
+            pass
+        
+        assert call_count[0] == 1  # Only called once
+
+    def test_max_retries_exceeded(self):
+        """Test exception raised after max retries."""
+        def always_fail():
+            raise Exception("connection error")
+        
+        with pytest.raises(Exception):
+            run_with_retry(always_fail, max_retries=2, delay=0.01, quiet=True)
+
+
+# =============================================================================
+# --stats flag tests
+# =============================================================================
+
+
+class TestStatsFlag:
+    """Tests for --stats flag parsing."""
+
+    def test_stats_flag_parsing(self):
+        """Test stats flag is parsed correctly."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--stats", action="store_true")
+
+        args = parser.parse_args(["--stats"])
+        assert args.stats is True
+
+    def test_stats_default_false(self):
+        """Test stats defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--stats", action="store_true")
+
+        args = parser.parse_args([])
+        assert args.stats is False
+
+
+# =============================================================================
+# --push-to-hub flag tests
+# =============================================================================
+
+
+class TestPushToHubFlag:
+    """Tests for --push-to-hub flag parsing."""
+
+    def test_push_to_hub_flag_parsing(self):
+        """Test push-to-hub flag is parsed correctly."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--push-to-hub", type=str)
+
+        args = parser.parse_args(["--push-to-hub", "user/dataset"])
+        assert args.push_to_hub == "user/dataset"
+
+    def test_push_to_hub_default_none(self):
+        """Test push-to-hub defaults to None."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--push-to-hub", type=str)
+
+        args = parser.parse_args([])
+        assert args.push_to_hub is None
+
+
+class TestPrivateFlag:
+    """Tests for --private flag parsing."""
+
+    def test_private_flag_parsing(self):
+        """Test private flag is parsed correctly."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--private", action="store_true")
+
+        args = parser.parse_args(["--private"])
+        assert args.private is True
+
+    def test_private_default_false(self):
+        """Test private defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--private", action="store_true")
+
+        args = parser.parse_args([])
+        assert args.private is False
+
+
+# =============================================================================
+# Progress persistence tests
+# =============================================================================
+
+
+class TestSaveProgress:
+    """Tests for save_progress function."""
+
+    def test_save_progress_creates_file(self, tmp_path):
+        """Test save_progress creates a file."""
+        progress_file = str(tmp_path / "test.progress")
+        save_progress(progress_file, ["source1"], {"source1": [0, 1]}, [{"data": "test"}])
+        
+        assert Path(progress_file).exists()
+
+    def test_save_progress_content(self, tmp_path):
+        """Test save_progress saves correct content."""
+        import json
+        progress_file = str(tmp_path / "test.progress")
+        save_progress(progress_file, ["source1", "source2"], {"source1": [0, 1, 2]}, [{"a": 1}, {"b": 2}])
+        
+        with open(progress_file) as f:
+            data = json.load(f)
+        
+        assert data["sources_completed"] == ["source1", "source2"]
+        assert data["chunks_completed"] == {"source1": [0, 1, 2]}
+        assert data["data_count"] == 2
+        assert "timestamp" in data
+
+
+class TestLoadProgress:
+    """Tests for load_progress function."""
+
+    def test_load_progress_existing(self, tmp_path):
+        """Test loading existing progress file."""
+        import json
+        progress_file = str(tmp_path / "test.progress")
+        progress_data = {
+            "sources_completed": ["s1"],
+            "chunks_completed": {"s1": [0]},
+            "data_count": 5,
+            "timestamp": 12345.0
+        }
+        with open(progress_file, "w") as f:
+            json.dump(progress_data, f)
+        
+        result = load_progress(progress_file)
+        
+        assert result is not None
+        assert result["sources_completed"] == ["s1"]
+        assert result["data_count"] == 5
+
+    def test_load_progress_nonexistent(self, tmp_path):
+        """Test loading non-existent progress file."""
+        result = load_progress(str(tmp_path / "nonexistent.progress"))
+        assert result is None
+
+    def test_load_progress_invalid_json(self, tmp_path):
+        """Test loading invalid JSON progress file."""
+        progress_file = str(tmp_path / "test.progress")
+        with open(progress_file, "w") as f:
+            f.write("not valid json")
+        
+        result = load_progress(progress_file)
+        assert result is None
+
+
+class TestClearProgress:
+    """Tests for clear_progress function."""
+
+    def test_clear_progress_removes_file(self, tmp_path):
+        """Test clear_progress removes the file."""
+        progress_file = str(tmp_path / "test.progress")
+        Path(progress_file).write_text("{}")
+        
+        assert Path(progress_file).exists()
+        clear_progress(progress_file)
+        assert not Path(progress_file).exists()
+
+    def test_clear_progress_nonexistent(self, tmp_path):
+        """Test clear_progress handles non-existent file."""
+        # Should not raise
+        clear_progress(str(tmp_path / "nonexistent.progress"))

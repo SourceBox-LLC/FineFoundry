@@ -153,6 +153,344 @@ def check_vllm_running(port: int = 8000) -> bool:
         return False
 
 
+def deduplicate_data(data: List[Dict[str, Any]], dataset_format: str) -> List[Dict[str, Any]]:
+    """Remove duplicate entries based on input/user content.
+    
+    Args:
+        data: List of conversation/pair dictionaries
+        dataset_format: 'chatml' or 'standard'
+        
+    Returns:
+        Deduplicated list
+    """
+    seen = set()
+    unique = []
+    
+    for item in data:
+        # Extract the key for deduplication
+        if dataset_format.lower() == "standard":
+            key = item.get("input", "")
+        else:
+            # ChatML format - use first user message
+            messages = item.get("messages", [])
+            key = ""
+            for msg in messages:
+                if msg.get("role") == "user":
+                    key = msg.get("content", "")
+                    break
+        
+        # Normalize key
+        key = key.strip().lower()
+        
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(item)
+    
+    return unique
+
+
+def load_existing_data(output_path: str, output_type: str) -> List[Dict[str, Any]]:
+    """Load existing data from output file for resume functionality.
+    
+    Args:
+        output_path: Path to existing output
+        output_type: 'json', 'hf', or 'parquet'
+        
+    Returns:
+        List of existing data or empty list
+    """
+    try:
+        if output_type == "json":
+            if Path(output_path).exists():
+                with open(output_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        elif output_type == "hf":
+            if Path(output_path).exists():
+                try:
+                    from datasets import load_from_disk
+                    ds = load_from_disk(output_path)
+                    if hasattr(ds, "get"):
+                        ds = ds.get("train", ds)
+                    return list(ds)
+                except Exception:
+                    pass
+        elif output_type == "parquet":
+            if Path(output_path).exists():
+                try:
+                    import pandas as pd
+                    df = pd.read_parquet(output_path)
+                    return df.to_dict("records")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return []
+
+
+def save_output(
+    data: List[Dict[str, Any]],
+    output_path: str,
+    output_type: str,
+    dataset_format: str,
+    quiet: bool = False,
+) -> bool:
+    """Save data to the specified output format.
+    
+    Args:
+        data: List of conversation/pair dictionaries
+        output_path: Path to save output
+        output_type: 'json', 'hf', or 'parquet'
+        dataset_format: 'chatml' or 'standard'
+        quiet: Suppress output
+        
+    Returns:
+        True if successful
+    """
+    try:
+        if output_type == "json":
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            log(f"💾 Saved JSON to: {output_path}", quiet)
+            
+        elif output_type == "hf":
+            try:
+                from datasets import Dataset, DatasetDict
+                ds = Dataset.from_list(data)
+                dd = DatasetDict({"train": ds})
+                Path(output_path).mkdir(parents=True, exist_ok=True)
+                dd.save_to_disk(output_path)
+                log(f"💾 Saved HuggingFace dataset to: {output_path}", quiet)
+            except ImportError:
+                log("⚠️ datasets library not installed, falling back to JSON", quiet)
+                json_path = output_path if output_path.endswith(".json") else f"{output_path}.json"
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                log(f"💾 Saved JSON to: {json_path}", quiet)
+                
+        elif output_type == "parquet":
+            try:
+                import pandas as pd
+                df = pd.DataFrame(data)
+                parquet_path = output_path if output_path.endswith(".parquet") else f"{output_path}.parquet"
+                df.to_parquet(parquet_path, index=False)
+                log(f"💾 Saved Parquet to: {parquet_path}", quiet)
+            except ImportError:
+                log("⚠️ pandas not installed, falling back to JSON", quiet)
+                json_path = output_path if output_path.endswith(".json") else f"{output_path}.json"
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                log(f"💾 Saved JSON to: {json_path}", quiet)
+                
+        return True
+    except Exception as e:
+        print(f"Error saving output: {e}", file=sys.stderr)
+        return False
+
+
+def push_to_hf_hub(
+    data: List[Dict[str, Any]],
+    repo_id: str,
+    dataset_format: str,
+    private: bool = False,
+    quiet: bool = False,
+) -> bool:
+    """Push dataset to HuggingFace Hub.
+    
+    Args:
+        data: List of conversation/pair dictionaries
+        repo_id: HuggingFace repo ID (e.g., 'username/dataset-name')
+        dataset_format: 'chatml' or 'standard'
+        private: Whether to create a private repo
+        quiet: Suppress output
+        
+    Returns:
+        True if successful
+    """
+    try:
+        from datasets import Dataset
+        
+        log(f"🚀 Pushing to HuggingFace Hub: {repo_id}", quiet)
+        
+        # Create dataset
+        ds = Dataset.from_list(data)
+        
+        # Push to hub
+        ds.push_to_hub(repo_id, private=private)
+        
+        log(f"✅ Successfully pushed to: https://huggingface.co/datasets/{repo_id}", quiet)
+        return True
+        
+    except ImportError:
+        print("Error: 'datasets' and 'huggingface_hub' libraries required for Hub push", file=sys.stderr)
+        print("Install with: pip install datasets huggingface_hub", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"Error pushing to Hub: {e}", file=sys.stderr)
+        return False
+
+
+def compute_dataset_stats(
+    data: List[Dict[str, Any]],
+    dataset_format: str,
+) -> Dict[str, Any]:
+    """Compute statistics for a dataset.
+    
+    Args:
+        data: List of conversation/pair dictionaries
+        dataset_format: 'chatml' or 'standard'
+        
+    Returns:
+        Dictionary with statistics
+    """
+    if not data:
+        return {"count": 0}
+    
+    stats = {
+        "count": len(data),
+        "input_lengths": [],
+        "output_lengths": [],
+        "total_chars": 0,
+    }
+    
+    for item in data:
+        if dataset_format.lower() == "standard":
+            inp = item.get("input", "")
+            out = item.get("output", "")
+        else:
+            # ChatML format
+            messages = item.get("messages", [])
+            inp = ""
+            out = ""
+            for msg in messages:
+                if msg.get("role") == "user" and not inp:
+                    inp = msg.get("content", "")
+                elif msg.get("role") == "assistant" and not out:
+                    out = msg.get("content", "")
+        
+        inp_len = len(inp)
+        out_len = len(out)
+        stats["input_lengths"].append(inp_len)
+        stats["output_lengths"].append(out_len)
+        stats["total_chars"] += inp_len + out_len
+    
+    # Compute aggregates
+    if stats["input_lengths"]:
+        stats["avg_input_len"] = sum(stats["input_lengths"]) / len(stats["input_lengths"])
+        stats["max_input_len"] = max(stats["input_lengths"])
+        stats["min_input_len"] = min(stats["input_lengths"])
+        stats["avg_output_len"] = sum(stats["output_lengths"]) / len(stats["output_lengths"])
+        stats["max_output_len"] = max(stats["output_lengths"])
+        stats["min_output_len"] = min(stats["output_lengths"])
+    
+    # Estimate tokens (rough: ~4 chars per token)
+    stats["estimated_tokens"] = stats["total_chars"] // 4
+    
+    # Remove raw lists for cleaner output
+    del stats["input_lengths"]
+    del stats["output_lengths"]
+    
+    return stats
+
+
+def run_with_retry(
+    func,
+    max_retries: int = 3,
+    delay: float = 2.0,
+    quiet: bool = False,
+):
+    """Run a function with retry logic for network errors.
+    
+    Args:
+        func: Function to call (should return result or raise exception)
+        max_retries: Maximum number of retry attempts
+        delay: Delay between retries in seconds
+        quiet: Suppress output
+        
+    Returns:
+        Function result or None on failure
+    """
+    import time
+    
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            last_error = e
+            error_msg = str(e).lower()
+            # Check if it's a retryable error
+            retryable = any(x in error_msg for x in [
+                "connection", "timeout", "network", "temporary",
+                "429", "503", "502", "504", "rate limit"
+            ])
+            
+            if retryable and attempt < max_retries - 1:
+                wait_time = delay * (2 ** attempt)  # Exponential backoff
+                if not quiet:
+                    log(f"  ⚠️ Retry {attempt + 1}/{max_retries} in {wait_time:.1f}s: {str(e)[:50]}", quiet)
+                time.sleep(wait_time)
+            else:
+                break
+    
+    if last_error:
+        raise last_error
+    return None
+
+
+def save_progress(
+    progress_file: str,
+    sources_completed: List[str],
+    chunks_completed: Dict[str, List[int]],
+    data_so_far: List[Dict[str, Any]],
+) -> None:
+    """Save generation progress to a file for resume capability.
+    
+    Args:
+        progress_file: Path to progress file
+        sources_completed: List of fully processed source paths
+        chunks_completed: Dict mapping source -> list of completed chunk indices
+        data_so_far: Data generated so far
+    """
+    progress = {
+        "sources_completed": sources_completed,
+        "chunks_completed": chunks_completed,
+        "data_count": len(data_so_far),
+        "timestamp": time.time(),
+    }
+    try:
+        with open(progress_file, "w", encoding="utf-8") as f:
+            json.dump(progress, f, indent=2)
+    except Exception:
+        pass  # Non-critical, don't fail on progress save
+
+
+def load_progress(progress_file: str) -> Optional[Dict[str, Any]]:
+    """Load generation progress from a file.
+    
+    Args:
+        progress_file: Path to progress file
+        
+    Returns:
+        Progress dict or None if not found/invalid
+    """
+    try:
+        if Path(progress_file).exists():
+            with open(progress_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def clear_progress(progress_file: str) -> None:
+    """Remove progress file after successful completion."""
+    try:
+        if Path(progress_file).exists():
+            Path(progress_file).unlink()
+    except Exception:
+        pass
+
+
 def run_subprocess(cmd: List[str], description: str, quiet: bool = False) -> bool:
     """Run a subprocess command and return success status."""
     if not quiet:
@@ -337,11 +675,17 @@ def run_generation(
     curate_threshold: float = 7.5,
     multimodal: bool = False,
     dataset_format: str = "chatml",
+    output_type: str = "json",
     model: str = "unsloth/Llama-3.2-3B-Instruct",
     save_to_db: bool = True,
     quiet: bool = False,
     verbose: bool = False,
     keep_server: bool = False,
+    dedupe: bool = False,
+    resume: bool = False,
+    show_stats: bool = False,
+    push_to_hub: Optional[str] = None,
+    private: bool = False,
 ) -> bool:
     """Run the full synthetic data generation pipeline.
 
@@ -355,11 +699,17 @@ def run_generation(
         curate_threshold: Quality threshold for curation (1-10)
         multimodal: Enable multimodal processing
         dataset_format: Output format - 'chatml' or 'standard'
+        output_type: Output type - 'json', 'hf', or 'parquet'
         model: Model name to use for generation
         save_to_db: Save results to FineFoundry database
         quiet: Suppress all output except errors
         verbose: Show detailed debug output
         keep_server: Keep vLLM server running after generation (for batch runs)
+        dedupe: Remove duplicate entries based on input text
+        resume: Resume from previous run (load existing output and append)
+        show_stats: Show dataset statistics after generation
+        push_to_hub: HuggingFace Hub repo ID to push to (optional)
+        private: Make Hub repo private (use with push_to_hub)
     """
     start_time = time.time()
 
@@ -369,13 +719,40 @@ def run_generation(
     log(f"   Sources: {len(sources)}", quiet)
     if verbose:
         debug(f"Output: {output_path}", verbose)
+        debug(f"Output type: {output_type}", verbose)
         debug(f"Num pairs per chunk: {num_pairs}", verbose)
         debug(f"Max chunks per source: {max_chunks}", verbose)
         debug(f"Curate: {curate} (threshold: {curate_threshold})", verbose)
         debug(f"Format: {dataset_format}", verbose)
         debug(f"Multimodal: {multimodal}", verbose)
         debug(f"Save to DB: {save_to_db}", verbose)
+        debug(f"Dedupe: {dedupe}", verbose)
+        debug(f"Resume: {resume}", verbose)
     log("", quiet)
+
+    # Progress file for mid-run resume
+    progress_file = f"{output_path}.progress"
+    
+    # Load existing data and progress if resuming
+    existing_data: List[Dict[str, Any]] = []
+    progress_state: Optional[Dict[str, Any]] = None
+    sources_completed: List[str] = []
+    chunks_completed: Dict[str, List[int]] = {}
+    
+    if resume:
+        existing_data = load_existing_data(output_path, output_type)
+        progress_state = load_progress(progress_file)
+        
+        if progress_state:
+            sources_completed = progress_state.get("sources_completed", [])
+            chunks_completed = progress_state.get("chunks_completed", {})
+            log(f"♻️  Resuming: {len(sources_completed)} sources done, {len(existing_data)} entries", quiet)
+            debug(f"Progress: sources={sources_completed}, chunks={chunks_completed}", verbose)
+        elif existing_data:
+            log(f"♻️  Resuming with {len(existing_data)} existing entries", quiet)
+            debug(f"Loaded {len(existing_data)} entries from {output_path}", verbose)
+        else:
+            log("📝 No existing data found, starting fresh", quiet)
 
     # Clear and create output directories
     for folder in ["data/output", "data/generated", "data/curated", "data/final"]:
@@ -430,6 +807,11 @@ def run_generation(
         for idx, source in enumerate(sources):
             source_name = source if is_url(source) else Path(source).name
 
+            # Skip already completed sources when resuming
+            if source in sources_completed:
+                log(f"\n⏭️  Skipping completed source [{idx + 1}/{len(sources)}]: {source_name}", quiet)
+                continue
+
             log(f"\n{'=' * 40}", quiet)
             log(f"📁 Processing [{idx + 1}/{len(sources)}]: {source_name}", quiet)
             log(f"{'=' * 40}", quiet)
@@ -452,12 +834,20 @@ def run_generation(
 
             # Process chunks
             chunks_to_process = chunk_files[:max_chunks]
+            completed_for_source = chunks_completed.get(source, [])
             log(f"  🔄 Processing {len(chunks_to_process)} chunks...", quiet)
 
             # Create progress bar for chunks
             pbar = create_progress_bar(len(chunks_to_process), f"  {source_name[:20]}", quiet)
 
             for i, chunk_file in enumerate(chunks_to_process):
+                # Skip already completed chunks when resuming
+                if i in completed_for_source:
+                    debug(f"Skipping completed chunk {i + 1}", verbose)
+                    if pbar:
+                        pbar.update(1)
+                    continue
+                    
                 chunk_start = time.time()
                 debug(f"Processing chunk {i + 1}: {chunk_file}", verbose)
 
@@ -489,6 +879,12 @@ def run_generation(
                         pbar.set_postfix({"pairs": len(ft_data), "time": format_time(chunk_elapsed)})
                     else:
                         log(f"  ✅ Generated {len(ft_data)} pairs ({format_time(chunk_elapsed)})", quiet)
+                    
+                    # Save progress after each chunk
+                    if source not in chunks_completed:
+                        chunks_completed[source] = []
+                    chunks_completed[source].append(i)
+                    save_progress(progress_file, sources_completed, chunks_completed, all_conversations)
 
                 if pbar:
                     pbar.update(1)
@@ -496,10 +892,15 @@ def run_generation(
             if pbar:
                 pbar.close()
             sources_processed += 1
+            
+            # Mark source as completed
+            sources_completed.append(source)
+            save_progress(progress_file, sources_completed, chunks_completed, all_conversations)
 
         # Combine all datasets
-        if all_conversations:
-            log(f"\n📦 Combining {len(all_conversations)} conversations into final dataset...", quiet)
+        if all_conversations or existing_data:
+            new_count = len(all_conversations)
+            log(f"\n📦 Combining {new_count} new conversations into final dataset...", quiet)
 
             combined_data = all_conversations
 
@@ -508,14 +909,24 @@ def run_generation(
             else:
                 final_data = convert_to_chatml(combined_data)
 
+            # Merge with existing data if resuming
+            if existing_data:
+                final_data = existing_data + final_data
+                log(f"   Merged with {len(existing_data)} existing entries", quiet)
+
+            # Deduplicate if requested
+            if dedupe:
+                before_count = len(final_data)
+                final_data = deduplicate_data(final_data, dataset_format)
+                removed = before_count - len(final_data)
+                if removed > 0:
+                    log(f"🔄 Removed {removed} duplicate entries", quiet)
+
             total_pairs = len(final_data)
             pairs_output = dataset_format.lower() == "standard"
 
-            # Write to output file
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(final_data, f, ensure_ascii=False, indent=2)
-
-            log(f"💾 Saved to: {output_path}", quiet)
+            # Save to output file using appropriate format
+            save_output(final_data, output_path, output_type, dataset_format, quiet)
 
             # Save to database
             if save_to_db:
@@ -544,20 +955,45 @@ def run_generation(
                 quiet,
             )
 
+            # Show dataset statistics if requested
+            stats = None
+            if show_stats:
+                stats = compute_dataset_stats(final_data, dataset_format)
+                log("\n📈 Dataset Statistics:", quiet)
+                log(f"   Total entries: {stats['count']}", quiet)
+                log(f"   Estimated tokens: {stats.get('estimated_tokens', 0):,}", quiet)
+                log(f"   Total characters: {stats.get('total_chars', 0):,}", quiet)
+                if stats.get('avg_input_len'):
+                    log(f"   Avg input length: {stats['avg_input_len']:.0f} chars", quiet)
+                    log(f"   Avg output length: {stats['avg_output_len']:.0f} chars", quiet)
+                    log(f"   Input range: {stats['min_input_len']}-{stats['max_input_len']} chars", quiet)
+                    log(f"   Output range: {stats['min_output_len']}-{stats['max_output_len']} chars", quiet)
+
+            # Push to HuggingFace Hub if requested
+            if push_to_hub:
+                hub_result = push_to_hf_hub(
+                    final_data, push_to_hub, dataset_format, private, quiet
+                )
+                if not hub_result:
+                    log("⚠️ Hub push failed, but local save succeeded", quiet)
+
             # Print summary in quiet mode too
             if quiet:
-                print(
-                    json.dumps(
-                        {
-                            "success": True,
-                            "output": output_path,
-                            "pairs": total_pairs,
-                            "sources": sources_processed,
-                            "elapsed_seconds": round(total_elapsed, 2),
-                        }
-                    )
-                )
+                summary = {
+                    "success": True,
+                    "output": output_path,
+                    "pairs": total_pairs,
+                    "sources": sources_processed,
+                    "elapsed_seconds": round(total_elapsed, 2),
+                }
+                if stats:
+                    summary["stats"] = stats
+                if push_to_hub:
+                    summary["hub_repo"] = push_to_hub
+                print(json.dumps(summary))
 
+            # Clear progress file on successful completion
+            clear_progress(progress_file)
             return True
         else:
             print("❌ No content was generated!", file=sys.stderr)
@@ -652,9 +1088,45 @@ Examples:
         help="Output format: chatml (messages) or standard (input/output) (default: chatml)",
     )
     parser.add_argument(
+        "--output-type",
+        choices=["json", "hf", "parquet"],
+        default="json",
+        help="Output type: json (file), hf (HuggingFace datasets dir), parquet (default: json)",
+    )
+    parser.add_argument(
         "--multimodal",
         action="store_true",
         help="Enable multimodal processing for images in documents",
+    )
+
+    # Data processing options
+    parser.add_argument(
+        "--dedupe",
+        action="store_true",
+        help="Remove duplicate pairs based on input text",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from previous run (loads existing output and appends new data)",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show dataset statistics (token counts, length distribution)",
+    )
+
+    # HuggingFace Hub options
+    parser.add_argument(
+        "--push-to-hub",
+        type=str,
+        metavar="REPO_ID",
+        help="Push dataset to HuggingFace Hub (e.g., 'username/dataset-name')",
+    )
+    parser.add_argument(
+        "--private",
+        action="store_true",
+        help="Make the HuggingFace Hub repo private (use with --push-to-hub)",
     )
 
     # Database options
@@ -711,7 +1183,13 @@ Examples:
     curate = args.curate or config.get("curate", False)
     threshold = args.threshold if args.threshold != 7.5 else config.get("threshold", args.threshold)
     dataset_format = args.format if args.format != "chatml" else config.get("format", args.format)
+    output_type = args.output_type if args.output_type != "json" else config.get("output_type", args.output_type)
     multimodal = args.multimodal or config.get("multimodal", False)
+    dedupe = args.dedupe or config.get("dedupe", False)
+    resume = args.resume or config.get("resume", False)
+    show_stats = args.stats or config.get("stats", False)
+    hub_repo = args.push_to_hub or config.get("push_to_hub")
+    private = args.private or config.get("private", False)
     save_to_db = not args.no_db and config.get("save_to_db", True)
     quiet = args.quiet or config.get("quiet", False)
     verbose = args.verbose or config.get("verbose", False)
@@ -738,11 +1216,17 @@ Examples:
         curate_threshold=threshold,
         multimodal=multimodal,
         dataset_format=dataset_format,
+        output_type=output_type,
         model=model,
         save_to_db=save_to_db,
         quiet=quiet,
         verbose=verbose,
         keep_server=keep_server,
+        dedupe=dedupe,
+        resume=resume,
+        show_stats=show_stats,
+        push_to_hub=hub_repo,
+        private=private,
     )
 
     sys.exit(0 if success else 1)

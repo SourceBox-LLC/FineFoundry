@@ -230,7 +230,13 @@ python src/synthetic_cli.py \
 - `--curate` – Enable quality curation.
 - `--threshold` – Curation quality threshold 1-10 (default: 7.5).
 - `--format`, `-f` – Output format: `chatml` or `standard` (default: `chatml`).
+- `--output-type` – Output type: `json`, `hf` (HuggingFace datasets), or `parquet` (default: `json`).
 - `--multimodal` – Enable multimodal processing for images.
+- `--dedupe` – Remove duplicate pairs based on input text.
+- `--resume` – Resume from previous run (load existing output and append). Saves progress after each chunk.
+- `--stats` – Show dataset statistics (token counts, length distribution) after generation.
+- `--push-to-hub REPO_ID` – Push dataset to HuggingFace Hub (e.g., `username/dataset-name`).
+- `--private` – Make the HuggingFace Hub repo private (use with `--push-to-hub`).
 - `--no-db` – Don't save results to the FineFoundry database.
 - `--quiet`, `-q` – Quiet mode (JSON summary output only).
 - `--verbose`, `-v` – Verbose mode (detailed debug output).
@@ -293,3 +299,58 @@ Use `--verbose` to see detailed processing information:
 ```bash
 uv run python src/synthetic_cli.py --source doc.pdf --verbose
 ```
+
+### Export to HuggingFace datasets
+
+Export directly to HuggingFace datasets format for easy upload:
+
+```bash
+# Save as HuggingFace dataset directory
+uv run python src/synthetic_cli.py --source doc.pdf --output-type hf --output my_dataset
+
+# Save as Parquet file
+uv run python src/synthetic_cli.py --source doc.pdf --output-type parquet --output data.parquet
+```
+
+### Deduplication
+
+Remove duplicate entries based on input text:
+
+```bash
+uv run python src/synthetic_cli.py --source doc.pdf --dedupe
+```
+
+### Resume interrupted generation
+
+Resume from a previous run, appending new data to existing output. Progress is saved after each chunk, so you can resume mid-source:
+
+```bash
+# First run (interrupted)
+uv run python src/synthetic_cli.py --source large_doc.pdf --output data.json
+
+# Resume and continue (skips completed chunks)
+uv run python src/synthetic_cli.py --source large_doc.pdf --output data.json --resume
+```
+
+### Dataset statistics
+
+Show statistics after generation:
+
+```bash
+uv run python src/synthetic_cli.py --source doc.pdf --stats
+# Output includes: entry count, estimated tokens, avg/min/max lengths
+```
+
+### Push to HuggingFace Hub
+
+Push your dataset directly to HuggingFace Hub:
+
+```bash
+# Public dataset
+uv run python src/synthetic_cli.py --source doc.pdf --push-to-hub username/my-dataset
+
+# Private dataset
+uv run python src/synthetic_cli.py --source doc.pdf --push-to-hub username/my-dataset --private
+```
+
+Requires `huggingface-cli login` or `HF_TOKEN` environment variable.

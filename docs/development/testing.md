@@ -136,7 +136,7 @@ The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Py
 
 - Installs `pytest` and `coverage` via `uv`.
 - Runs `coverage run -m pytest --ignore=proxy_test.py`.
-- Enforces a minimum coverage threshold with `coverage report -m --fail-under=29`.
+- Enforces a minimum coverage threshold with `coverage report -m --fail-under=30`.
   This threshold acts as a **floor that prevents regressions** while leaving room to
   gradually increase it as more tests are added.
 - Exports `coverage.xml` and uploads it as a GitHub Actions artifact.
