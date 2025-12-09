@@ -232,12 +232,14 @@ jobs:
           # - CVE-2025-62727 (starlette 0.48.0; fixed in 0.49.1)
           # - CVE-2025-66418 (urllib3 2.5.0; fixed in 2.6.0)
           # - CVE-2025-66471 (urllib3 2.5.0; fixed in 2.6.0)
+          # - GHSA-f83h-ghpp-7wcc (pdfminer-six <=20251107; no fix yet, local privesc only)
           # All other vulnerabilities will still cause this job to fail.
           uv run pip-audit \
             --ignore-vuln CVE-2025-6176 \
             --ignore-vuln CVE-2025-62727 \
             --ignore-vuln CVE-2025-66418 \
-            --ignore-vuln CVE-2025-66471
+            --ignore-vuln CVE-2025-66471 \
+            --ignore-vuln GHSA-f83h-ghpp-7wcc
 
   docs:
     name: Docs (format, links, spelling)
