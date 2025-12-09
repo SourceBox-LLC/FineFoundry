@@ -44,6 +44,8 @@ Unit tests cover focused, deterministic behavior without external services:
 - `test_reddit_scraper.py` – Reddit scraper utilities (URL handling, text cleaning, question detection).
 - `test_stackexchange_scraper.py` – Stack Exchange HTML-to-text conversion and session config.
 - `test_chatml_builders.py` – ChatML conversation builders for 4chan and Reddit threads.
+- `test_migrate.py` – JSON to SQLite migration and export functions.
+- `test_db_settings.py` – database settings CRUD and convenience functions.
 
 Run unit tests only:
 
@@ -125,7 +127,7 @@ The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Py
 
 - Installs `pytest` and `coverage` via `uv`.
 - Runs `coverage run -m pytest --ignore=proxy_test.py`.
-- Enforces a minimum coverage threshold with `coverage report -m --fail-under=27`.
+- Enforces a minimum coverage threshold with `coverage report -m --fail-under=29`.
   This threshold acts as a **floor that prevents regressions** while leaving room to
   gradually increase it as more tests are added.
 - Exports `coverage.xml` and uploads it as a GitHub Actions artifact.
