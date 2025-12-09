@@ -191,34 +191,65 @@ def curate_content(json_file: Path, config_path: Path, threshold: float, quiet: 
     return json_file
 
 
-def convert_to_ft_format(json_file: Path, config_path: Path, quiet: bool) -> Optional[Path]:
-    """Convert to fine-tuning format."""
-    import subprocess
+def convert_to_ft_format(json_file: Path, config_path: Path, quiet: bool) -> Optional[List[dict]]:
+    """Convert generated JSON to fine-tuning format and return the data."""
+    try:
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    cmd = [
-        "synthetic-data-kit",
-        "-c",
-        str(config_path),
-        "convert",
-        str(json_file),
-        "--format",
-        "ft",
-    ]
+        # Handle different output formats from synthetic-data-kit
+        qa_pairs = []
+        if isinstance(data, dict):
+            # Format: {"summary": "...", "qa_pairs": [...]}
+            if "qa_pairs" in data:
+                for pair in data["qa_pairs"]:
+                    qa_pairs.append(
+                        {
+                            "messages": [
+                                {"role": "user", "content": pair.get("question", "")},
+                                {"role": "assistant", "content": pair.get("answer", "")},
+                            ]
+                        }
+                    )
+            # Format: {"instruction": "...", "output": "..."}
+            elif "instruction" in data:
+                qa_pairs.append(
+                    {
+                        "messages": [
+                            {"role": "user", "content": data.get("instruction", "")},
+                            {"role": "assistant", "content": data.get("output", "")},
+                        ]
+                    }
+                )
+        elif isinstance(data, list):
+            # Format: [{"question": "...", "answer": "..."}, ...]
+            for item in data:
+                if "question" in item and "answer" in item:
+                    qa_pairs.append(
+                        {
+                            "messages": [
+                                {"role": "user", "content": item["question"]},
+                                {"role": "assistant", "content": item["answer"]},
+                            ]
+                        }
+                    )
+                elif "instruction" in item:
+                    qa_pairs.append(
+                        {
+                            "messages": [
+                                {"role": "user", "content": item.get("instruction", "")},
+                                {"role": "assistant", "content": item.get("output", "")},
+                            ]
+                        }
+                    )
+                elif "messages" in item:
+                    qa_pairs.append(item)
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
+        return qa_pairs if qa_pairs else None
+    except Exception as e:
         if not quiet:
-            print(f"    ⚠️ Conversion warning: {result.stderr[:100]}")
+            print(f"    ⚠️ Conversion error: {e}")
         return None
-
-    ft_path = Path(f"data/final/{json_file.stem}_ft.json")
-    if ft_path.exists():
-        return ft_path
-
-    for f in Path("data/final").glob(f"{json_file.stem}*.json"):
-        return f
-
-    return None
 
 
 def run_generation(
@@ -283,7 +314,7 @@ def run_generation(
             print(f"❌ Failed to load model: {error_msg[:200]}", file=sys.stderr)
         return False
 
-    all_ft_files = []
+    all_conversations = []
     total_pairs = 0
     sources_processed = 0
 
@@ -330,23 +361,19 @@ def run_generation(
                     gen_file = curate_content(gen_file, config_path, curate_threshold, quiet)
 
                 # Convert to fine-tuning format
-                ft_file = convert_to_ft_format(gen_file, config_path, quiet)
-                if ft_file:
-                    all_ft_files.append(ft_file)
-                    total_pairs += num_pairs
+                ft_data = convert_to_ft_format(gen_file, config_path, quiet)
+                if ft_data:
+                    all_conversations.extend(ft_data)
                     chunk_elapsed = time.time() - chunk_start
-                    log(f"  ✅ Generated: {ft_file.name} ({format_time(chunk_elapsed)})", quiet)
+                    log(f"  ✅ Generated {len(ft_data)} pairs ({format_time(chunk_elapsed)})", quiet)
 
             sources_processed += 1
 
         # Combine all datasets
-        if all_ft_files:
-            log(f"\n📦 Combining {len(all_ft_files)} files into final dataset...", quiet)
+        if all_conversations:
+            log(f"\n📦 Combining {len(all_conversations)} conversations into final dataset...", quiet)
 
-            import pandas as pd
-
-            conversations = pd.concat([pd.read_json(f) for f in all_ft_files]).reset_index(drop=True)
-            combined_data = conversations.to_dict(orient="records")
+            combined_data = all_conversations
 
             if dataset_format.lower() == "standard":
                 final_data = convert_to_standard(combined_data)
