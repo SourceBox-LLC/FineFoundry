@@ -6,10 +6,11 @@ FineFoundry includes command‑line tools in addition to the GUI. The CLI is use
 - Run scrapers on a schedule.
 - Reproduce a known‑good configuration without clicking through the UI.
 
-This page focuses on two common CLI entry points:
+This page focuses on three common CLI entry points:
 
 - `src/save_dataset.py` – build and (optionally) push a dataset to the Hugging Face Hub.
 - `src/scrapers/reddit_scraper.py` – crawl Reddit and build conversational pairs.
+- `src/synthetic_cli.py` – generate synthetic training data from documents and URLs.
 
 For general installation and a first end‑to‑end run, start with the **[Quick Start Guide](quick-start.md)** and GUI tab guides.
 
@@ -167,3 +168,77 @@ Use the **CLI** when you want to:
 - Reproduce the same configuration across machines or CI.
 
 For a complete overview of all tabs and features, see the **[GUI Overview](gui-overview.md)** and the tab‑specific guides.
+
+______________________________________________________________________
+
+## Synthetic data generation: `src/synthetic_cli.py`
+
+The synthetic CLI generates training data from documents (PDF, DOCX, TXT, HTML) and URLs using Unsloth's SyntheticDataKit.
+
+### Basic example
+
+```bash
+python src/synthetic_cli.py --source document.pdf --output qa_pairs.json
+```
+
+This will:
+
+- Load the specified model (default: `unsloth/Llama-3.2-3B-Instruct`).
+- Ingest and chunk the document.
+- Generate Q&A pairs from each chunk.
+- Save the combined dataset to `qa_pairs.json`.
+
+### Multiple sources
+
+```bash
+python src/synthetic_cli.py \
+  --source paper.pdf \
+  --source notes.txt \
+  --source https://example.com/article \
+  --output combined_data.json
+```
+
+### Generation types
+
+- `--type qa` – Generate question-answer pairs (default).
+- `--type cot` – Generate chain-of-thought reasoning examples.
+- `--type summary` – Generate summaries.
+
+```bash
+python src/synthetic_cli.py --source paper.pdf --type cot --output cot_data.json
+```
+
+### Quality curation
+
+Enable Llama-as-judge curation to filter low-quality pairs:
+
+```bash
+python src/synthetic_cli.py \
+  --source document.pdf \
+  --curate --threshold 8.0 \
+  --output curated_pairs.json
+```
+
+### Important options
+
+- `--source`, `-s` – Source file or URL (can be specified multiple times).
+- `--output`, `-o` – Output JSON file path (default: `synthetic_data.json`).
+- `--type`, `-t` – Generation type: `qa`, `cot`, or `summary` (default: `qa`).
+- `--num-pairs`, `-n` – Pairs to generate per chunk (default: 25).
+- `--max-chunks` – Maximum chunks to process per source (default: 10).
+- `--model`, `-m` – Model to use (default: `unsloth/Llama-3.2-3B-Instruct`).
+- `--curate` – Enable quality curation.
+- `--threshold` – Curation quality threshold 1-10 (default: 7.5).
+- `--format`, `-f` – Output format: `chatml` or `standard` (default: `chatml`).
+- `--multimodal` – Enable multimodal processing for images.
+- `--no-db` – Don't save results to the FineFoundry database.
+- `--quiet`, `-q` – Quiet mode (JSON summary output only).
+
+### Quiet mode for scripting
+
+Use `--quiet` for machine-readable output:
+
+```bash
+python src/synthetic_cli.py --source doc.pdf --quiet
+# Output: {"success": true, "output": "synthetic_data.json", "pairs": 125, ...}
+```

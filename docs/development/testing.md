@@ -46,6 +46,7 @@ Unit tests cover focused, deterministic behavior without external services:
 - `test_chatml_builders.py` – ChatML conversation builders for 4chan and Reddit threads.
 - `test_migrate.py` – JSON to SQLite migration and export functions.
 - `test_db_settings.py` – database settings CRUD and convenience functions.
+- `test_synthetic_cli.py` – synthetic data CLI argument parsing and validation.
 
 Run unit tests only:
 
