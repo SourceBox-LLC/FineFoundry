@@ -65,3 +65,4 @@ unsloth_compiled_cache/
 data/
 synthetic_data.json
 synthetic_data_kit_config.yaml
+.coverage
