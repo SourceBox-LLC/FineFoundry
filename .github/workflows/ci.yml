@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       PYTHONPATH: src
+      UV_HTTP_TIMEOUT: 120
 
     steps:
       - name: Checkout
@@ -63,6 +64,7 @@ jobs:
     timeout-minutes: 25
     env:
       PYTHONPATH: src
+      UV_HTTP_TIMEOUT: 120
 
     steps:
       - name: Checkout
@@ -121,6 +123,7 @@ jobs:
     timeout-minutes: 15
     env:
       PYTHONPATH: src
+      UV_HTTP_TIMEOUT: 120
 
     steps:
       - name: Checkout
@@ -152,6 +155,7 @@ jobs:
     timeout-minutes: 20
     env:
       PYTHONPATH: src
+      UV_HTTP_TIMEOUT: 120
 
     steps:
       - name: Checkout
@@ -202,6 +206,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test]
     timeout-minutes: 20
+    env:
+      UV_HTTP_TIMEOUT: 120
 
     steps:
       - name: Checkout
@@ -246,6 +252,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint]
     timeout-minutes: 15
+    env:
+      UV_HTTP_TIMEOUT: 120
 
     steps:
       - name: Checkout
