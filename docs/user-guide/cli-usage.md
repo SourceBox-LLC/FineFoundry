@@ -233,12 +233,63 @@ python src/synthetic_cli.py \
 - `--multimodal` – Enable multimodal processing for images.
 - `--no-db` – Don't save results to the FineFoundry database.
 - `--quiet`, `-q` – Quiet mode (JSON summary output only).
+- `--verbose`, `-v` – Verbose mode (detailed debug output).
+- `--config` – Load options from a YAML config file.
+- `--keep-server` – Keep vLLM server running after generation (faster for batch runs).
+
+### Config file
+
+Use a YAML config file to avoid repeating options:
+
+```yaml
+# synthetic_config.yaml
+sources:
+  - document.pdf
+  - https://example.com/article
+output: synthetic_data.json
+type: qa
+num_pairs: 25
+max_chunks: 10
+model: unsloth/Llama-3.2-3B-Instruct
+curate: false
+threshold: 7.5
+format: chatml
+```
+
+```bash
+uv run python src/synthetic_cli.py --config synthetic_config.yaml
+```
+
+CLI arguments override config file values.
+
+### Batch processing with model caching
+
+For processing multiple batches, use `--keep-server` to avoid reloading the model:
+
+```bash
+# First run - loads model and keeps server running
+uv run python src/synthetic_cli.py --source batch1.pdf --output batch1.json --keep-server
+
+# Subsequent runs reuse the running server (much faster)
+uv run python src/synthetic_cli.py --source batch2.pdf --output batch2.json --keep-server
+
+# Final run - let it clean up
+uv run python src/synthetic_cli.py --source batch3.pdf --output batch3.json
+```
 
 ### Quiet mode for scripting
 
 Use `--quiet` for machine-readable output:
 
 ```bash
-python src/synthetic_cli.py --source doc.pdf --quiet
+uv run python src/synthetic_cli.py --source doc.pdf --quiet
 # Output: {"success": true, "output": "synthetic_data.json", "pairs": 125, ...}
+```
+
+### Verbose mode for debugging
+
+Use `--verbose` to see detailed processing information:
+
+```bash
+uv run python src/synthetic_cli.py --source doc.pdf --verbose
 ```
