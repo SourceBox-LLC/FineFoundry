@@ -1,0 +1,32 @@
+# Example configuration file for synthetic data generation CLI
+# Usage: uv run python src/synthetic_cli.py --config examples/synthetic_config.yaml
+
+# Sources to process (files or URLs)
+sources:
+  - document.pdf
+  - https://example.com/article
+  # - another_file.txt
+
+# Output settings
+output: synthetic_data.json
+format: chatml  # or "standard" for input/output pairs
+
+# Generation settings
+type: qa        # qa, cot, or summary
+num_pairs: 25   # pairs per chunk
+max_chunks: 10  # max chunks per source
+model: unsloth/Llama-3.2-3B-Instruct
+
+# Quality curation (optional)
+curate: false
+threshold: 7.5  # 1-10 scale
+
+# Processing options
+multimodal: false  # enable for images in documents
+
+# Storage options
+save_to_db: true   # save to FineFoundry database
+
+# Output verbosity
+quiet: false
+verbose: false

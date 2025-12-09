@@ -27,7 +27,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -57,10 +59,26 @@ def format_time(seconds: float) -> str:
         return f"{hours}h {mins}m"
 
 
-def log(msg: str, quiet: bool = False) -> None:
-    """Print log message unless quiet mode."""
-    if not quiet:
-        print(msg)
+def log(msg: str, quiet: bool = False, verbose: bool = False, level: str = "info") -> None:
+    """Print log message unless quiet mode.
+
+    Args:
+        msg: Message to print
+        quiet: If True, suppress all output
+        verbose: If True, show debug-level messages
+        level: Message level - 'info', 'debug', 'warn', 'error'
+    """
+    if quiet:
+        return
+    if level == "debug" and not verbose:
+        return
+    print(msg)
+
+
+def debug(msg: str, verbose: bool = False) -> None:
+    """Print debug message only in verbose mode."""
+    if verbose:
+        print(f"  [DEBUG] {msg}")
 
 
 def validate_source(source: str) -> bool:
@@ -76,6 +94,63 @@ def validate_source(source: str) -> bool:
         print(f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}", file=sys.stderr)
         return False
     return True
+
+
+def load_config_file(config_path: str) -> Dict[str, Any]:
+    """Load configuration from a YAML file.
+
+    Config file format:
+        sources:
+          - document.pdf
+          - https://example.com/article
+        output: synthetic_data.json
+        type: qa
+        num_pairs: 25
+        max_chunks: 10
+        model: unsloth/Llama-3.2-3B-Instruct
+        curate: false
+        threshold: 7.5
+        format: chatml
+        multimodal: false
+        save_to_db: true
+    """
+    path = Path(config_path)
+    if not path.exists():
+        print(f"Error: Config file not found: {config_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        return config if config else {}
+    except yaml.YAMLError as e:
+        print(f"Error parsing config file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def create_progress_bar(total: int, desc: str, quiet: bool = False):
+    """Create a progress bar if tqdm is available and not in quiet mode."""
+    if quiet:
+        return None
+    try:
+        from tqdm import tqdm
+
+        return tqdm(total=total, desc=desc, unit="chunk", leave=True)
+    except ImportError:
+        return None
+
+
+def check_vllm_running(port: int = 8000) -> bool:
+    """Check if a vLLM server is already running on the specified port."""
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            result = s.connect_ex(("localhost", port))
+            return result == 0
+    except Exception:
+        return False
 
 
 def run_subprocess(cmd: List[str], description: str, quiet: bool = False) -> bool:
@@ -265,14 +340,41 @@ def run_generation(
     model: str = "unsloth/Llama-3.2-3B-Instruct",
     save_to_db: bool = True,
     quiet: bool = False,
+    verbose: bool = False,
+    keep_server: bool = False,
 ) -> bool:
-    """Run the full synthetic data generation pipeline."""
+    """Run the full synthetic data generation pipeline.
+
+    Args:
+        sources: List of file paths or URLs to process
+        output_path: Path to save the output JSON file
+        gen_type: Generation type - 'qa', 'cot', or 'summary'
+        num_pairs: Number of pairs to generate per chunk
+        max_chunks: Maximum chunks to process per source
+        curate: Enable quality curation
+        curate_threshold: Quality threshold for curation (1-10)
+        multimodal: Enable multimodal processing
+        dataset_format: Output format - 'chatml' or 'standard'
+        model: Model name to use for generation
+        save_to_db: Save results to FineFoundry database
+        quiet: Suppress all output except errors
+        verbose: Show detailed debug output
+        keep_server: Keep vLLM server running after generation (for batch runs)
+    """
     start_time = time.time()
 
     log("🚀 Starting synthetic data generation", quiet)
     log(f"   Model: {model}", quiet)
     log(f"   Type: {gen_type}", quiet)
     log(f"   Sources: {len(sources)}", quiet)
+    if verbose:
+        debug(f"Output: {output_path}", verbose)
+        debug(f"Num pairs per chunk: {num_pairs}", verbose)
+        debug(f"Max chunks per source: {max_chunks}", verbose)
+        debug(f"Curate: {curate} (threshold: {curate_threshold})", verbose)
+        debug(f"Format: {dataset_format}", verbose)
+        debug(f"Multimodal: {multimodal}", verbose)
+        debug(f"Save to DB: {save_to_db}", verbose)
     log("", quiet)
 
     # Clear and create output directories
@@ -283,9 +385,14 @@ def run_generation(
 
     config_path = create_config_file()
 
-    # Load model
-    log("⏳ Loading model and starting vLLM server...", quiet)
-    log("   (This may take 30-60 seconds on first run)", quiet)
+    # Check if vLLM server is already running
+    server_was_running = check_vllm_running()
+    if server_was_running:
+        log("♻️  Reusing existing vLLM server on port 8000", quiet)
+        debug("Server already running, skipping model load", verbose)
+    else:
+        log("⏳ Loading model and starting vLLM server...", quiet)
+        log("   (This may take 30-60 seconds on first run)", quiet)
 
     try:
         from unsloth.dataprep import SyntheticDataKit
@@ -301,7 +408,8 @@ def run_generation(
             overlap=64,
             max_generation_tokens=512,
         )
-        log(f"✅ Model loaded: {model}", quiet)
+        if not server_was_running:
+            log(f"✅ Model loaded: {model}", quiet)
     except Exception as e:
         error_msg = str(e)
         if "CUDA" in error_msg or "cuda" in error_msg:
@@ -346,18 +454,30 @@ def run_generation(
             chunks_to_process = chunk_files[:max_chunks]
             log(f"  🔄 Processing {len(chunks_to_process)} chunks...", quiet)
 
+            # Create progress bar for chunks
+            pbar = create_progress_bar(len(chunks_to_process), f"  {source_name[:20]}", quiet)
+
             for i, chunk_file in enumerate(chunks_to_process):
                 chunk_start = time.time()
-                log(f"\n  [{i + 1}/{len(chunks_to_process)}] Generating {gen_type}...", quiet)
+                debug(f"Processing chunk {i + 1}: {chunk_file}", verbose)
+
+                if not pbar:
+                    log(f"\n  [{i + 1}/{len(chunks_to_process)}] Generating {gen_type}...", quiet)
 
                 # Generate content
                 gen_file = generate_content(chunk_file, config_path, gen_type, num_pairs, quiet)
                 if not gen_file:
-                    log("    ❌ Generation failed for this chunk", quiet)
+                    if pbar:
+                        pbar.set_postfix({"status": "failed"})
+                    else:
+                        log("    ❌ Generation failed for this chunk", quiet)
+                    if pbar:
+                        pbar.update(1)
                     continue
 
                 # Optionally curate
                 if curate:
+                    debug(f"Curating with threshold {curate_threshold}", verbose)
                     gen_file = curate_content(gen_file, config_path, curate_threshold, quiet)
 
                 # Convert to fine-tuning format
@@ -365,8 +485,16 @@ def run_generation(
                 if ft_data:
                     all_conversations.extend(ft_data)
                     chunk_elapsed = time.time() - chunk_start
-                    log(f"  ✅ Generated {len(ft_data)} pairs ({format_time(chunk_elapsed)})", quiet)
+                    if pbar:
+                        pbar.set_postfix({"pairs": len(ft_data), "time": format_time(chunk_elapsed)})
+                    else:
+                        log(f"  ✅ Generated {len(ft_data)} pairs ({format_time(chunk_elapsed)})", quiet)
 
+                if pbar:
+                    pbar.update(1)
+
+            if pbar:
+                pbar.close()
             sources_processed += 1
 
         # Combine all datasets
@@ -436,11 +564,15 @@ def run_generation(
             return False
 
     finally:
-        log("\n🧹 Cleaning up...", quiet)
-        try:
-            generator.cleanup()
-        except Exception:
-            pass
+        if keep_server:
+            log("\n💡 Keeping vLLM server running (use --no-keep-server to stop)", quiet)
+            debug("Server kept alive for subsequent runs", verbose)
+        else:
+            log("\n🧹 Cleaning up...", quiet)
+            try:
+                generator.cleanup()
+            except Exception:
+                pass
 
 
 def main():
@@ -456,12 +588,11 @@ Examples:
         """,
     )
 
-    # Required arguments
+    # Source arguments (required unless using config file)
     parser.add_argument(
         "--source",
         "-s",
         action="append",
-        required=True,
         help="Source file or URL (can be specified multiple times)",
     )
     parser.add_argument(
@@ -540,12 +671,55 @@ Examples:
         action="store_true",
         help="Quiet mode - only output JSON summary on success",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Verbose mode - show detailed debug output",
+    )
+
+    # Config file option
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Load options from a YAML config file",
+    )
+
+    # Performance options
+    parser.add_argument(
+        "--keep-server",
+        action="store_true",
+        help="Keep vLLM server running after generation (faster for batch runs)",
+    )
 
     args = parser.parse_args()
 
+    # Load config file if provided
+    config = {}
+    if args.config:
+        config = load_config_file(args.config)
+        if args.verbose:
+            print(f"[DEBUG] Loaded config from {args.config}: {config}")
+
+    # Merge config with command-line args (CLI takes precedence)
+    sources = args.source if args.source else config.get("sources", [])
+    output_path = args.output if args.output != "synthetic_data.json" else config.get("output", args.output)
+    gen_type = args.type if args.type != "qa" else config.get("type", args.type)
+    num_pairs = args.num_pairs if args.num_pairs != 25 else config.get("num_pairs", args.num_pairs)
+    max_chunks = args.max_chunks if args.max_chunks != 10 else config.get("max_chunks", args.max_chunks)
+    model = args.model if args.model != "unsloth/Llama-3.2-3B-Instruct" else config.get("model", args.model)
+    curate = args.curate or config.get("curate", False)
+    threshold = args.threshold if args.threshold != 7.5 else config.get("threshold", args.threshold)
+    dataset_format = args.format if args.format != "chatml" else config.get("format", args.format)
+    multimodal = args.multimodal or config.get("multimodal", False)
+    save_to_db = not args.no_db and config.get("save_to_db", True)
+    quiet = args.quiet or config.get("quiet", False)
+    verbose = args.verbose or config.get("verbose", False)
+    keep_server = args.keep_server or config.get("keep_server", False)
+
     # Validate sources
     valid_sources = []
-    for source in args.source:
+    for source in sources:
         if validate_source(source):
             valid_sources.append(source)
 
@@ -556,17 +730,19 @@ Examples:
     # Run generation
     success = run_generation(
         sources=valid_sources,
-        output_path=args.output,
-        gen_type=args.type,
-        num_pairs=args.num_pairs,
-        max_chunks=args.max_chunks,
-        curate=args.curate,
-        curate_threshold=args.threshold,
-        multimodal=args.multimodal,
-        dataset_format=args.format,
-        model=args.model,
-        save_to_db=not args.no_db,
-        quiet=args.quiet,
+        output_path=output_path,
+        gen_type=gen_type,
+        num_pairs=num_pairs,
+        max_chunks=max_chunks,
+        curate=curate,
+        curate_threshold=threshold,
+        multimodal=multimodal,
+        dataset_format=dataset_format,
+        model=model,
+        save_to_db=save_to_db,
+        quiet=quiet,
+        verbose=verbose,
+        keep_server=keep_server,
     )
 
     sys.exit(0 if success else 1)

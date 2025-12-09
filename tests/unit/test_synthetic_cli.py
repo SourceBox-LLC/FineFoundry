@@ -19,7 +19,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from synthetic_cli import (
     format_time,
     log,
+    debug,
     validate_source,
+    load_config_file,
+    create_progress_bar,
+    check_vllm_running,
     main,
 )
 
@@ -280,3 +284,188 @@ class TestEdgeCases:
 
         args = parser.parse_args(["--source", "test.pdf", "--max-chunks", "5"])
         assert args.max_chunks == 5
+
+
+# =============================================================================
+# debug() tests
+# =============================================================================
+
+
+class TestDebug:
+    """Tests for debug logging."""
+
+    def test_debug_prints_when_verbose(self, capsys):
+        """Test debug prints in verbose mode."""
+        debug("test message", verbose=True)
+        captured = capsys.readouterr()
+        assert "[DEBUG]" in captured.out
+        assert "test message" in captured.out
+
+    def test_debug_silent_when_not_verbose(self, capsys):
+        """Test debug is silent when not verbose."""
+        debug("test message", verbose=False)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+
+# =============================================================================
+# load_config_file() tests
+# =============================================================================
+
+
+class TestLoadConfigFile:
+    """Tests for config file loading."""
+
+    def test_load_valid_config(self, tmp_path):
+        """Test loading a valid YAML config."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+sources:
+  - document.pdf
+  - https://example.com
+output: output.json
+type: qa
+num_pairs: 50
+""")
+        config = load_config_file(str(config_file))
+        assert config["sources"] == ["document.pdf", "https://example.com"]
+        assert config["output"] == "output.json"
+        assert config["type"] == "qa"
+        assert config["num_pairs"] == 50
+
+    def test_load_missing_config(self):
+        """Test error on missing config file."""
+        with pytest.raises(SystemExit) as exc_info:
+            load_config_file("/nonexistent/config.yaml")
+        assert exc_info.value.code == 1
+
+    def test_load_empty_config(self, tmp_path):
+        """Test loading empty config returns empty dict."""
+        config_file = tmp_path / "empty.yaml"
+        config_file.write_text("")
+        config = load_config_file(str(config_file))
+        assert config == {}
+
+
+# =============================================================================
+# create_progress_bar() tests
+# =============================================================================
+
+
+class TestCreateProgressBar:
+    """Tests for progress bar creation."""
+
+    def test_progress_bar_none_when_quiet(self):
+        """Test progress bar is None in quiet mode."""
+        pbar = create_progress_bar(10, "test", quiet=True)
+        assert pbar is None
+
+    def test_progress_bar_created_when_not_quiet(self):
+        """Test progress bar is created when not quiet."""
+        pbar = create_progress_bar(10, "test", quiet=False)
+        # tqdm should be available
+        assert pbar is not None
+        pbar.close()
+
+
+# =============================================================================
+# Verbose flag tests
+# =============================================================================
+
+
+class TestVerboseFlag:
+    """Tests for verbose flag."""
+
+    def test_verbose_flag_parsing(self):
+        """Test --verbose flag is parsed."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--verbose", "-v", action="store_true")
+
+        args = parser.parse_args(["--verbose"])
+        assert args.verbose is True
+
+        args = parser.parse_args(["-v"])
+        assert args.verbose is True
+
+    def test_verbose_default_false(self):
+        """Test verbose defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--verbose", "-v", action="store_true")
+
+        args = parser.parse_args([])
+        assert args.verbose is False
+
+
+# =============================================================================
+# Config flag tests
+# =============================================================================
+
+
+class TestConfigFlag:
+    """Tests for config flag."""
+
+    def test_config_flag_parsing(self):
+        """Test --config flag is parsed."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--config", "-c", type=str)
+
+        args = parser.parse_args(["--config", "my_config.yaml"])
+        assert args.config == "my_config.yaml"
+
+        args = parser.parse_args(["-c", "other.yaml"])
+        assert args.config == "other.yaml"
+
+
+# =============================================================================
+# check_vllm_running() tests
+# =============================================================================
+
+
+class TestCheckVllmRunning:
+    """Tests for vLLM server check."""
+
+    def test_check_vllm_not_running(self):
+        """Test returns False when no server is running."""
+        # Use a port that's unlikely to be in use
+        result = check_vllm_running(port=59999)
+        assert result is False
+
+    def test_check_vllm_returns_bool(self):
+        """Test function returns boolean."""
+        result = check_vllm_running()
+        assert isinstance(result, bool)
+
+
+# =============================================================================
+# keep_server flag tests
+# =============================================================================
+
+
+class TestKeepServerFlag:
+    """Tests for keep-server flag."""
+
+    def test_keep_server_flag_parsing(self):
+        """Test --keep-server flag is parsed."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--keep-server", action="store_true")
+
+        args = parser.parse_args(["--keep-server"])
+        assert args.keep_server is True
+
+    def test_keep_server_default_false(self):
+        """Test keep-server defaults to False."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--keep-server", action="store_true")
+
+        args = parser.parse_args([])
+        assert args.keep_server is False
