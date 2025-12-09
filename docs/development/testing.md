@@ -47,6 +47,8 @@ Unit tests cover focused, deterministic behavior without external services:
 - `test_migrate.py` – JSON to SQLite migration and export functions.
 - `test_db_settings.py` – database settings CRUD and convenience functions.
 - `test_synthetic_cli.py` – synthetic data CLI argument parsing and validation.
+- `test_boards.py` – 4chan board list and API loading.
+- `test_ui_helpers.py` – UI utility functions (opacity, two-column layout, cell text).
 
 Run unit tests only:
 
@@ -74,6 +76,12 @@ Current integration tests include:
 
   - Instantiates Scrape, Build, Merge, Analysis, Training, and Inference tab controllers with a minimal `DummyPage`.
   - Verifies each controller can build its tab content and, for Training/Inference, that a shared `train_state` dict is returned.
+
+- `test_synthetic_cli_integration.py`
+
+  - Tests the synthetic CLI with mocked model loading.
+  - Verifies error handling for CUDA, OOM, and missing dependencies.
+  - Tests config file loading and format conversion.
 
 Run only integration tests:
 
@@ -128,7 +136,7 @@ The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Py
 
 - Installs `pytest` and `coverage` via `uv`.
 - Runs `coverage run -m pytest --ignore=proxy_test.py`.
-- Enforces a minimum coverage threshold with `coverage report -m --fail-under=28`.
+- Enforces a minimum coverage threshold with `coverage report -m --fail-under=29`.
   This threshold acts as a **floor that prevents regressions** while leaving room to
   gradually increase it as more tests are added.
 - Exports `coverage.xml` and uploads it as a GitHub Actions artifact.
