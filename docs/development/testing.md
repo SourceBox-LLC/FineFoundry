@@ -37,6 +37,10 @@ Unit tests cover focused, deterministic behavior without external services:
 - `test_training.py` – hyperparameter extraction from Training tab controls.
 - `test_common.py` – safe UI update and terminal title helpers.
 - `test_logging_config.py` / `test_logging_config_levels.py` – logger setup and global log-level control.
+- `test_synthetic.py` – synthetic data generation helpers (URL detection, config creation, format conversion).
+- `test_scraped_data.py` – database CRUD for scrape sessions and pairs.
+- `test_scrape_db.py` – high-level scrape database helpers.
+- `test_fourchan_scraper.py` – 4chan scraper text cleaning and pair building strategies.
 
 Run unit tests only:
 
@@ -118,10 +122,9 @@ The `test` job in `.github/workflows/ci.yml` runs `pytest` under coverage for Py
 
 - Installs `pytest` and `coverage` via `uv`.
 - Runs `coverage run -m pytest --ignore=proxy_test.py`.
-- Enforces an initial minimum coverage threshold with `coverage report -m --fail-under=20`.
-  This threshold is intentionally set close to the current overall coverage so it acts as a
-  **floor that prevents regressions** while leaving room to gradually increase it as more
-  tests are added.
+- Enforces a minimum coverage threshold with `coverage report -m --fail-under=25`.
+  This threshold acts as a **floor that prevents regressions** while leaving room to
+  gradually increase it as more tests are added.
 - Exports `coverage.xml` and uploads it as a GitHub Actions artifact.
 
 Additional quality jobs in CI include:

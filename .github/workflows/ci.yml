@@ -101,8 +101,8 @@ jobs:
             echo "No tests collected. Skipping pytest."
             exit 0
           fi
-          # Show coverage summary in CI logs and enforce an initial minimum threshold
-          uv run coverage report -m --fail-under=20
+          # Show coverage summary in CI logs and enforce minimum threshold
+          uv run coverage report -m --fail-under=25
           # Export XML report for artifacts or external tools
           uv run coverage xml -o coverage.xml
           exit "$rc"
