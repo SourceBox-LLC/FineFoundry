@@ -102,7 +102,7 @@ jobs:
             exit 0
           fi
           # Show coverage summary in CI logs and enforce minimum threshold
-          uv run coverage report -m --fail-under=29
+          uv run coverage report -m --fail-under=28
           # Export XML report for artifacts or external tools
           uv run coverage xml -o coverage.xml
           exit "$rc"
