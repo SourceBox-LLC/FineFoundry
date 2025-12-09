@@ -84,5 +84,7 @@ module = [
   "helpers.build",
   "helpers.local_inference",
   "helpers.chatml",
+  "db.migrate",
+  "db.scraped_data",
 ]
 ignore_errors = true

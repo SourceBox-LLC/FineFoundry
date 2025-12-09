@@ -8,7 +8,6 @@ Tests cover:
 from scrapers.stackexchange_scraper import (
     html_to_text,
     apply_session_config,
-    SESSION,
 )
 
 

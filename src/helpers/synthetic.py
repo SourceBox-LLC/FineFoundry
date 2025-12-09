@@ -79,7 +79,7 @@ async def ingest_source_async(
             elif "unsupported" in stderr.lower() or "format" in stderr.lower():
                 await log_fn(f"  ❌ Unsupported file format: {source_type}")
             elif "connection" in stderr.lower() or "timeout" in stderr.lower():
-                await log_fn(f"  ❌ Network error fetching URL. Check connection.")
+                await log_fn("  ❌ Network error fetching URL. Check connection.")
             else:
                 await log_fn(f"  ❌ Ingestion failed: {stderr[:150]}")
         return None
@@ -133,11 +133,11 @@ async def generate_content_async(
             stderr = result.stderr.strip()
             # Provide helpful error messages
             if "out of memory" in stderr.lower() or "OOM" in stderr:
-                await log_fn(f"    ❌ Out of memory. Try fewer pairs or smaller chunks.")
+                await log_fn("    ❌ Out of memory. Try fewer pairs or smaller chunks.")
             elif "timeout" in stderr.lower():
-                await log_fn(f"    ❌ Generation timed out. Try reducing num_pairs.")
+                await log_fn("    ❌ Generation timed out. Try reducing num_pairs.")
             elif "empty" in stderr.lower() or "no content" in stderr.lower():
-                await log_fn(f"    ⚠️ Chunk has no usable content, skipping.")
+                await log_fn("    ⚠️ Chunk has no usable content, skipping.")
             else:
                 await log_fn(f"    ❌ Generation error: {stderr[:150]}")
         return None
