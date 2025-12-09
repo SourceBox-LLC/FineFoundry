@@ -107,9 +107,9 @@ class TestIngestSourceAsync:
             )
 
             assert result is None
-            # Should log the error
+            # Should log the error (may use ❌, ⚠️, or "Error")
             calls = [str(c) for c in mock_log.call_args_list]
-            assert any("Error" in str(c) or "⚠️" in str(c) for c in calls)
+            assert any("Error" in str(c) or "⚠️" in str(c) or "❌" in str(c) or "not found" in str(c).lower() for c in calls)
 
     @pytest.mark.anyio
     async def test_url_ingestion(self, temp_data_dirs, config_path, mock_log):

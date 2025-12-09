@@ -70,7 +70,18 @@ async def ingest_source_async(
 
     if result.returncode != 0:
         if log_fn:
-            await log_fn(f"  ⚠️ Error ingesting: {result.stderr[:100]}")
+            stderr = result.stderr.strip()
+            # Provide helpful error messages
+            if "not found" in stderr.lower() or "No such file" in stderr:
+                await log_fn(f"  ❌ File not found: {source_path}")
+            elif "permission" in stderr.lower():
+                await log_fn(f"  ❌ Permission denied: {source_path}")
+            elif "unsupported" in stderr.lower() or "format" in stderr.lower():
+                await log_fn(f"  ❌ Unsupported file format: {source_type}")
+            elif "connection" in stderr.lower() or "timeout" in stderr.lower():
+                await log_fn(f"  ❌ Network error fetching URL. Check connection.")
+            else:
+                await log_fn(f"  ❌ Ingestion failed: {stderr[:150]}")
         return None
 
     output_dir = Path("data/output")
@@ -119,7 +130,16 @@ async def generate_content_async(
 
     if result.returncode != 0:
         if log_fn:
-            await log_fn(f"    ⚠️ Generation error: {result.stderr[:100]}")
+            stderr = result.stderr.strip()
+            # Provide helpful error messages
+            if "out of memory" in stderr.lower() or "OOM" in stderr:
+                await log_fn(f"    ❌ Out of memory. Try fewer pairs or smaller chunks.")
+            elif "timeout" in stderr.lower():
+                await log_fn(f"    ❌ Generation timed out. Try reducing num_pairs.")
+            elif "empty" in stderr.lower() or "no content" in stderr.lower():
+                await log_fn(f"    ⚠️ Chunk has no usable content, skipping.")
+            else:
+                await log_fn(f"    ❌ Generation error: {stderr[:150]}")
         return None
 
     chunk_name = Path(chunk_file).stem
@@ -244,6 +264,32 @@ async def run_synthetic_generation(
     model: str = "unsloth/Llama-3.2-3B-Instruct",
 ) -> None:
     """Run synthetic data generation - adapted from unsloth-synth-test."""
+    import time
+
+    # Track timing for estimates
+    start_time = time.time()
+    chunk_times: List[float] = []
+
+    def format_time(seconds: float) -> str:
+        """Format seconds into human-readable string."""
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            mins = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{mins}m {secs}s"
+        else:
+            hours = int(seconds // 3600)
+            mins = int((seconds % 3600) // 60)
+            return f"{hours}h {mins}m"
+
+    def estimate_remaining(current: int, total: int) -> str:
+        """Estimate remaining time based on chunk processing times."""
+        if not chunk_times or current >= total:
+            return ""
+        avg_time = sum(chunk_times) / len(chunk_times)
+        remaining = (total - current) * avg_time
+        return f" (~{format_time(remaining)} remaining)"
 
     async def log(msg: str):
         print(f"[synthetic] {msg}")
@@ -256,6 +302,11 @@ async def run_synthetic_generation(
     async def update_progress(current: int, total: int):
         try:
             prog.value = current / total if total > 0 else 0
+            # Update progress info with time estimate
+            estimate = estimate_remaining(current, total)
+            pct = int((current / total) * 100) if total > 0 else 0
+            # Update threads label with progress info (reuse existing label)
+            labels["threads"].value = f"Progress: {pct}% ({current}/{total} chunks){estimate}"
             await safe_update(page)
         except Exception as e:
             print(f"[synthetic] UI progress error: {e}")
@@ -306,12 +357,28 @@ async def run_synthetic_generation(
         generator = await asyncio.to_thread(load_model)
         await log(f"✅ Model loaded: {model}")
     except Exception as e:
-        await log(f"❌ Failed to load model: {e}")
+        error_msg = str(e)
+        # Provide helpful error messages for common issues
+        if "CUDA" in error_msg or "cuda" in error_msg:
+            friendly_msg = "GPU/CUDA error. Ensure CUDA is installed and GPU has enough memory."
+        elif "out of memory" in error_msg.lower() or "OOM" in error_msg:
+            friendly_msg = "Out of memory. Try a smaller model or reduce batch size."
+        elif "vllm" in error_msg.lower():
+            friendly_msg = "vLLM server error. Ensure vLLM is installed: pip install vllm"
+        elif "connection" in error_msg.lower() or "timeout" in error_msg.lower():
+            friendly_msg = "Connection error. Check your network and try again."
+        elif "not found" in error_msg.lower() or "No module" in error_msg:
+            friendly_msg = "Missing dependency. Run: pip install unsloth vllm"
+        else:
+            friendly_msg = error_msg[:150]
+
+        await log(f"❌ Failed to load model: {friendly_msg}")
+        await log(f"   Technical details: {error_msg[:200]}")
         try:
             page.snack_bar = ft.SnackBar(
-                ft.Text(f"❌ Failed to load model: {str(e)[:100]}"),
+                ft.Text(f"❌ Model load failed: {friendly_msg}"),
                 bgcolor=ft.colors.RED_700,
-                duration=6000,
+                duration=8000,
             )
             page.open(page.snack_bar)
             await safe_update(page)
@@ -364,6 +431,7 @@ async def run_synthetic_generation(
                 if cancel_flag.get("cancelled"):
                     break
 
+                chunk_start = time.time()
                 current_step += 1
                 await update_progress(current_step, total_steps)
 
@@ -372,7 +440,7 @@ async def run_synthetic_generation(
                 # Generate content (async)
                 gen_file = await generate_content_async(chunk_file, config_path, gen_type, num_pairs, log)
                 if not gen_file:
-                    await log("    ❌ Generation failed")
+                    await log("    ❌ Generation failed for this chunk")
                     continue
 
                 # Optionally curate (async)
@@ -384,7 +452,9 @@ async def run_synthetic_generation(
                 if ft_file:
                     all_ft_files.append(ft_file)
                     total_pairs += num_pairs  # Approximate count
-                    await log(f"  ✅ Generated: {ft_file.name}")
+                    chunk_elapsed = time.time() - chunk_start
+                    chunk_times.append(chunk_elapsed)
+                    await log(f"  ✅ Generated: {ft_file.name} ({format_time(chunk_elapsed)})")
                     await update_stats(sources_processed, total_pairs)
 
                 await asyncio.sleep(0.5)  # Brief pause, non-blocking
@@ -439,12 +509,13 @@ async def run_synthetic_generation(
             except Exception as db_err:
                 await log(f"⚠️ Database save warning: {db_err}")
 
-            await log(f"\n✨ Done! Generated {total_pairs} {'pairs' if pairs_output else 'conversations'}")
+            total_elapsed = time.time() - start_time
+            await log(f"\n✨ Done! Generated {total_pairs} {'pairs' if pairs_output else 'conversations'} in {format_time(total_elapsed)}")
             await update_stats(sources_processed, total_pairs)
 
             # Update labels to match other scrapers
             labels["pairs"].value = f"{'Pairs' if pairs_output else 'Conversations'} Found: {total_pairs}"
-            labels["threads"].value = f"Sources Processed: {sources_processed}"
+            labels["threads"].value = f"Sources: {sources_processed} | Time: {format_time(total_elapsed)}"
 
             # Build preview pairs for display
             preview_pairs = []
