@@ -186,9 +186,12 @@ The **Security audit (`security` job)** section in
 In short:
 
 - CI installs and runs `pip-audit` against the synced environment.
-- Two specific CVEs in transitive dependencies are currently ignored in CI and tracked separately:
+- Several specific CVEs/GHSAs in transitive dependencies are currently ignored in CI and tracked separately:
   - `CVE-2025-6176` (affecting `brotli` 1.1.0; fixed in 1.2.0)
   - `CVE-2025-62727` (affecting `starlette` 0.48.0; fixed in 0.49.1)
+  - `CVE-2025-66418` (affecting `urllib3` 2.5.0; fixed in 2.6.0)
+  - `CVE-2025-66471` (affecting `urllib3` 2.5.0; fixed in 2.6.0)
+  - `GHSA-f83h-ghpp-7wcc` (affecting `pdfminer-six` ≤20251107; no fix yet)
 - Any **other** vulnerability reported by `pip-audit` will still fail the `security` job.
 
 See **CI Coverage and Quality Gates** in

@@ -6,6 +6,7 @@ Common issues and their solutions for FineFoundry.
 
 - [Installation Issues](#installation-issues)
 - [Scraping Issues](#scraping-issues)
+- [Synthetic Data Generation Issues](#synthetic-data-generation-issues)
 - [Dataset Building Issues](#dataset-building-issues)
 - [Training Issues](#training-issues)
 - [Merge Issues](#merge-issues)
@@ -128,6 +129,56 @@ ______________________________________________________________________
 1. Verify proxy URL format: `socks5h://127.0.0.1:9050`
 1. Check proxy settings in [Settings Tab](settings-tab.md)
 1. See [Proxy Setup Guide](../deployment/proxy-setup.md)
+
+______________________________________________________________________
+
+## Synthetic Data Generation Issues
+
+### Model loading takes a long time
+
+**Problem**: First synthetic generation run takes 30-60+ seconds before any progress
+
+**Solution**:
+
+- This is expected behavior — the model must be downloaded and loaded on first run
+- A snackbar notification appears immediately when you click Start
+- Subsequent runs are faster as the model is cached
+- Ensure you have sufficient disk space for model weights (~3-6 GB)
+
+### "No pairs generated" after synthetic generation
+
+**Possible causes**:
+
+1. Document is too short or has no extractable content
+1. Max Chunks set too low
+1. PDF/document parsing failed
+
+**Solutions**:
+
+- Try a different document format (TXT often works best)
+- Increase Max Chunks parameter
+- Check logs for parsing errors
+- Verify the document has actual text content (not just images)
+
+### Synthetic generation fails with model errors
+
+**Problem**: Errors related to model loading or CUDA
+
+**Solutions**:
+
+- Ensure you have sufficient GPU VRAM (4GB+ recommended)
+- Try a smaller model if available
+- Check that PyTorch and CUDA are properly installed
+- Close other GPU-intensive applications
+
+### Generated pairs are low quality
+
+**Solutions**:
+
+- Enable **Curate** option with a higher threshold (e.g., 8.0)
+- Try a different generation type (qa, cot, summary)
+- Use higher quality source documents
+- Increase Num Pairs to generate more candidates for curation
 
 ______________________________________________________________________
 
