@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -75,24 +75,49 @@ def generate_text(
     max_new_tokens: int = 256,
     temperature: float = 0.7,
     repetition_penalty: float = 1.15,
+    chat_history: Optional[List[Dict[str, str]]] = None,
 ) -> str:
-    import torch as _torch
+    """Generate text using a fine-tuned model.
 
-    text = (prompt or "").rstrip("\n")
-    if not text:
-        return ""
+    Args:
+        base_model: Base model name/path
+        adapter_path: Path to the LoRA adapter
+        prompt: The user's prompt (used if chat_history is None)
+        max_new_tokens: Maximum tokens to generate
+        temperature: Sampling temperature
+        repetition_penalty: Penalty for repeated tokens
+        chat_history: Optional list of {"role": "user"|"assistant", "content": "..."} dicts
+                      for multi-turn conversations. If provided, prompt is ignored.
+    """
+    import torch as _torch
 
     model, tokenizer = load_model(base_model, adapter_path)
 
+    # Build messages list
+    if chat_history:
+        messages = chat_history
+    else:
+        text = (prompt or "").rstrip("\n")
+        if not text:
+            return ""
+        messages = [{"role": "user", "content": text}]
+
     # Apply chat template if available (for instruct models)
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
-        messages = [{"role": "user", "content": text}]
         formatted_prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
     else:
-        # Fallback for models without chat template
-        formatted_prompt = text
+        # Fallback for models without chat template - build simple format
+        parts = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role == "user":
+                parts.append(f"User: {content}")
+            else:
+                parts.append(f"Assistant: {content}")
+        formatted_prompt = "\n".join(parts) + "\nAssistant:"
 
     inputs = tokenizer([formatted_prompt], return_tensors="pt")
     input_length = inputs["input_ids"].shape[1]

@@ -26,6 +26,10 @@ def build_inference_tab(
     infer_temp_slider: ft.Slider,
     infer_max_tokens_slider: ft.Slider,
     infer_prompt_tf: ft.TextField,
+    infer_dataset_dd: ft.Dropdown,
+    infer_dataset_refresh_btn: ft.IconButton,
+    infer_sample_prompts_dd: ft.Dropdown,
+    infer_sample_refresh_btn: ft.IconButton,
     infer_generate_btn: ft.ElevatedButton,
     infer_clear_btn: ft.TextButton,
     infer_export_btn: ft.TextButton,
@@ -87,6 +91,16 @@ def build_inference_tab(
                     [infer_preset_dd],
                     wrap=True,
                     spacing=10,
+                ),
+                ft.Row(
+                    [infer_dataset_dd, infer_dataset_refresh_btn],
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Row(
+                    [infer_sample_prompts_dd, infer_sample_refresh_btn],
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 infer_prompt_tf,
                 ft.Row(

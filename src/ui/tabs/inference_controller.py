@@ -353,6 +353,27 @@ def build_inference_tab_with_logic(
         width=1000,
         dense=True,
     )
+    # Dataset selector for sample prompts (any saved dataset)
+    infer_dataset_dd = ft.Dropdown(
+        label="Dataset for sample prompts",
+        options=[],
+        width=400,
+        hint_text="Select a dataset to sample prompts from",
+    )
+    infer_dataset_refresh_btn = ft.IconButton(
+        icon=getattr(ICONS, "REFRESH", ft.Icons.REFRESH),
+        tooltip="Refresh datasets",
+    )
+    infer_sample_prompts_dd = ft.Dropdown(
+        label="Sample prompts (optional)",
+        options=[],
+        width=550,
+        hint_text="Select a sample prompt or enter your own above",
+    )
+    infer_sample_refresh_btn = ft.IconButton(
+        icon=getattr(ICONS, "REFRESH", ft.Icons.REFRESH),
+        tooltip="Get new random samples",
+    )
     infer_output = ft.ListView(expand=True, spacing=4, auto_scroll=True)
     infer_output_placeholder = ft.Text(
         "Responses will appear here after running inference.",
@@ -485,6 +506,88 @@ def build_inference_tab_with_logic(
         file_name=f"inference-chats-{int(time.time())}.txt",
         allowed_extensions=["txt", "md"],
     )
+
+    def _refresh_infer_datasets(e=None):
+        """Refresh the list of available datasets for sample prompts."""
+        try:
+            from db.scraped_data import list_scrape_sessions
+
+            sessions = list_scrape_sessions()
+            if sessions:
+                options = []
+                for s in sessions:
+                    session_id = s.get("id")
+                    source = s.get("source", "unknown")
+                    details = s.get("source_details", "")
+                    pair_count = s.get("pair_count", 0)
+                    label = f"{source}"
+                    if details:
+                        label += f" - {details[:30]}"
+                    label += f" ({pair_count} pairs)"
+                    options.append(ft.dropdown.Option(key=str(session_id), text=label))
+                infer_dataset_dd.options = options
+            else:
+                infer_dataset_dd.options = []
+            infer_dataset_dd.value = None
+            infer_sample_prompts_dd.options = []
+            infer_sample_prompts_dd.value = None
+            page.update()
+        except Exception:
+            pass
+
+    def _refresh_infer_sample_prompts(e=None):
+        """Refresh sample prompts from the selected dataset."""
+        try:
+            session_id = infer_dataset_dd.value
+            if not session_id:
+                infer_sample_prompts_dd.options = []
+                infer_sample_prompts_dd.value = None
+                page.update()
+                return
+
+            from db.scraped_data import get_random_prompts_for_session
+
+            prompts = get_random_prompts_for_session(int(session_id), count=5)
+            if prompts:
+                options = []
+                for i, prompt in enumerate(prompts):
+                    display_text = prompt[:80] + "..." if len(prompt) > 80 else prompt
+                    display_text = display_text.replace("\n", " ")
+                    options.append(ft.dropdown.Option(key=prompt, text=f"{i + 1}. {display_text}"))
+                infer_sample_prompts_dd.options = options
+                infer_sample_prompts_dd.value = None
+            else:
+                infer_sample_prompts_dd.options = []
+                infer_sample_prompts_dd.value = None
+            page.update()
+        except Exception:
+            pass
+
+    def _on_infer_sample_prompt_selected(e=None):
+        """When a sample prompt is selected, populate the prompt text field."""
+        try:
+            selected = infer_sample_prompts_dd.value
+            if selected:
+                infer_prompt_tf.value = selected
+                page.update()
+        except Exception:
+            pass
+
+    def _on_infer_dataset_changed(e=None):
+        """When dataset changes, refresh sample prompts."""
+        _refresh_infer_sample_prompts()
+
+    # Wire up dataset and sample prompts handlers
+    try:
+        infer_dataset_dd.on_change = _on_infer_dataset_changed
+        infer_dataset_refresh_btn.on_click = _refresh_infer_datasets
+        infer_sample_prompts_dd.on_change = _on_infer_sample_prompt_selected
+        infer_sample_refresh_btn.on_click = _refresh_infer_sample_prompts
+    except Exception:
+        pass
+
+    # Initial load of datasets
+    _refresh_infer_datasets()
 
     def _close_infer_chat_dialog(e=None):  # noqa: ARG001
         try:
@@ -1008,19 +1111,16 @@ def build_inference_tab_with_logic(
         state = train_state.setdefault("inference", {})
         history = state.setdefault("chat_history", [])
         history.append({"role": "user", "content": msg})
-        prompt_parts = []
-        for m in history:
-            role = "User" if (m.get("role") or "user") == "user" else "Assistant"
-            prompt_parts.append(f"{role}: {m.get('content') or ''}")
-        prompt_text = "\n".join(prompt_parts) + "\nAssistant:"
         try:
             text = await asyncio.to_thread(
                 local_infer_generate_text_helper,
                 base_model_name,
                 adapter_path,
-                prompt_text,
+                "",  # prompt ignored when chat_history is provided
                 max_tokens,
                 temperature,
+                1.15,  # repetition_penalty
+                list(history),  # pass chat history for proper template formatting
             )
             history.append({"role": "assistant", "content": text})
             try:
@@ -1144,6 +1244,10 @@ def build_inference_tab_with_logic(
         infer_temp_slider=infer_temp_slider,
         infer_max_tokens_slider=infer_max_tokens_slider,
         infer_prompt_tf=infer_prompt_tf,
+        infer_dataset_dd=infer_dataset_dd,
+        infer_dataset_refresh_btn=infer_dataset_refresh_btn,
+        infer_sample_prompts_dd=infer_sample_prompts_dd,
+        infer_sample_refresh_btn=infer_sample_refresh_btn,
         infer_generate_btn=infer_generate_btn,
         infer_clear_btn=infer_clear_btn,
         infer_export_btn=infer_export_btn,
