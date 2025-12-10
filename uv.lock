@@ -1331,7 +1331,7 @@ wheels = [
 
 [[package]]
 name = "finefoundry-core"
-version = "0.1.0"
+version = "0.1.8"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

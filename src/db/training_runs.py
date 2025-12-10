@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from db.core import get_connection, get_db_path
 
@@ -63,10 +63,12 @@ def create_training_run(
         (name, base_model, dataset_source, dataset_id, storage_path, hp_json, metadata_json),
     )
 
-    run_id = cursor.lastrowid
+    run_id = cast(int, cursor.lastrowid)
     conn.commit()
 
-    return get_training_run(run_id)
+    run = get_training_run(run_id)
+    assert run is not None
+    return run
 
 
 def get_training_run(run_id: int) -> Optional[Dict[str, Any]]:
@@ -127,8 +129,8 @@ def update_training_run(
     conn = get_connection()
     cursor = conn.cursor()
 
-    updates = []
-    params = []
+    updates: List[str] = []
+    params: List[Any] = []
 
     if status is not None:
         updates.append("status = ?")

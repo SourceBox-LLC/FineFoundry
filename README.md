@@ -63,11 +63,12 @@ Built with Flet for a fast, native-like UI. Includes:
 - 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
 - Reddit scraper CLI for subreddits or single posts; expands “more” comments; builds pairs (parent→child or contextual).
 - Stack Exchange Q/A scraper (programmatic) for accepted answers.
+- **Resilient HTTP scrapers** with proxy support, polite rate limiting, exponential backoff, and automatic retries for 4chan, Reddit, and Stack Exchange.
 - **Synthetic data generation** using Unsloth's SyntheticDataKit — generate Q&A pairs, chain-of-thought, or summaries from PDFs, documents, and URLs using local LLMs.
 - Dataset builder for train/val/test splits with Hugging Face `datasets`, with optional push + dataset card.
 - Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
-- Training via Runpod (managed pods, network volume at /data) or local Docker, backed by an Unsloth‑based LoRA fine‑tuning stack (PyTorch, Transformers, bitsandbytes, PEFT), with packing, auto‑resume, Quick Local Inference, and reusable training configurations.
-- Local inference using the same adapters and base models, powered by Hugging Face Transformers + PEFT + bitsandbytes on top of PyTorch.
+- Training via Runpod (managed pods, network volume at /data) or local Docker, backed by an Unsloth‑based LoRA fine‑tuning stack (PyTorch, Transformers, bitsandbytes, PEFT), with packing, auto‑resume, a **Quick Local Inference** panel (presets, temperature / max‑tokens / repetition‑penalty sliders, dataset‑sampled prompts, chat export), and reusable training configurations.
+- Local inference using the same adapters and base models in a dedicated **Inference** tab (prompt history, presets, sliders including repetition penalty, dataset‑sampled prompts, and Full Chat View), powered by Hugging Face Transformers + PEFT + bitsandbytes on top of PyTorch.
 
 <a id="contents"></a>
 

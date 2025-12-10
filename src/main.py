@@ -1,5 +1,7 @@
 import asyncio
 import os
+import sys
+import time
 from typing import Optional
 import httpx
 
@@ -635,6 +637,307 @@ Tabs:
     except Exception:
         pass
     update_ollama_controls()
+
+    # ---------- SETTINGS (System Check) CONTROLS ----------
+
+    system_check_status = ft.Text("", size=12, color=WITH_OPACITY(0.7, BORDER_BASE))
+    system_check_log = ft.ListView(expand=False, spacing=2, auto_scroll=True)
+    system_check_log_container = ft.Container(
+        content=system_check_log,
+        height=180,
+        border=ft.border.all(1, WITH_OPACITY(0.15, BORDER_BASE)),
+        border_radius=4,
+        padding=8,
+        visible=False,
+    )
+
+    system_check_summary = ft.Column(spacing=4)
+    system_check_summary_container = ft.Container(
+        content=system_check_summary,
+        padding=8,
+        border=ft.border.all(1, WITH_OPACITY(0.08, BORDER_BASE)),
+        border_radius=6,
+        visible=False,
+    )
+
+    async def on_run_system_check():
+        """Run a diagnostics pipeline and stream output into the Settings tab.
+
+        Steps (all executed even if earlier ones fail):
+        - feature-specific pytest groups (scraping, merge/build, training/inference)
+        - full pytest test suite
+        - coverage run --source=src -m pytest
+        - coverage report -m
+        """
+
+        # Prevent duplicate runs
+        if getattr(system_check_btn, "disabled", False):
+            return
+
+        system_check_status.value = "Running diagnostics (pytest & coverage)…"
+        system_check_log_container.visible = True
+        system_check_log.controls.clear()
+        system_check_summary.controls.clear()
+        system_check_summary_container.visible = False
+        system_check_btn.disabled = True
+        await safe_update(page)
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        step_results: list[tuple[str, int]] = []
+
+        async def _run_step(title: str, args: list[str]) -> int:
+            """Run a diagnostic step and stream its output.
+
+            Args:
+                title: Human-readable step name.
+                args: Arguments passed to the current Python executable.
+            """
+
+            # Header for this step
+            system_check_log.controls.append(
+                ft.Text(f"=== {title} ===", size=12, weight=ft.FontWeight.BOLD)
+            )
+            await safe_update(page)
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=project_root,
+                )
+            except Exception as e:  # pragma: no cover - environment-specific
+                system_check_log.controls.append(
+                    ft.Text(f"[{title}] failed to start: {e}", size=11, color=WITH_OPACITY(0.9, COLORS.RED))
+                )
+                await safe_update(page)
+                return 1
+
+            assert proc.stdout is not None
+            while True:
+                line_bytes = await proc.stdout.readline()
+                if not line_bytes:
+                    break
+                line = line_bytes.decode(errors="replace").rstrip()
+                if not line:
+                    continue
+                system_check_log.controls.append(ft.Text(line, size=11))
+                # Keep log bounded
+                if len(system_check_log.controls) > 1000:
+                    system_check_log.controls.pop(0)
+                await safe_update(page)
+
+            rc = await proc.wait()
+            step_results.append((title, rc))
+            system_check_log.controls.append(
+                ft.Text(f"[{title}] exit code: {rc}", size=11, color=WITH_OPACITY(0.8, BORDER_BASE))
+            )
+            await safe_update(page)
+            return rc
+
+        any_failures = False
+        try:
+            # 0) Domain-specific pytest groups
+            scraping_tests = [
+                "tests/unit/test_scraper_utils.py",
+                "tests/unit/test_scrape_orchestration.py",
+            ]
+            if await _run_step(
+                "Scraping & scrape orchestration tests",
+                ["-m", "pytest", *scraping_tests],
+            ) != 0:
+                any_failures = True
+
+            merge_build_tests = [
+                "tests/unit/test_merge.py",
+                "tests/unit/test_build.py",
+            ]
+            if await _run_step(
+                "Merge & build pipeline tests",
+                ["-m", "pytest", *merge_build_tests],
+            ) != 0:
+                any_failures = True
+
+            training_tests = [
+                "tests/unit/test_training_config.py",
+                "tests/unit/test_local_docker.py",
+            ]
+            if await _run_step(
+                "Training config & local training infra tests",
+                ["-m", "pytest", *training_tests],
+            ) != 0:
+                any_failures = True
+
+            inference_tests = [
+                "tests/unit/test_local_inference.py",
+                "tests/unit/test_training_controller_local_infer.py",
+            ]
+            if await _run_step(
+                "Quick local inference & UI wiring tests",
+                ["-m", "pytest", *inference_tests],
+            ) != 0:
+                any_failures = True
+
+            # 1) Full unit/integration suite
+            if await _run_step("Full test suite (pytest tests)", ["-m", "pytest", "tests"]) != 0:
+                any_failures = True
+
+            # 2) Coverage run + report
+            if await _run_step("coverage run", ["-m", "coverage", "run", "--source=src", "-m", "pytest"]) != 0:
+                any_failures = True
+            if await _run_step("coverage report", ["-m", "coverage", "report", "-m"]) != 0:
+                any_failures = True
+
+            # Build grouped visual summary under the log
+            system_check_summary.controls.clear()
+            ok_color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", BORDER_BASE))
+            err_color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", BORDER_BASE))
+
+            # High-level subtitle above the grouped sections
+            system_check_summary.controls.append(
+                ft.Text(
+                    "System health summary by area:",
+                    size=12,
+                    color=WITH_OPACITY(0.8, BORDER_BASE),
+                )
+            )
+
+            def _section_for_title(title: str) -> str:
+                if "Scraping & scrape" in title:
+                    return "Data Collection"
+                if "Merge & build" in title:
+                    return "Dataset Build"
+                if "Training config" in title or "Quick local inference" in title:
+                    return "Training & Inference"
+                return "Overall Health"
+
+            grouped: dict[str, list[tuple[str, int]]] = {}
+            for title, rc in step_results:
+                sec = _section_for_title(title)
+                grouped.setdefault(sec, []).append((title, rc))
+
+            section_order = [
+                "Data Collection",
+                "Dataset Build",
+                "Training & Inference",
+                "Overall Health",
+            ]
+
+            for section in section_order:
+                if section not in grouped:
+                    continue
+                rows_for_section = grouped[section]
+                all_ok = all(rc == 0 for _, rc in rows_for_section)
+                section_color = ok_color if all_ok else err_color
+
+                row_controls = []
+                for title, rc in rows_for_section:
+                    ok = rc == 0
+                    icon_const = (
+                        getattr(ICONS, "CHECK_CIRCLE", getattr(ICONS, "CHECK", getattr(ICONS, "DONE", None)))
+                        if ok
+                        else getattr(ICONS, "ERROR", getattr(ICONS, "CANCEL", getattr(ICONS, "WARNING", None)))
+                    )
+                    icon_color = ok_color if ok else err_color
+                    label = "Passed" if ok else "Failed"
+                    row_controls.append(
+                        ft.Row(
+                            [
+                                ft.Icon(icon_const, color=icon_color, size=16)
+                                if icon_const is not None
+                                else ft.Container(),
+                                ft.Text(
+                                    f"{title}: {label} (exit {rc})",
+                                    size=12,
+                                    color=WITH_OPACITY(0.9, BORDER_BASE),
+                                ),
+                            ],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        )
+                    )
+
+                system_check_summary.controls.append(
+                    ft.Container(
+                        content=ft.Column(
+                            [
+                                ft.Text(
+                                    section,
+                                    size=13,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=WITH_OPACITY(0.95, BORDER_BASE),
+                                ),
+                                *row_controls,
+                            ],
+                            spacing=6,
+                        ),
+                        padding=10,
+                        border=ft.border.all(1, WITH_OPACITY(0.18, section_color)),
+                        border_radius=10,
+                        bgcolor=WITH_OPACITY(0.03 if all_ok else 0.06, section_color),
+                    )
+                )
+            system_check_summary_container.visible = True
+
+            if any_failures:
+                system_check_status.value = "Diagnostics complete: some steps failed (see summary below)."
+            else:
+                system_check_status.value = "Diagnostics complete: all steps passed (see summary below)."
+        except Exception as e:  # pragma: no cover - defensive
+            system_check_status.value = f"Diagnostics error: {e}"
+        finally:
+            system_check_btn.disabled = False
+            await safe_update(page)
+
+    def _on_save_system_log(e):
+        try:
+            path = getattr(e, "path", None)
+            if not path:
+                return
+            lines = []
+            for ctl in system_check_log.controls:
+                if isinstance(ctl, ft.Text):
+                    lines.append(str(getattr(ctl, "value", "")))
+            txt = "\n".join(lines)
+            if txt and not txt.endswith("\n"):
+                txt += "\n"
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(txt)
+            system_check_status.value = f"Saved diagnostics log to: {path}"
+            try:
+                page.update()
+            except Exception:
+                pass
+        except Exception as ex:  # pragma: no cover - defensive
+            system_check_status.value = f"Failed to save diagnostics log: {ex}"
+            try:
+                page.update()
+            except Exception:
+                pass
+
+    system_check_log_picker = ft.FilePicker(on_result=_on_save_system_log)
+    try:
+        page.overlay.append(system_check_log_picker)
+    except Exception:
+        pass
+
+    system_check_btn = ft.ElevatedButton(
+        "Run system diagnostics",
+        icon=getattr(ICONS, "SCIENCE", getattr(ICONS, "PLAY_CIRCLE", getattr(ICONS, "BUG_REPORT", None))),
+        on_click=lambda e: page.run_task(on_run_system_check),
+    )
+
+    system_check_download_btn = ft.OutlinedButton(
+        "Download diagnostics log",
+        icon=getattr(ICONS, "DOWNLOAD", getattr(ICONS, "SAVE_ALT", ICONS.SAVE)),
+        on_click=lambda e: system_check_log_picker.save_file(
+            dialog_title="Save diagnostics log",
+            file_name=f"diagnostics-{int(time.time())}.log",
+            allowed_extensions=["txt", "log"],
+        ),
+    )
     # Compose Scrape tab via dedicated controller (refactored wiring)
     scrape_tab = build_scrape_tab_with_logic(
         page,
@@ -714,6 +1017,11 @@ Tabs:
         ollama_save_btn=ollama_save_btn,
         ollama_status=ollama_status,
         REFRESH_ICON=REFRESH_ICON,
+        system_check_status=system_check_status,
+        system_check_btn=system_check_btn,
+        system_check_log_container=system_check_log_container,
+        system_check_summary_container=system_check_summary_container,
+        system_check_download_btn=system_check_download_btn,
     )
 
     # Compose Dataset Analysis tab via dedicated controller (refactored wiring)

@@ -1,6 +1,6 @@
 [project]
 name = "finefoundry-core"
-version = "0.1.0"
+version = "0.1.8"
 description = "FineFoundry Core Application"
 authors = [{ name = "SourceBox LLC" }]
 readme = "README.md"

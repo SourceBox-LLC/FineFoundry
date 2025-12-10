@@ -259,6 +259,7 @@ The database uses thread-local connections, making it safe to use from multiple 
 ### Optional Exports
 
 Users can optionally export data to JSON for external tools:
+
 - Merged datasets can be exported to JSON via the Merge tab
 - Scrape sessions can be exported via `helpers.scrape_db.export_to_json()`
 - Training logs can be saved to files via the Training tab

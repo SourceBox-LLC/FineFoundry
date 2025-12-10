@@ -7,6 +7,7 @@ Use this tab to:
 - Configure and persist **Hugging Face** and **Runpod** credentials
 - Set up **proxy behavior** for scrapers
 - Configure **Ollama** connection for optional dataset card generation
+- Run a **System Check** to verify that core scraping, build, training, and inference flows work end-to-end
 
 ______________________________________________________________________
 
@@ -71,6 +72,53 @@ If you use **Ollama** for dataset card drafting or other features:
 - **Default model** field
 - **Models dropdown + Refresh button** – list and select models from the Ollama instance.
 - **Test / Save** buttons
+
+### 5. System Check (Diagnostics)
+
+The **System Check** panel lives at the bottom of the Settings tab and provides a one-click health check for your environment.
+
+- **Run system diagnostics** button
+
+  - Executes a diagnostics pipeline using your current Python environment.
+  - Runs focused `pytest` groups for key feature areas:
+    - **Data Collection** – scraping utilities and scrape-tab orchestration.
+    - **Dataset Build** – merge and build/publish pipelines.
+    - **Training & Inference** – training config + local training infra, and Quick Local Inference wiring.
+  - Then runs the **full test suite** (`pytest tests`) and a **coverage run + report**:
+    - `coverage run --source=src -m pytest`
+    - `coverage report -m`
+  - All output is streamed live into a log view so you can see exactly what passed or failed.
+
+- **Live log viewer**
+
+  - Initially hidden and shown automatically when diagnostics start.
+  - Displays detailed stdout/stderr from each step (pytest and coverage commands).
+  - Useful for debugging environment issues without leaving the app.
+
+- **System Health Summary**
+
+  - After the run completes, a summary appears **beneath** the log.
+  - Results are grouped into card-like sections:
+    - **Data Collection** – scraping and scrape orchestration tests.
+    - **Dataset Build** – merge and build pipeline tests.
+    - **Training & Inference** – training config, local Docker training helpers, and Quick Local Inference UI wiring.
+    - **Overall Health** – full test suite and coverage steps.
+  - Each card lists its component checks with icons and a clear **Passed / Failed** label and exit code.
+  - The overall status line above the log tells you whether everything passed or if some areas failed.
+
+- **Download diagnostics log**
+
+  - A **Download log** button opens a file-save dialog.
+  - Saves the full textual log to a `.txt` file so you can:
+    - Attach it to bug reports.
+    - Share it with collaborators.
+    - Keep a local record of a given run.
+
+The System Check is optional but recommended when:
+
+- You first install FineFoundry on a new machine.
+- You upgrade dependencies or Python versions.
+- You want a quick, visual confirmation that scraping, build, training, and inference are all wired up correctly.
 
 ______________________________________________________________________
 

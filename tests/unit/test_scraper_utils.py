@@ -1,7 +1,7 @@
 """Tests for scraper utility functions."""
 
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import requests

@@ -23,6 +23,7 @@ CREATE TABLE app_logs (
 ```
 
 Benefits over file-based logging:
+
 - **Security**: No sensitive data in plain text log files
 - **Queryability**: Filter logs by level, logger, time range
 - **Centralized**: All logs in one place with the rest of app data

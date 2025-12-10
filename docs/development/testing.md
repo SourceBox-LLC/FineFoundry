@@ -49,6 +49,14 @@ Unit tests cover focused, deterministic behavior without external services:
 - `test_synthetic_cli.py` – synthetic data CLI argument parsing and validation.
 - `test_boards.py` – 4chan board list and API loading.
 - `test_ui_helpers.py` – UI utility functions (opacity, two-column layout, cell text).
+- `test_scraper_utils.py` – shared HTTP retry / rate limiting utilities for scrapers.
+- `test_local_inference.py` – local inference prompt shaping, chat templates, and repetition penalty wiring.
+- `test_scrape_orchestration.py` – Scrape-tab orchestration for 4chan/Reddit, including DB-save flows.
+- `test_merge.py` – dataset merge orchestration (DB/HF/JSON sources, interleave/concatenate) and DB writes.
+- `test_local_docker.py` – Docker image pull UX (daemon checks, image inspection, error hints).
+- `test_build.py` – Build/Publish split validation, DB-source pipeline, and push preconditions.
+- `test_training_config.py` – database-backed training config helpers (list/save/delete/rename/last-used/validate).
+- `test_training_controller_local_infer.py` – UI-level wiring for Quick Local Inference (prompts, sliders, chat export) using mocks.
 
 Run unit tests only:
 
@@ -160,6 +168,24 @@ Additional quality jobs in CI include:
   check links across `README.md` and `docs/**/*.md`. These checks keep documentation clean and prevent broken links from creeping into the repository.
 
 You can download coverage artifacts from the CI run to inspect coverage in detail or feed them into external reporting tools.
+
+### GUI System Check (Settings Tab)
+
+For non-developers (or for a quick visual check), the **Settings → System Check** panel in the GUI wraps a subset of the commands from this guide:
+
+- Runs targeted `pytest` groups for key feature areas:
+  - Scraping utilities and scrape-tab orchestration.
+  - Merge and build/publish pipelines.
+  - Training config + local Docker training helpers.
+  - Quick Local Inference and its UI wiring.
+- Runs the full test suite: `pytest tests`.
+- Runs coverage:
+  - `coverage run --source=src -m pytest`
+  - `coverage report -m`
+
+The panel streams live output into a log view and then shows a grouped **System Health Summary** (Data Collection, Dataset Build, Training & Inference, Overall Health).
+
+Under the hood it uses the same Python environment as your CLI. If you are debugging issues in the System Check, you can reproduce its behavior by running the equivalent `pytest` and `coverage` commands directly in a shell.
 
 ## Adding New Tests
 

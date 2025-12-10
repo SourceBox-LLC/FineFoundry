@@ -38,6 +38,11 @@ def build_settings_tab(
     ollama_save_btn,
     ollama_status,
     REFRESH_ICON,
+    system_check_status,
+    system_check_btn,
+    system_check_log_container,
+    system_check_summary_container,
+    system_check_download_btn,
 ) -> ft.Container:
     """Return the Settings tab content container.
 
@@ -134,6 +139,28 @@ def build_settings_tab(
                                         [ollama_test_btn, ollama_refresh_btn, ollama_save_btn], spacing=10, wrap=True
                                     ),
                                     ollama_status,
+                                    ft.Divider(),
+                                    section_title(
+                                        "System Check",
+                                        getattr(ICONS, "CHECK_CIRCLE", ICONS.SETTINGS),
+                                        "Run internal diagnostics (pytest-based tests) to verify this installation.",
+                                        on_help_click=_mk_help_handler(
+                                            "Run internal diagnostics (pytest-based tests) to verify this installation."
+                                        ),
+                                    ),
+                                    ft.Text(
+                                        "Runs the internal pytest test suite, coverage, lint, and type checks, and streams output below.",
+                                        size=12,
+                                        color=WITH_OPACITY(0.7, BORDER_BASE),
+                                    ),
+                                    ft.Row(
+                                        [system_check_btn, system_check_download_btn],
+                                        spacing=10,
+                                        wrap=True,
+                                    ),
+                                    system_check_status,
+                                    system_check_log_container,
+                                    system_check_summary_container,
                                 ],
                                 spacing=12,
                             ),
