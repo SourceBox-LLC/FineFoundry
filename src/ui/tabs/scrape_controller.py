@@ -95,12 +95,12 @@ def build_scrape_tab_with_logic(
     # Inputs
     source_dd = ft.Dropdown(
         label="Source",
-        value="4chan",
+        value="synthetic",
         options=[
+            ft.dropdown.Option("synthetic"),
             ft.dropdown.Option("4chan"),
             ft.dropdown.Option("reddit"),
             ft.dropdown.Option("stackexchange"),
-            ft.dropdown.Option("synthetic"),
         ],
         width=180,
     )
@@ -1070,5 +1070,7 @@ def build_scrape_tab_with_logic(
 
     # Ensure initial visibility matches idle state (no logs or preview yet)
     update_scrape_placeholders()
+    # Ensure source-specific controls match the default source selection
+    update_source_controls()
 
     return scrape_tab
