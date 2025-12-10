@@ -6,6 +6,8 @@ from typing import Callable, Dict, List, Optional
 
 import requests
 
+from scrapers.utils import get_rate_limiter, make_request_with_retry
+
 # Public configuration (aligned with other scrapers)
 PROXY_URL: Optional[str] = None
 USE_ENV_PROXIES: bool = False
@@ -67,7 +69,18 @@ def html_to_text(html: str) -> str:
     return "\n".join(out).strip()
 
 
-def fetch_questions(site: str, page: int, pagesize: int) -> Dict:
+def fetch_questions(site: str, page: int, pagesize: int, max_retries: int = 3) -> Dict:
+    """Fetch questions from Stack Exchange API with retry logic.
+    
+    Args:
+        site: Stack Exchange site (e.g., 'stackoverflow').
+        page: Page number.
+        pagesize: Number of questions per page.
+        max_retries: Maximum retry attempts on failure.
+    
+    Returns:
+        API response as dictionary.
+    """
     params = {
         "order": "desc",
         "sort": "activity",
@@ -78,23 +91,47 @@ def fetch_questions(site: str, page: int, pagesize: int) -> Dict:
     }
     if STACKAPPS_KEY:
         params["key"] = STACKAPPS_KEY
-    r = _get_session().get(f"{API_BASE}/questions", params=params, timeout=30)
+    rate_limiter = get_rate_limiter("stackexchange")
+    r = make_request_with_retry(
+        _get_session(), "GET", f"{API_BASE}/questions",
+        max_retries=max_retries,
+        rate_limiter=rate_limiter,
+        params=params,
+        timeout=30,
+    )
     r.raise_for_status()
     return r.json()
 
 
-def fetch_answers(site: str, ids: List[int]) -> Dict[int, Dict]:
+def fetch_answers(site: str, ids: List[int], max_retries: int = 3) -> Dict[int, Dict]:
+    """Fetch answers from Stack Exchange API with retry logic.
+    
+    Args:
+        site: Stack Exchange site (e.g., 'stackoverflow').
+        ids: List of answer IDs to fetch.
+        max_retries: Maximum retry attempts on failure.
+    
+    Returns:
+        Dictionary mapping answer_id to answer data.
+    """
     if not ids:
         return {}
     answers: Dict[int, Dict] = {}
     sess = _get_session()
+    rate_limiter = get_rate_limiter("stackexchange")
     for i in range(0, len(ids), 100):
         chunk = ids[i : i + 100]
         ids_str = ";".join(str(x) for x in chunk)
         params = {"order": "desc", "sort": "activity", "site": site, "filter": "withbody"}
         if STACKAPPS_KEY:
             params["key"] = STACKAPPS_KEY
-        r = sess.get(f"{API_BASE}/answers/{ids_str}", params=params, timeout=30)
+        r = make_request_with_retry(
+            sess, "GET", f"{API_BASE}/answers/{ids_str}",
+            max_retries=max_retries,
+            rate_limiter=rate_limiter,
+            params=params,
+            timeout=30,
+        )
         r.raise_for_status()
         data = r.json()
         for itm in data.get("items", []) or []:
@@ -103,7 +140,7 @@ def fetch_answers(site: str, ids: List[int]) -> Dict[int, Dict]:
             except Exception:
                 pass
         if data.get("backoff"):
-            time.sleep(int(data["backoff"]))
+            rate_limiter.backoff(int(data["backoff"]))
     return answers
 
 

@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Optional
 
 import requests
 
+from scrapers.utils import get_rate_limiter, make_request_with_retry
+
 BASE_URL = "https://a.4cdn.org"
 USER_AGENT = "Mozilla/5.0 (compatible; QwenFineTuneScraper/1.0)"
 
@@ -63,10 +65,25 @@ ALLOWLIST_DEFAULT: List[str] = [
 ]
 
 
-def fetch_catalog(board: str) -> List[int]:
-    """Return a list of thread IDs for a board using the catalog endpoint."""
+def fetch_catalog(board: str, max_retries: int = 3) -> List[int]:
+    """Return a list of thread IDs for a board using the catalog endpoint.
+    
+    Args:
+        board: Board code (e.g., 'pol', 'b').
+        max_retries: Maximum retry attempts on failure.
+    
+    Returns:
+        List of thread IDs.
+    """
     url = f"{BASE_URL}/{board}/catalog.json"
-    resp = SESSION.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    rate_limiter = get_rate_limiter("4chan")
+    resp = make_request_with_retry(
+        SESSION, "GET", url,
+        max_retries=max_retries,
+        rate_limiter=rate_limiter,
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
     resp.raise_for_status()
     pages = resp.json()
     thread_ids: List[int] = []
@@ -77,10 +94,25 @@ def fetch_catalog(board: str) -> List[int]:
     return thread_ids
 
 
-def fetch_catalog_pages(board: str) -> List[List[int]]:
-    """Return a list of pages, each page is a list of thread IDs (preserves page grouping)."""
+def fetch_catalog_pages(board: str, max_retries: int = 3) -> List[List[int]]:
+    """Return a list of pages, each page is a list of thread IDs (preserves page grouping).
+    
+    Args:
+        board: Board code (e.g., 'pol', 'b').
+        max_retries: Maximum retry attempts on failure.
+    
+    Returns:
+        List of pages, each containing thread IDs.
+    """
     url = f"{BASE_URL}/{board}/catalog.json"
-    resp = SESSION.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    rate_limiter = get_rate_limiter("4chan")
+    resp = make_request_with_retry(
+        SESSION, "GET", url,
+        max_retries=max_retries,
+        rate_limiter=rate_limiter,
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
     resp.raise_for_status()
     pages = resp.json()
     page_threads: List[List[int]] = []
@@ -94,14 +126,36 @@ def fetch_catalog_pages(board: str) -> List[List[int]]:
     return page_threads
 
 
-def fetch_thread(board: str, thread_id: int) -> List[Dict[str, Any]]:
+def fetch_thread(board: str, thread_id: int, max_retries: int = 3) -> List[Dict[str, Any]]:
+    """Fetch all posts from a thread.
+    
+    Args:
+        board: Board code (e.g., 'pol', 'b').
+        thread_id: Thread number.
+        max_retries: Maximum retry attempts on failure.
+    
+    Returns:
+        List of post dictionaries, or empty list if thread not found.
+    """
     url = f"{BASE_URL}/{board}/thread/{thread_id}.json"
-    resp = SESSION.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
-    if resp.status_code == 404:
-        return []
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("posts", [])
+    rate_limiter = get_rate_limiter("4chan")
+    try:
+        resp = make_request_with_retry(
+            SESSION, "GET", url,
+            max_retries=max_retries,
+            rate_limiter=rate_limiter,
+            headers={"User-Agent": USER_AGENT},
+            timeout=20,
+        )
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("posts", [])
+    except requests.exceptions.HTTPError as e:
+        if hasattr(e, "response") and e.response is not None and e.response.status_code == 404:
+            return []
+        raise
 
 
 TAG_RE = re.compile(r"<[^>]+>")

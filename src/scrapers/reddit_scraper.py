@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from scrapers.utils import get_rate_limiter
+
 # =========================
 # CONFIG — CHANGE THESE
 # =========================
@@ -151,6 +153,7 @@ def get_json(
     retries: int = 3,
 ) -> Any:
     """GET/POST with simple retry + backoff for 429/5xx."""
+    rate_limiter = get_rate_limiter("reddit")
     attempt = 0
     while True:
         try:
@@ -164,6 +167,8 @@ def get_json(
                 log("Max requests exceeded; halting crawl")
                 raise RuntimeError("Max requests exceeded; halting crawl")
 
+            # Apply rate limiting before request
+            rate_limiter.wait()
             REQUESTS_MADE += 1
             if method == "GET":
                 r = SESSION.get(url, params=params, timeout=30)
@@ -171,12 +176,24 @@ def get_json(
                 r = SESSION.post(url, data=data, params=params, timeout=30)
             if r.status_code == 429:
                 # rate limit — backoff
-                wait = (attempt + 1) * 3
+                retry_after = r.headers.get("Retry-After", str((attempt + 1) * 3))
+                try:
+                    wait = float(retry_after)
+                except ValueError:
+                    wait = (attempt + 1) * 3
                 log(f"429 rate limit on {url}; backing off {wait:.1f}s")
-                sleep_with_jitter(wait)
+                rate_limiter.backoff(wait)
                 attempt += 1
                 if attempt > retries:
                     r.raise_for_status()
+                continue
+            # Handle 5xx server errors with retry
+            if r.status_code >= 500:
+                log(f"Server error {r.status_code} on {url}; retrying...")
+                attempt += 1
+                if attempt > retries:
+                    r.raise_for_status()
+                rate_limiter.backoff(2 * attempt)
                 continue
             r.raise_for_status()
             log(f"HTTP OK {method} {url}")
@@ -186,7 +203,7 @@ def get_json(
             attempt += 1
             if attempt > retries:
                 raise
-            sleep_with_jitter(2 * attempt)
+            rate_limiter.backoff(2 * attempt)
 
 
 def to_json_url(url: str) -> str:
