@@ -2047,21 +2047,43 @@ def build_training_tab_with_logic(
         tooltip="Get new random samples",
     )
     local_infer_temp_slider = ft.Slider(
-        label="Temperature: {value}",
         min=0.1,
         max=1.2,
         divisions=11,
         value=0.7,
-        width=320,
+        width=280,
     )
+    local_infer_temp_label = ft.Text("Temperature: 0.7", size=12)
     local_infer_max_tokens_slider = ft.Slider(
-        label="Max new tokens: {value}",
         min=64,
         max=512,
         divisions=14,
         value=256,
-        width=320,
+        width=280,
     )
+    local_infer_max_tokens_label = ft.Text("Max tokens: 256", size=12)
+    local_infer_rep_penalty_slider = ft.Slider(
+        min=1.0,
+        max=1.5,
+        divisions=10,
+        value=1.15,
+        width=280,
+    )
+    local_infer_rep_penalty_label = ft.Text("Rep. penalty: 1.15", size=12)
+
+    def _update_local_infer_slider_labels(e=None):
+        try:
+            local_infer_temp_label.value = f"Temperature: {local_infer_temp_slider.value:.1f}"
+            local_infer_max_tokens_label.value = f"Max tokens: {int(local_infer_max_tokens_slider.value)}"
+            local_infer_rep_penalty_label.value = f"Rep. penalty: {local_infer_rep_penalty_slider.value:.2f}"
+            page.update()
+        except Exception:
+            pass
+
+    local_infer_temp_slider.on_change = _update_local_infer_slider_labels
+    local_infer_max_tokens_slider.on_change = _update_local_infer_slider_labels
+    local_infer_rep_penalty_slider.on_change = _update_local_infer_slider_labels
+
     local_infer_output = ft.ListView(expand=True, spacing=4, auto_scroll=True)
     local_infer_output_placeholder = ft.Text(
         "Responses will appear here after running inference.",
@@ -2104,8 +2126,9 @@ def build_training_tab_with_logic(
                 local_infer_prompt_tf,
                 ft.Row(
                     [
-                        local_infer_temp_slider,
-                        local_infer_max_tokens_slider,
+                        ft.Column([local_infer_temp_label, local_infer_temp_slider], spacing=2),
+                        ft.Column([local_infer_max_tokens_label, local_infer_max_tokens_slider], spacing=2),
+                        ft.Column([local_infer_rep_penalty_label, local_infer_rep_penalty_slider], spacing=2),
                     ],
                     wrap=True,
                     spacing=10,
@@ -2156,15 +2179,23 @@ def build_training_tab_with_logic(
         if name.startswith("deterministic"):
             t = 0.2
             n = 128
+            r = 1.2  # Higher penalty for more focused output
         elif name.startswith("creative"):
             t = 1.0
             n = 512
+            r = 1.1  # Lower penalty for more variety
         else:
             t = 0.7
             n = 256
+            r = 1.15  # Balanced default
         try:
             local_infer_temp_slider.value = t
             local_infer_max_tokens_slider.value = n
+            local_infer_rep_penalty_slider.value = r
+            # Update labels
+            local_infer_temp_label.value = f"Temperature: {t:.1f}"
+            local_infer_max_tokens_label.value = f"Max tokens: {int(n)}"
+            local_infer_rep_penalty_label.value = f"Rep. penalty: {r:.2f}"
             page.update()
         except Exception:
             pass
@@ -2402,10 +2433,16 @@ def build_training_tab_with_logic(
             temperature = float(getattr(local_infer_temp_slider, "value", 0.7) or 0.7)
         except Exception:
             temperature = 0.7
+        try:
+            rep_penalty = float(getattr(local_infer_rep_penalty_slider, "value", 1.15) or 1.15)
+        except Exception:
+            rep_penalty = 1.15
         if max_tokens <= 0:
             max_tokens = 1
         if temperature <= 0:
             temperature = 0.1
+        if rep_penalty < 1.0:
+            rep_penalty = 1.0
         loaded = bool(info.get("model_loaded"))
         local_infer_btn.disabled = True
         try:
@@ -2425,6 +2462,7 @@ def build_training_tab_with_logic(
                 prompt,
                 max_tokens,
                 temperature,
+                rep_penalty,
             )
             try:
                 local_infer_output_placeholder.visible = False

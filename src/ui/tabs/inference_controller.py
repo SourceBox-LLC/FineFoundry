@@ -330,21 +330,42 @@ def build_inference_tab_with_logic(
         width=220,
     )
     infer_temp_slider = ft.Slider(
-        label="Temperature: {value}",
         min=0.1,
         max=1.2,
         divisions=11,
         value=0.7,
-        width=320,
+        width=280,
     )
+    infer_temp_label = ft.Text("Temperature: 0.7", size=12)
     infer_max_tokens_slider = ft.Slider(
-        label="Max new tokens: {value}",
         min=64,
         max=512,
         divisions=14,
         value=256,
-        width=320,
+        width=280,
     )
+    infer_max_tokens_label = ft.Text("Max tokens: 256", size=12)
+    infer_rep_penalty_slider = ft.Slider(
+        min=1.0,
+        max=1.5,
+        divisions=10,
+        value=1.15,
+        width=280,
+    )
+    infer_rep_penalty_label = ft.Text("Rep. penalty: 1.15", size=12)
+
+    def _update_infer_slider_labels(e=None):
+        try:
+            infer_temp_label.value = f"Temperature: {infer_temp_slider.value:.1f}"
+            infer_max_tokens_label.value = f"Max tokens: {int(infer_max_tokens_slider.value)}"
+            infer_rep_penalty_label.value = f"Rep. penalty: {infer_rep_penalty_slider.value:.2f}"
+            page.update()
+        except Exception:
+            pass
+
+    infer_temp_slider.on_change = _update_infer_slider_labels
+    infer_max_tokens_slider.on_change = _update_infer_slider_labels
+    infer_rep_penalty_slider.on_change = _update_infer_slider_labels
     infer_prompt_tf = ft.TextField(
         label="Prompt",
         multiline=True,
@@ -688,6 +709,10 @@ def build_inference_tab_with_logic(
         except Exception:
             pass
         try:
+            infer_rep_penalty_slider.disabled = not flag
+        except Exception:
+            pass
+        try:
             infer_prompt_tf.disabled = not flag
         except Exception:
             pass
@@ -721,15 +746,23 @@ def build_inference_tab_with_logic(
         if name.startswith("deterministic"):
             t = 0.2
             n = 128
+            r = 1.2  # Higher penalty for more focused output
         elif name.startswith("creative"):
             t = 1.0
             n = 512
+            r = 1.1  # Lower penalty for more variety
         else:
             t = 0.7
             n = 256
+            r = 1.15  # Balanced default
         try:
             infer_temp_slider.value = t
             infer_max_tokens_slider.value = n
+            infer_rep_penalty_slider.value = r
+            # Update labels
+            infer_temp_label.value = f"Temperature: {t:.1f}"
+            infer_max_tokens_label.value = f"Max tokens: {int(n)}"
+            infer_rep_penalty_label.value = f"Rep. penalty: {r:.2f}"
             page.update()
         except Exception:
             pass
@@ -798,10 +831,16 @@ def build_inference_tab_with_logic(
             temperature = float(getattr(infer_temp_slider, "value", 0.7) or 0.7)
         except Exception:
             temperature = 0.7
+        try:
+            rep_penalty = float(getattr(infer_rep_penalty_slider, "value", 1.15) or 1.15)
+        except Exception:
+            rep_penalty = 1.15
         if max_tokens <= 0:
             max_tokens = 1
         if temperature <= 0:
             temperature = 0.1
+        if rep_penalty < 1.0:
+            rep_penalty = 1.0
         info = train_state.get("inference") or {}
         loaded = (
             bool(info.get("model_loaded"))
@@ -826,6 +865,7 @@ def build_inference_tab_with_logic(
                 prompt,
                 max_tokens,
                 temperature,
+                rep_penalty,
             )
             try:
                 infer_output_placeholder.visible = False
@@ -1242,7 +1282,11 @@ def build_inference_tab_with_logic(
         infer_use_latest_btn=infer_use_latest_btn,
         infer_preset_dd=infer_preset_dd,
         infer_temp_slider=infer_temp_slider,
+        infer_temp_label=infer_temp_label,
         infer_max_tokens_slider=infer_max_tokens_slider,
+        infer_max_tokens_label=infer_max_tokens_label,
+        infer_rep_penalty_slider=infer_rep_penalty_slider,
+        infer_rep_penalty_label=infer_rep_penalty_label,
         infer_prompt_tf=infer_prompt_tf,
         infer_dataset_dd=infer_dataset_dd,
         infer_dataset_refresh_btn=infer_dataset_refresh_btn,
