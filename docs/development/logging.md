@@ -2,22 +2,31 @@
 
 ## Overview
 
-FineFoundry now has a comprehensive, professional logging system that tracks all important operations, errors, and debug information. Logs are automatically rotated and stored in the `logs/` directory.
+FineFoundry uses a **database-backed logging system** that stores all application logs in SQLite. This provides better security (no sensitive data in plain text files), queryability, and centralized log management.
 
-## Log Files
+## Log Storage
 
-All log files are stored in the `logs/` directory in the project root:
+All logs are stored in the `app_logs` table in `finefoundry.db`:
 
-- `__main__.log` - Main application logs
-- `helpers_merge.log` - Dataset merge operation logs
-- Additional module-specific logs as needed
+```sql
+CREATE TABLE app_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    level TEXT NOT NULL,
+    logger TEXT,
+    message TEXT NOT NULL,
+    module TEXT,
+    func_name TEXT,
+    line_no INTEGER,
+    exc_info TEXT
+);
+```
 
-Each log file:
-
-- Automatically rotates when it reaches 10MB
-- Keeps 5 backup files
-- Uses UTF-8 encoding
-- Includes timestamps, log levels, source file/line numbers
+Benefits over file-based logging:
+- **Security**: No sensitive data in plain text log files
+- **Queryability**: Filter logs by level, logger, time range
+- **Centralized**: All logs in one place with the rest of app data
+- **Automatic cleanup**: Easy to purge old logs
 
 ## Log Levels
 
@@ -56,9 +65,9 @@ Each log entry includes:
 Example:
 
 ```
-2025-01-15 14:30:45 - __main__ - INFO - [main.py:2059] - Download merged dataset called with destination: /home/user/Downloads
+2025-01-15 14:30:45 - __main__ - INFO - [main.py:2059] - Starting scrape operation
 2025-01-15 14:30:45 - helpers.merge - INFO - [merge.py:170] - Starting merge operation
-2025-01-15 14:30:50 - helpers.merge - INFO - [merge.py:341] - Saving 1250 merged records to JSON: /home/user/Projects/merged_dataset.json
+2025-01-15 14:30:50 - helpers.merge - INFO - [merge.py:341] - Merged 1250 records into session: combined_dataset
 ```
 
 ## What Gets Logged
@@ -88,30 +97,41 @@ Example:
 
 ## Viewing Logs
 
-### Real-time Monitoring
+### Programmatic Access
 
-```bash
-# Watch all main application logs
-tail -f logs/__main__.log
+```python
+from db import get_logs, get_log_count, clear_logs
 
-# Watch merge operation logs
-tail -f logs/helpers_merge.log
+# Get recent logs
+logs = get_logs(limit=100)
 
-# Watch all logs
-tail -f logs/*.log
+# Filter by level
+errors = get_logs(level="ERROR", limit=50)
+
+# Filter by logger
+merge_logs = get_logs(logger="helpers.merge", limit=100)
+
+# Get log count
+error_count = get_log_count(level="ERROR")
+
+# Clear old logs
+clear_logs(older_than_days=30)
 ```
 
-### Searching Logs
+### Console Output
+
+Logs are also printed to the console in real-time with this format:
+
+```
+2025-01-15 14:30:45 - module.name - LEVEL - [filename.py:123] - Message
+```
+
+### Querying with SQL
+
+You can also query logs directly with SQLite:
 
 ```bash
-# Find all errors
-grep "ERROR" logs/*.log
-
-# Find specific operation
-grep "Download merged" logs/__main__.log
-
-# Find logs from a specific date
-grep "2025-01-15" logs/*.log
+sqlite3 finefoundry.db "SELECT * FROM app_logs WHERE level='ERROR' ORDER BY timestamp DESC LIMIT 10"
 ```
 
 ## Adding Logging to New Modules
@@ -134,34 +154,42 @@ def my_function():
         logger.error("Operation failed", exc_info=True)
 ```
 
-## Log Rotation
+## Log Management
 
-Logs automatically rotate when they reach 10MB. The system keeps:
+### Clearing Old Logs
 
-- Current log file: `module_name.log`
-- 5 backups: `module_name.log.1` through `module_name.log.5`
+```python
+from db import clear_logs
 
-Older backups are automatically deleted.
+# Clear logs older than 30 days
+clear_logs(older_than_days=30)
+
+# Clear all logs
+clear_logs(older_than_days=0)
+```
+
+### Database Size
+
+Logs are stored efficiently in SQLite. For most use cases, the database size remains manageable. If needed, clear old logs periodically.
 
 ## Troubleshooting
 
 ### Logs not appearing
 
-1. Check that the `logs/` directory exists (it's auto-created)
-1. Verify file permissions
+1. Check that `finefoundry.db` exists in the project root
+1. Verify the database is initialized: `from db import init_db; init_db()`
 1. Check if DEBUG mode is needed: `export FINEFOUNDRY_DEBUG=1`
 
 ### Too many logs
 
-1. Reduce log level (default is INFO, which is reasonable)
-1. The rotation system automatically manages disk space
-1. Manually delete old `.log.N` backup files if needed
+1. Use `clear_logs(older_than_days=N)` to purge old entries
+1. Default log level is INFO, which is reasonable for most use cases
 
 ### Finding specific issues
 
-1. Check ERROR level logs first: `grep "ERROR" logs/*.log`
-1. Look for the specific operation (merge, download, etc.)
-1. Stack traces are included for all errors
+1. Query ERROR level logs: `get_logs(level="ERROR")`
+1. Filter by logger name for specific modules
+1. Stack traces are included in the `exc_info` field
 
 ## Best Practices
 

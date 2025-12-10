@@ -82,16 +82,23 @@ def build_merge_tab_with_logic(
         source_dd = ft.Dropdown(
             label="Source",
             options=[
+                ft.dropdown.Option("Database"),
                 ft.dropdown.Option("Hugging Face"),
-                ft.dropdown.Option("JSON file"),
             ],
-            value="Hugging Face",
+            value="Database",
             width=160,
+        )
+        # Database session selector
+        db_session_dd = ft.Dropdown(
+            label="Scrape session",
+            options=[],
+            width=360,
+            visible=True,
         )
         ds_id = ft.TextField(
             label="Dataset repo (e.g., username/dataset)",
             width=360,
-            visible=True,
+            visible=False,
         )
         split = ft.Dropdown(
             label="Split",
@@ -103,23 +110,24 @@ def build_merge_tab_with_logic(
             ],
             value="train",
             width=160,
-            visible=True,
+            visible=False,
         )
         config = ft.TextField(
             label="Config (optional)",
             width=180,
-            visible=True,
+            visible=False,
         )
         in_col = ft.TextField(
             label="Input column (optional)",
             width=200,
-            visible=True,
+            visible=False,
         )
         out_col = ft.TextField(
             label="Output column (optional)",
             width=200,
-            visible=True,
+            visible=False,
         )
+        # JSON path kept for internal use only (not user-facing)
         json_path = ft.TextField(
             label="JSON path",
             width=360,
@@ -129,12 +137,12 @@ def build_merge_tab_with_logic(
         row = ft.Row(
             [
                 source_dd,
+                db_session_dd,
                 ds_id,
                 split,
                 config,
                 in_col,
                 out_col,
-                json_path,
                 remove_btn,
             ],
             spacing=10,
@@ -144,6 +152,7 @@ def build_merge_tab_with_logic(
         # Keep references for later retrieval
         row.data = {
             "source": source_dd,
+            "db_session": db_session_dd,
             "ds": ds_id,
             "split": split,
             "config": config,
@@ -152,14 +161,36 @@ def build_merge_tab_with_logic(
             "json": json_path,
         }
 
+        def refresh_db_sessions():
+            try:
+                from db.scraped_data import list_scrape_sessions
+
+                sessions = list_scrape_sessions(limit=50)
+                options = []
+                for s in sessions:
+                    label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
+                    if s.get("source_details"):
+                        label = f"{s['source']}: {s['source_details'][:30]} - {s['pair_count']} pairs"
+                    options.append(ft.dropdown.Option(key=str(s["id"]), text=label))
+                db_session_dd.options = options
+                if options and not db_session_dd.value:
+                    db_session_dd.value = options[0].key
+            except Exception:
+                pass
+
         def on_source_change(_):
-            is_hf = (getattr(source_dd, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
+            src = getattr(source_dd, "value", "Database") or "Database"
+            is_db = src == "Database"
+            is_hf = src == "Hugging Face"
+            db_session_dd.visible = is_db
             ds_id.visible = is_hf
             split.visible = is_hf
             config.visible = is_hf
             in_col.visible = is_hf
             out_col.visible = is_hf
-            json_path.visible = not is_hf
+            json_path.visible = False  # Always hidden - JSON removed as user option
+            if is_db:
+                refresh_db_sessions()
             try:
                 page.update()
             except Exception:
@@ -167,6 +198,8 @@ def build_merge_tab_with_logic(
 
         try:
             source_dd.on_change = on_source_change
+            # Initialize DB sessions
+            refresh_db_sessions()
         except Exception:
             pass
 
@@ -195,32 +228,34 @@ def build_merge_tab_with_logic(
         on_click=lambda e: (rows_host.controls.clear(), page.update()),
     )
 
-    # Output settings
+    # Output settings - Database is primary, export options for external use
     merge_output_format = ft.Dropdown(
         label="Output format",
         options=[
-            ft.dropdown.Option("HF dataset dir"),
-            ft.dropdown.Option("JSON file"),
+            ft.dropdown.Option("Database"),
+            ft.dropdown.Option("Database + Export JSON"),
         ],
-        value="HF dataset dir",
+        value="Database",
         width=220,
     )
-    merge_save_dir = ft.TextField(
-        label="Save dir",
+    merge_session_name = ft.TextField(
+        label="Session name",
         value="merged_dataset",
         width=240,
+        hint_text="Name for the merged session in database",
+    )
+    # Hidden export path for JSON export option
+    merge_export_path = ft.TextField(
+        label="Export path",
+        value="merged.json",
+        width=240,
+        visible=False,
     )
 
     def update_output_controls(_=None):
         fmt = (merge_output_format.value or "").lower()
-        if "json" in fmt:
-            merge_save_dir.label = "Save file (.json)"
-            if (merge_save_dir.value or "").strip() == "merged_dataset":
-                merge_save_dir.value = "merged.json"
-        else:
-            merge_save_dir.label = "Save dir"
-            if (merge_save_dir.value or "").strip() == "merged.json":
-                merge_save_dir.value = "merged_dataset"
+        wants_export = "export" in fmt
+        merge_export_path.visible = wants_export
         try:
             page.update()
         except Exception:
@@ -280,7 +315,8 @@ def build_merge_tab_with_logic(
             rows_host=rows_host,
             merge_op=merge_op,
             merge_output_format=merge_output_format,
-            merge_save_dir=merge_save_dir,
+            merge_session_name=merge_session_name,
+            merge_export_path=merge_export_path,
             merge_timeline=merge_timeline,
             merge_timeline_placeholder=merge_timeline_placeholder,
             merge_preview_host=merge_preview_host,
@@ -322,7 +358,7 @@ def build_merge_tab_with_logic(
         return await preview_merged_helper(
             page=page,
             merge_output_format=merge_output_format,
-            merge_save_dir=merge_save_dir,
+            merge_session_name=merge_session_name,
         )
 
     def handle_merge_preview_click(_):
@@ -352,54 +388,64 @@ def build_merge_tab_with_logic(
             return
 
         dest_dir = e.path
-        orig_dir = merge_save_dir.value or "merged_dataset"
+        session_name = merge_session_name.value or "merged_dataset"
+        export_path = merge_export_path.value or "merged.json"
         fmt_now = (merge_output_format.value or "").lower()
-        wants_json = ("json" in fmt_now) or str(orig_dir).lower().endswith(".json")
+        wants_json = "export" in fmt_now
 
         logger.debug(
-            "Download params - dest_dir: %s, orig_dir: %s, wants_json: %s",
+            "Download params - dest_dir: %s, session_name: %s, export_path: %s, wants_json: %s",
             dest_dir,
-            orig_dir,
+            session_name,
+            export_path,
             wants_json,
         )
 
-        # Find the source file/dir
-        candidates: List[str] = []
-        if os.path.isabs(orig_dir):
-            candidates.append(orig_dir)
+        # For JSON export, find the exported file
+        if wants_json and export_path:
+            candidates: List[str] = []
+            if os.path.isabs(export_path):
+                candidates.append(export_path)
+            else:
+                candidates.extend(
+                    [
+                        export_path,
+                        os.path.abspath(export_path),
+                        os.path.join(os.getcwd(), export_path),
+                    ]
+                )
+            seen = set()
+            resolved_list: List[str] = []
+            for pth in candidates:
+                ap = os.path.abspath(pth)
+                if ap not in seen:
+                    seen.add(ap)
+                    resolved_list.append(ap)
+            existing = next((p for p in resolved_list if os.path.exists(p)), None)
+
+            logger.debug("Source search candidates: %s", candidates)
+            logger.debug("Found existing source: %s", existing)
+
+            if not existing:
+                logger.error("Exported JSON not found. Searched: %s", export_path)
+                page.snack_bar = ft.SnackBar(
+                    ft.Text(f"Exported JSON not found. Searched: {export_path}"),
+                )
+                page.open(page.snack_bar)
+                await safe_update(page)
+                return
+
+            source_basename = os.path.basename(export_path)
+            dest_path = os.path.join(dest_dir, source_basename)
         else:
-            candidates.extend(
-                [
-                    orig_dir,
-                    os.path.abspath(orig_dir),
-                    os.path.join(os.getcwd(), orig_dir),
-                    os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_dir),
-                ]
-            )
-        seen = set()
-        resolved_list: List[str] = []
-        for pth in candidates:
-            ap = os.path.abspath(pth)
-            if ap not in seen:
-                seen.add(ap)
-                resolved_list.append(ap)
-        existing = next((p for p in resolved_list if os.path.exists(p)), None)
-
-        logger.debug("Source search candidates: %s", candidates)
-        logger.debug("Found existing source: %s", existing)
-
-        if not existing:
-            logger.error("Merged dataset not found. Searched: %s", orig_dir)
+            # No JSON export - data is in database only
+            logger.info("No JSON export available - data is in database session: %s", session_name)
             page.snack_bar = ft.SnackBar(
-                ft.Text(f"Merged dataset not found. Searched: {orig_dir}"),
+                ft.Text(f"Data is in database session '{session_name}'. Enable 'Export JSON' to download."),
             )
             page.open(page.snack_bar)
             await safe_update(page)
             return
-
-        # Use the original filename from the merge output path
-        source_basename = os.path.basename(orig_dir)
-        dest_path = os.path.join(dest_dir, source_basename)
 
         logger.info("Copying %s from %s to %s", source_basename, existing, dest_path)
 
@@ -495,7 +541,8 @@ def build_merge_tab_with_logic(
         add_row_btn=add_row_btn,
         clear_btn=clear_btn,
         merge_output_format=merge_output_format,
-        merge_save_dir=merge_save_dir,
+        merge_session_name=merge_session_name,
+        merge_export_path=merge_export_path,
         merge_actions=merge_actions,
         merge_preview_host=merge_preview_host,
         merge_preview_placeholder=merge_preview_placeholder,

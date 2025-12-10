@@ -79,7 +79,7 @@ ______________________________________________________________________
 In the Training tab:
 
 1. Set **Training target** to **Runpod – Pod**.
-1. Choose your dataset source (JSON or Hugging Face repo/split).
+1. Choose your dataset source (Database Session or Hugging Face repo/split).
 1. Configure hyperparameters (base model, LoRA, batch size, max steps, etc.).
 1. Set an **Output dir** under `/data/outputs/...`.
 1. Optionally enable **Push to Hub** (requires working Hugging Face auth).

@@ -33,12 +33,11 @@ except Exception:  # pragma: no cover - fallback
 
 # save_dataset utilities (local, with PYTHONPATH pointing to project src)
 try:  # pragma: no cover - normal path
-    import save_dataset as sd
+    pass
 except Exception:  # pragma: no cover - fallback for alternate runtimes
     import sys as _sys
 
     _sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-    import save_dataset as sd
 
 from ui.tabs.tab_analysis import build_analysis_tab
 
@@ -226,32 +225,46 @@ def build_analysis_tab_with_logic(
         visible=False,
     )
 
-    # Dataset selector controls for Analysis (HF or JSON)
+    # Dataset selector controls for Analysis (Database or HF)
     analysis_source_dd = ft.Dropdown(
         label="Dataset source",
         options=[
+            ft.dropdown.Option("Database"),
             ft.dropdown.Option("Hugging Face"),
-            ft.dropdown.Option("JSON file"),
         ],
-        value="Hugging Face",
+        value="Database",
         width=180,
+    )
+    # Database session selector
+    analysis_db_session_dd = ft.Dropdown(
+        label="Scrape session",
+        options=[],
+        width=360,
+        visible=True,
+        tooltip="Select a scrape session from the database",
+    )
+    analysis_db_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh sessions",
+        visible=True,
     )
     analysis_hf_repo = ft.TextField(
         label="Dataset repo (e.g., username/dataset)",
         width=360,
-        visible=True,
+        visible=False,
     )
     analysis_hf_split = ft.TextField(
         label="Split",
         value="train",
         width=120,
-        visible=True,
+        visible=False,
     )
     analysis_hf_config = ft.TextField(
         label="Config (optional)",
         width=180,
-        visible=True,
+        visible=False,
     )
+    # JSON path kept for internal use only
     analysis_json_path = ft.TextField(
         label="JSON path",
         width=360,
@@ -378,17 +391,20 @@ def build_analysis_tab_with_logic(
 
     def _validate_analysis_dataset(_=None):
         try:
-            src = analysis_source_dd.value or "Hugging Face"
+            src = analysis_source_dd.value or "Database"
         except Exception:
-            src = "Hugging Face"
+            src = "Database"
         repo = (analysis_hf_repo.value or "").strip()
-        jpath = (analysis_json_path.value or "").strip()
-        if src == "Hugging Face":
+        db_session_id = (analysis_db_session_dd.value or "").strip()
+        if src == "Database":
+            valid = bool(db_session_id)
+            desc = f"Selected: DB Session {db_session_id}" if db_session_id else "Select a scrape session"
+        elif src == "Hugging Face":
             valid = bool(repo)
             desc = f"Selected: HF {repo} [{(analysis_hf_split.value or 'train').strip()}]"
         else:
-            valid = bool(jpath)
-            desc = f"Selected: JSON {jpath}" if jpath else "Select a JSON file path"
+            valid = False
+            desc = "Select a dataset to analyze."
         analyze_btn.disabled = not valid
         analysis_dataset_hint.value = desc if valid else "Select a dataset to analyze."
         try:
@@ -396,12 +412,44 @@ def build_analysis_tab_with_logic(
         except Exception:
             pass
 
+    def _refresh_analysis_db_sessions(_=None):
+        """Refresh the database session dropdown."""
+        try:
+            from db.scraped_data import list_scrape_sessions
+
+            sessions = list_scrape_sessions(limit=50)
+            options = []
+            for s in sessions:
+                label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
+                if s.get("source_details"):
+                    label = f"{s['source']}: {s['source_details'][:30]} - {s['pair_count']} pairs"
+                options.append(ft.dropdown.Option(key=str(s["id"]), text=label))
+            analysis_db_session_dd.options = options
+            if options and not analysis_db_session_dd.value:
+                analysis_db_session_dd.value = options[0].key
+        except Exception as e:
+            analysis_db_session_dd.options = [ft.dropdown.Option(key="", text=f"Error: {e}")]
+        _validate_analysis_dataset()
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    analysis_db_refresh_btn.on_click = _refresh_analysis_db_sessions
+    analysis_db_session_dd.on_change = _validate_analysis_dataset
+
     def _update_analysis_source(_=None):
-        is_hf = (getattr(analysis_source_dd, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
+        src = getattr(analysis_source_dd, "value", "Database") or "Database"
+        is_db = src == "Database"
+        is_hf = src == "Hugging Face"
+        analysis_db_session_dd.visible = is_db
+        analysis_db_refresh_btn.visible = is_db
         analysis_hf_repo.visible = is_hf
         analysis_hf_split.visible = is_hf
         analysis_hf_config.visible = is_hf
-        analysis_json_path.visible = not is_hf
+        analysis_json_path.visible = False  # Always hidden
+        if is_db:
+            _refresh_analysis_db_sessions()
         _validate_analysis_dataset()
 
     def _update_analysis_backend(_=None):
@@ -418,8 +466,13 @@ def build_analysis_tab_with_logic(
     analysis_source_dd.on_change = _update_analysis_source
     analysis_hf_repo.on_change = _validate_analysis_dataset
     analysis_hf_split.on_change = _validate_analysis_dataset
-    analysis_json_path.on_change = _validate_analysis_dataset
     analysis_backend_dd.on_change = _update_analysis_backend
+
+    # Initialize database sessions on load
+    try:
+        _refresh_analysis_db_sessions()
+    except Exception:
+        pass
 
     # Helpers for analysis modules selection
     def _all_analysis_modules() -> List[ft.Checkbox]:
@@ -505,11 +558,11 @@ def build_analysis_tab_with_logic(
             div_samples.visible = False
             await safe_update(page)
 
-            src = analysis_source_dd.value or "Hugging Face"
+            src = analysis_source_dd.value or "Database"
             repo = (analysis_hf_repo.value or "").strip()
             split = (analysis_hf_split.value or "train").strip()
             cfg = (analysis_hf_config.value or "").strip() or None
-            jpath = (analysis_json_path.value or "").strip()
+            db_session_id = (analysis_db_session_dd.value or "").strip()
             try:
                 sample_size = int(float((analysis_sample_size_tf.value or "5000").strip()))
                 sample_size = max(1, min(250000, sample_size))
@@ -628,30 +681,24 @@ def build_analysis_tab_with_logic(
                     else:
                         examples = list(mapped)
 
-            else:
-                # JSON file
-                if not jpath:
-                    raise RuntimeError("Provide a JSON path")
-                try:
-                    records = await asyncio.to_thread(sd.load_records, jpath)
-                except Exception as e:
-                    raise RuntimeError(f"Failed to read JSON: {e}")
-                try:
-                    ex0 = await asyncio.to_thread(sd.normalize_records, records, 1)
-                except Exception:
-                    ex0 = []
-                    for r in records or []:
-                        if isinstance(r, dict):
-                            a = str((r.get("input") or "")).strip()
-                            b = str((r.get("output") or "")).strip()
-                            if a and b:
-                                ex0.append({"input": a, "output": b})
+            elif src == "Database":
+                # Database session
+                if not db_session_id:
+                    raise RuntimeError("Select a database session")
+                from db.scraped_data import get_pairs_for_session
+
+                records = await asyncio.to_thread(lambda: get_pairs_for_session(int(db_session_id)))
+                if not records:
+                    raise RuntimeError(f"No pairs found in session {db_session_id}")
+                ex0 = [{"input": r["input"], "output": r["output"]} for r in records]
                 total_records = len(ex0)
                 if total_records > sample_size:
                     idxs = random.sample(range(total_records), sample_size)
                     examples = [ex0[i] for i in idxs]
                 else:
                     examples = ex0
+            else:
+                raise RuntimeError("Invalid dataset source")
 
             used_n = len(examples)
             if used_n == 0:
@@ -1483,10 +1530,11 @@ def build_analysis_tab_with_logic(
         analyze_btn=analyze_btn,
         analysis_busy_ring=analysis_busy_ring,
         analysis_source_dd=analysis_source_dd,
+        analysis_db_session_dd=analysis_db_session_dd,
+        analysis_db_refresh_btn=analysis_db_refresh_btn,
         analysis_hf_repo=analysis_hf_repo,
         analysis_hf_split=analysis_hf_split,
         analysis_hf_config=analysis_hf_config,
-        analysis_json_path=analysis_json_path,
         analysis_dataset_hint=analysis_dataset_hint,
         select_all_modules_cb=select_all_modules_cb,
         _build_modules_table=_build_modules_table,

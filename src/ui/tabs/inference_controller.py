@@ -41,7 +41,7 @@ def build_inference_tab_with_logic(
 
     # Status + meta
     infer_status = ft.Text(
-        "Pick a base model and adapter directory, or import the latest local training run.",
+        "Select a completed training run to load for inference.",
         color=WITH_OPACITY(0.6, BORDER_BASE),
     )
     infer_meta = ft.Text(
@@ -57,14 +57,128 @@ def build_inference_tab_with_logic(
         width=520,
         dense=True,
     )
+
+    # Training run selector (replaces adapter directory text field)
+    infer_training_run_dd = ft.Dropdown(
+        label="Training run",
+        options=[],
+        width=520,
+        tooltip="Select a completed training run to load for inference",
+    )
+    infer_training_run_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh training runs",
+    )
+
+    # Hidden field for adapter path (populated from selected run)
     infer_adapter_dir_tf = ft.TextField(
         label="Adapter directory",
         width=520,
         dense=True,
-        hint_text="Folder containing adapter (e.g. /path/to/outputs/run/adapter)",
+        visible=False,  # Hidden - managed internally
     )
 
-    # Directory picker for adapter dir
+    def _refresh_inference_runs(_=None):
+        """Refresh the training runs dropdown with completed runs."""
+        try:
+            from db.training_runs import list_training_runs
+
+            runs = list_training_runs(status="completed", limit=50)
+            options = []
+            for r in runs:
+                # Only show runs with valid adapter paths
+                adapter_path = r.get("adapter_path", "")
+                if adapter_path and os.path.isdir(adapter_path):
+                    label = f"✅ {r['name']} - {r['base_model'].split('/')[-1] if r.get('base_model') else 'unknown'} ({r['created_at'][:10]})"
+                    options.append(ft.dropdown.Option(key=str(r["id"]), text=label))
+
+            # Also add pending/running runs (grayed out info)
+            other_runs = list_training_runs(limit=20)
+            for r in other_runs:
+                if r["status"] != "completed":
+                    status_icon = {"pending": "⏳", "running": "🔄", "failed": "❌"}.get(r["status"], "")
+                    label = f"{status_icon} {r['name']} ({r['status']})"
+                    options.append(
+                        ft.dropdown.Option(key=str(r["id"]), text=label, disabled=(r["status"] != "completed"))
+                    )
+
+            infer_training_run_dd.options = options
+            if not options:
+                infer_training_run_dd.options = [ft.dropdown.Option(key="", text="No completed training runs found")]
+        except Exception as e:
+            infer_training_run_dd.options = [ft.dropdown.Option(key="", text=f"Error: {e}")]
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def _on_training_run_selected(_=None):
+        """Handle training run selection - load adapter path and base model."""
+        try:
+            run_id = infer_training_run_dd.value
+            if not run_id:
+                return
+
+            from db.training_runs import get_training_run
+
+            run = get_training_run(int(run_id))
+            if not run:
+                infer_status.value = "Training run not found."
+                infer_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                page.update()
+                return
+
+            if run["status"] != "completed":
+                infer_status.value = f"Training run is {run['status']}. Select a completed run."
+                infer_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                page.update()
+                return
+
+            adapter_path = run.get("adapter_path", "")
+            base_model = run.get("base_model", "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit")
+
+            if not adapter_path or not os.path.isdir(adapter_path):
+                infer_status.value = f"Adapter path not found: {adapter_path}"
+                infer_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                page.update()
+                return
+
+            # Update UI fields
+            infer_adapter_dir_tf.value = adapter_path
+            infer_base_model_tf.value = base_model
+
+            # Update train_state for inference
+            train_state.setdefault("inference", {})
+            train_state["inference"]["adapter_path"] = adapter_path
+            train_state["inference"]["base_model"] = base_model
+            train_state["inference"]["model_loaded"] = False
+            train_state["inference"]["training_run_id"] = run_id
+
+            infer_status.value = f"Loaded: {run['name']}"
+            infer_status.color = WITH_OPACITY(0.6, BORDER_BASE)
+            infer_meta.value = f"Adapter: {adapter_path} • Base model: {base_model}"
+
+            _set_infer_controls_enabled(True)
+            page.update()
+
+            # Validate adapter
+            if hasattr(page, "run_task"):
+                page.run_task(on_infer_validate_adapter)
+        except Exception as e:
+            infer_status.value = f"Error loading run: {e}"
+            infer_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            page.update()
+
+    infer_training_run_dd.on_change = _on_training_run_selected
+    infer_training_run_refresh_btn.on_click = _refresh_inference_runs
+
+    # Initialize training runs on load
+    try:
+        _refresh_inference_runs()
+    except Exception:
+        pass
+
+    # Validate adapter directory
     async def on_infer_validate_adapter(e=None):  # noqa: ARG001
         """Validate adapter directory immediately when selected.
 
@@ -93,7 +207,7 @@ def build_inference_tab_with_logic(
         except Exception:  # pragma: no cover - UI best-effort
             pass
         if (not adapter_path) or (not os.path.isdir(adapter_path)):
-            infer_status.value = "Adapter directory is missing or invalid. Pick a valid folder containing an adapter."
+            infer_status.value = "Adapter directory is missing or invalid. Select a completed training run."
             try:
                 infer_status.color = getattr(
                     COLORS,
@@ -105,7 +219,7 @@ def build_inference_tab_with_logic(
             _set_infer_controls_enabled(False)
             try:
                 page.snack_bar = ft.SnackBar(
-                    ft.Text("Invalid adapter directory. Please choose a valid adapter folder."),
+                    ft.Text("Invalid adapter directory. Please select a completed training run."),
                 )
                 page.open(page.snack_bar)
             except Exception:
@@ -127,7 +241,7 @@ def build_inference_tab_with_logic(
                 pass
             infer_status.value = (
                 "Adapter directory doesn't look like a valid LoRA adapter. "
-                "Select the adapter folder from a completed fine-tuning run."
+                "The training run may not have completed successfully."
             )
             try:
                 infer_status.color = getattr(
@@ -153,7 +267,7 @@ def build_inference_tab_with_logic(
                 pass
             return
         # Looks valid – unlock controls and surface success
-        infer_status.value = "Adapter directory validated. Ready for inference."
+        infer_status.value = "Adapter validated. Ready for inference."
         try:
             infer_status.color = WITH_OPACITY(0.6, BORDER_BASE)
         except Exception:
@@ -164,7 +278,7 @@ def build_inference_tab_with_logic(
             pass
         _set_infer_controls_enabled(True)
         try:
-            page.snack_bar = ft.SnackBar(ft.Text("Adapter directory validated."))
+            page.snack_bar = ft.SnackBar(ft.Text("Adapter validated. Ready for inference."))
             page.open(page.snack_bar)
         except Exception:
             pass
@@ -174,82 +288,31 @@ def build_inference_tab_with_logic(
         except Exception:
             pass
 
-    def _on_infer_adapter_picked(e: ft.FilePickerResultEvent) -> None:
-        try:
-            sel = getattr(e, "path", None) or ""
-            if sel:
-                infer_adapter_dir_tf.value = sel
-                try:
-                    if hasattr(page, "run_task"):
-                        page.run_task(on_infer_validate_adapter)
-                except Exception:
-                    pass
-            page.update()
-        except Exception:
-            pass
-
-    infer_dir_picker = ft.FilePicker(on_result=_on_infer_adapter_picked)
-    try:
-        page.overlay.append(infer_dir_picker)
-    except Exception:
-        pass
-    infer_browse_btn = ft.OutlinedButton(
-        "Browse…",
-        icon=getattr(ICONS, "FOLDER_OPEN", getattr(ICONS, "FOLDER", ICONS.SEARCH)),
-        on_click=lambda e: infer_dir_picker.get_directory_path(
-            dialog_title="Select adapter directory (folder containing adapter)",
-        ),
-    )
-
-    # Button to import latest local training adapter
+    # Button to use latest training run
     def on_infer_use_latest(e=None):  # noqa: ARG001
+        """Select the most recent completed training run."""
         try:
-            info = train_state.get("local_infer") or {}
-        except Exception:
-            info = {}
-        try:
-            adapter_path = (info.get("adapter_path") or "").strip()
-            base_model_name = (
-                info.get("base_model") or infer_base_model_tf.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
-            ).strip()
-            if adapter_path and os.path.isdir(adapter_path):
-                infer_adapter_dir_tf.value = adapter_path
-                infer_base_model_tf.value = base_model_name
-                try:
-                    train_state.setdefault("inference", {})
-                    train_state["inference"]["adapter_path"] = adapter_path
-                    train_state["inference"]["base_model"] = base_model_name
-                    train_state["inference"]["model_loaded"] = False
-                except Exception:
-                    pass
-                infer_status.value = "Using adapter from latest local training run."
-                try:
-                    infer_status.color = WITH_OPACITY(0.6, BORDER_BASE)
-                except Exception:
-                    pass
-                infer_meta.value = f"Adapter: {adapter_path} • Base model: {base_model_name}"
-                try:
-                    if hasattr(page, "run_task"):
-                        page.run_task(on_infer_validate_adapter)
-                except Exception:
-                    pass
-            else:
-                infer_status.value = "Latest local training adapter not found. Run a local training job first."
-                try:
-                    infer_status.color = getattr(
-                        COLORS,
-                        "RED_400",
-                        getattr(COLORS, "RED", None),
-                    )
-                except Exception:
-                    pass
+            from db.training_runs import list_training_runs
+
+            # Get latest completed run
+            runs = list_training_runs(status="completed", limit=1)
+            if not runs:
+                infer_status.value = "No completed training runs found. Complete a training run first."
+                infer_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
                 infer_meta.value = ""
+                page.update()
+                return
+
+            run = runs[0]
+            infer_training_run_dd.value = str(run["id"])
+            _on_training_run_selected()
+        except Exception as e:
+            infer_status.value = f"Error loading latest run: {e}"
+            infer_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
             page.update()
-        except Exception:
-            pass
 
     infer_use_latest_btn = ft.TextButton(
-        "Use latest local training",
+        "Use latest completed run",
         icon=getattr(ICONS, "HISTORY", getattr(ICONS, "UPDATE", ICONS.CACHED)),
         on_click=on_infer_use_latest,
     )
@@ -1018,8 +1081,8 @@ def build_inference_tab_with_logic(
         infer_status=infer_status,
         infer_meta=infer_meta,
         infer_base_model_tf=infer_base_model_tf,
-        infer_adapter_dir_tf=infer_adapter_dir_tf,
-        infer_browse_btn=infer_browse_btn,
+        infer_training_run_dd=infer_training_run_dd,
+        infer_training_run_refresh_btn=infer_training_run_refresh_btn,
         infer_use_latest_btn=infer_use_latest_btn,
         infer_preset_dd=infer_preset_dd,
         infer_temp_slider=infer_temp_slider,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from typing import Callable, Awaitable, Optional, List
@@ -476,6 +477,7 @@ async def run_pod_training(
     train_hf_repo: ft.TextField,
     train_hf_split: ft.Dropdown,
     train_json_path: ft.TextField,
+    train_db_session_dd: ft.Dropdown,
     train_timeline: ft.ListView,
     train_progress: ft.ProgressBar,
     train_prog_label: ft.Text,
@@ -576,6 +578,7 @@ async def run_pod_training(
                             train_hf_split=train_hf_split,
                             train_hf_config=ft.TextField(value=""),
                             train_json_path=train_json_path,
+                            train_db_session_dd=train_db_session_dd,
                             base_model=base_model,
                             out_dir_tf=ft.TextField(value="/data/outputs/runpod_run"),
                             epochs_tf=ft.TextField(value="3"),
@@ -584,6 +587,10 @@ async def run_pod_training(
                             grad_acc_tf=ft.TextField(value="4"),
                             max_steps_tf=ft.TextField(value="200"),
                             use_lora_cb=ft.Checkbox(value=False),
+                            lora_r_dd=ft.Dropdown(value="16"),
+                            lora_alpha_tf=ft.TextField(value=""),
+                            lora_dropout_tf=ft.TextField(value="0"),
+                            use_rslora_cb=ft.Checkbox(value=False),
                             packing_cb=ft.Checkbox(value=False),
                             auto_resume_cb=ft.Checkbox(value=False),
                             push_cb=ft.Checkbox(value=False),
@@ -618,22 +625,22 @@ async def run_pod_training(
     mode_now = (config_mode_dd.value or "Normal").lower()
     if not mode_now.startswith("config"):
         try:
-            if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-                src_ui = train_source.value or "Hugging Face"
+            if not (hp.get("hf_dataset_id") or hp.get("json_path") or hp.get("db_session_id")):
+                src_ui = train_source.value or "Database"
                 repo_ui = (train_hf_repo.value or "").strip()
                 split_ui = (train_hf_split.value or "train").strip()
-                jpath_ui = (train_json_path.value or "").strip()
-                if (src_ui == "Hugging Face") and repo_ui:
+                db_session_ui = (train_db_session_dd.value or "").strip()
+                if src_ui == "Database" and db_session_ui:
+                    hp["db_session_id"] = db_session_ui
+                elif (src_ui == "Hugging Face") and repo_ui:
                     hp["hf_dataset_id"] = repo_ui
                     hp["hf_dataset_split"] = split_ui
-                elif jpath_ui:
-                    hp["json_path"] = jpath_ui
-            if not (hp.get("hf_dataset_id") or hp.get("json_path")):
+            if not (hp.get("hf_dataset_id") or hp.get("json_path") or hp.get("db_session_id")):
                 train_timeline.controls.append(
                     ft.Row(
                         [
                             ft.Icon(ft.Icons.WARNING, color=COLORS.RED),
-                            ft.Text("Dataset not set. Provide a Hugging Face dataset or JSON path before starting."),
+                            ft.Text("Dataset not set. Select a database session or HF dataset before starting."),
                         ]
                     )
                 )
@@ -694,6 +701,94 @@ async def run_pod_training(
                         ]
                     )
                 )
+
+    # For database sessions, export to temp JSON and upload to volume
+    if hp.get("db_session_id"):
+        try:
+            from db.scraped_data import get_pairs_for_session, get_scrape_session
+
+            db_session_id = hp.get("db_session_id")
+            session = get_scrape_session(int(db_session_id))
+            if not session:
+                train_timeline.controls.append(
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.WARNING, color=COLORS.RED),
+                            ft.Text(f"Database session {db_session_id} not found."),
+                        ]
+                    )
+                )
+                train_state["running"] = False
+                update_train_placeholders()
+                await safe_update(page)
+                return
+            pairs = get_pairs_for_session(int(db_session_id))
+            if not pairs:
+                train_timeline.controls.append(
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.WARNING, color=COLORS.RED),
+                            ft.Text(f"No pairs found in session {db_session_id}."),
+                        ]
+                    )
+                )
+                train_state["running"] = False
+                update_train_placeholders()
+                await safe_update(page)
+                return
+            # Export to ChatML format
+            import tempfile
+
+            chatml_data = []
+            for p in pairs:
+                chatml_data.append(
+                    {
+                        "messages": [
+                            {"role": "user", "content": p["input"]},
+                            {"role": "assistant", "content": p["output"]},
+                        ]
+                    }
+                )
+            # Write to temp file
+            json_filename = f"db_session_{db_session_id}.json"
+            temp_dir = tempfile.gettempdir()
+            temp_path = os.path.join(temp_dir, json_filename)
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(chatml_data, f, ensure_ascii=False, indent=2)
+            # Upload to RunPod volume
+            vol_id = ((infra.get("volume") or {}).get("id") or "").strip()
+            train_timeline.controls.append(
+                ft.Row(
+                    [
+                        ft.Icon(ft.Icons.UPLOAD, color=COLORS.BLUE),
+                        ft.Text(f"Uploading {len(pairs)} pairs from DB session {db_session_id}..."),
+                    ]
+                )
+            )
+            await safe_update(page)
+            await asyncio.to_thread(rp_pod_module.upload_file_to_volume, api_key, vol_id, temp_path, json_filename)
+            # Update hp to use the volume path
+            hp["json_path"] = f"/runpod-volume/{json_filename}"
+            del hp["db_session_id"]
+            train_timeline.controls.append(
+                ft.Row(
+                    [
+                        ft.Icon(ft.Icons.CHECK_CIRCLE, color=COLORS.GREEN),
+                        ft.Text(f"Uploaded dataset to /runpod-volume/{json_filename}"),
+                    ]
+                )
+            )
+            await safe_update(page)
+        except Exception as ex:
+            train_timeline.controls.append(
+                ft.Row(
+                    [ft.Icon(ft.Icons.WARNING, color=COLORS.RED), ft.Text(f"Failed to export database session: {ex}")]
+                )
+            )
+            train_state["running"] = False
+            update_train_placeholders()
+            await safe_update(page)
+            return
 
     model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
     if hp.get("hf_dataset_id"):

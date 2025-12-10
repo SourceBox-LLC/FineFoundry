@@ -1,8 +1,6 @@
 """Database integration for scrape operations.
 
-Provides functions to save scraped data to SQLite database
-in addition to JSON files. This maintains backward compatibility
-while adding database storage.
+Provides functions to save and load scraped data from SQLite database.
 """
 
 from __future__ import annotations

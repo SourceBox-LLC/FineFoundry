@@ -21,6 +21,10 @@ def build_dataset_section(
     train_hf_split: ft.TextField,
     train_hf_config: ft.TextField,
     train_json_path: ft.TextField,
+    train_json_browse_btn: ft.IconButton,
+    train_db_session_dd: ft.Dropdown,
+    train_db_refresh_btn: ft.IconButton,
+    train_db_pair_count: ft.Text,
     visible: bool = False,
 ) -> ft.Container:
     return ft.Container(
@@ -32,7 +36,20 @@ def build_dataset_section(
                     "Select the dataset for training.",
                     on_help_click=_mk_help_handler("Select the dataset for training."),
                 ),
-                ft.Row([train_source, train_hf_repo, train_hf_split, train_hf_config, train_json_path], wrap=True),
+                ft.Row(
+                    [
+                        train_source,
+                        train_hf_repo,
+                        train_hf_split,
+                        train_hf_config,
+                        train_db_session_dd,
+                        train_db_refresh_btn,
+                        train_db_pair_count,
+                        train_json_path,
+                        train_json_browse_btn,
+                    ],
+                    wrap=True,
+                ),
                 ft.Divider(),
             ],
             spacing=0,

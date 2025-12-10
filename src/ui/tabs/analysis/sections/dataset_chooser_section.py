@@ -13,10 +13,11 @@ def build_dataset_chooser_section(
     WITH_OPACITY,
     _mk_help_handler,
     analysis_source_dd: ft.Dropdown,
+    analysis_db_session_dd: ft.Dropdown,
+    analysis_db_refresh_btn: ft.IconButton,
     analysis_hf_repo: ft.TextField,
     analysis_hf_split: ft.TextField,
     analysis_hf_config: ft.TextField,
-    analysis_json_path: ft.TextField,
     analysis_dataset_hint: ft.Text,
 ) -> ft.Container:
     return ft.Container(
@@ -25,10 +26,11 @@ def build_dataset_chooser_section(
                 ft.Row(
                     [
                         analysis_source_dd,
+                        analysis_db_session_dd,
+                        analysis_db_refresh_btn,
                         analysis_hf_repo,
                         analysis_hf_split,
                         analysis_hf_config,
-                        analysis_json_path,
                     ],
                     wrap=True,
                     spacing=10,

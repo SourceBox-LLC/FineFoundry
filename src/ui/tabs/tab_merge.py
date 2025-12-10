@@ -28,7 +28,8 @@ def build_merge_tab(
     add_row_btn: ft.TextButton,
     clear_btn: ft.TextButton,
     merge_output_format: ft.Dropdown,
-    merge_save_dir: ft.TextField,
+    merge_session_name: ft.TextField,
+    merge_export_path: ft.TextField,
     merge_actions: ft.Row,
     merge_preview_host: ft.ListView,
     merge_preview_placeholder: ft.Container,
@@ -66,7 +67,8 @@ def build_merge_tab(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         merge_output_format=merge_output_format,
-        merge_save_dir=merge_save_dir,
+        merge_session_name=merge_session_name,
+        merge_export_path=merge_export_path,
         merge_actions=merge_actions,
     )
 

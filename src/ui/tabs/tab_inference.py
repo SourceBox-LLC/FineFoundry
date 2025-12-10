@@ -19,8 +19,8 @@ def build_inference_tab(
     infer_status: ft.Text,
     infer_meta: ft.Text,
     infer_base_model_tf: ft.TextField,
-    infer_adapter_dir_tf: ft.TextField,
-    infer_browse_btn: ft.Control,
+    infer_training_run_dd: ft.Dropdown,
+    infer_training_run_refresh_btn: ft.IconButton,
     infer_use_latest_btn: ft.Control,
     infer_preset_dd: ft.Dropdown,
     infer_temp_slider: ft.Slider,
@@ -39,21 +39,20 @@ def build_inference_tab(
                 section_title(
                     "Model & adapter",
                     getattr(ICONS, "PSYCHOLOGY", getattr(ICONS, "CHAT", ICONS.PLAY_CIRCLE)),
-                    "Choose which fine-tuned adapter to run for inference.",
+                    "Select a completed training run to load for inference.",
                     on_help_click=_mk_help_handler(
-                        "Pick a base model and LoRA adapter directory. You can also import settings from "
-                        "your latest local training run.",
+                        "Choose a completed training run from the database. The adapter and base model "
+                        "will be loaded automatically for inference.",
                     ),
                 ),
                 infer_status,
                 infer_meta,
                 ft.Row(
-                    [infer_base_model_tf],
-                    wrap=True,
-                    spacing=10,
+                    [infer_training_run_dd, infer_training_run_refresh_btn],
+                    spacing=6,
                 ),
                 ft.Row(
-                    [infer_adapter_dir_tf, infer_browse_btn],
+                    [infer_base_model_tf],
                     wrap=True,
                     spacing=10,
                 ),

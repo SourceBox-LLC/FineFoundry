@@ -77,12 +77,12 @@ Let's create a simple dataset from 4chan:
 1. Watch the progress bar and logs
 1. When complete, click **Preview Dataset** to inspect the data
 
-Your data is saved to `scraped_training_data.json` by default.
+Your data is automatically saved to the database as a new scrape session.
 
 ### Step 2: Build & Publish (Optional)
 
 1. Navigate to the **Build / Publish** tab
-1. The data file should already be set to `scraped_training_data.json`
+1. Select your scrape session from the **Database Session** dropdown
 1. Configure splits:
    - Adjust validation/test split percentages with sliders
    - Set seed for reproducibility
@@ -96,7 +96,7 @@ Your data is saved to `scraped_training_data.json` by default.
 ### Step 3: Analyze Your Dataset (Optional)
 
 1. Navigate to the **Dataset Analysis** tab
-1. Select your dataset source (JSON file or Hugging Face)
+1. Select your dataset source (Database Session or Hugging Face)
 1. Enable analysis modules you're interested in
 1. Click **Analyze Dataset**
 1. Review the insights to understand your data quality
@@ -106,7 +106,7 @@ Your data is saved to `scraped_training_data.json` by default.
 Now that you have the basics:
 
 - **🧠 Training (Runpod or local Docker)**: Start [fine-tuning models](training-tab.md). Run the same training script on Runpod pods or your local machine and iterate quickly on new adapters.
-- **⚙️ Reusable training configs**: Use the Training tab's **Configuration** section or "Save current setup" buttons to snapshot full training setups (dataset, hyperparameters, target, and infra). Configs are stored under `src/saved_configs/` and the last one auto-loads on startup.
+- **⚙️ Reusable training configs**: Use the Training tab's **Configuration** section or "Save current setup" buttons to snapshot full training setups (dataset, hyperparameters, target, and infra). Configs are stored in the database and the last one auto-loads on startup.
 - **🧪 Quick Local Inference**: After a successful local run, use the Quick Local Inference panel as a **one-click smoke test** for your latest local adapter with temperature/max token sliders and presets. When you click **Run Inference**, the app shows a short loading state (button disabled + spinner + status text) while the fine-tuned model is loaded and a response is generated.
 - **💬 Inference tab**: Use the [Inference Tab](inference-tab.md) as your **dedicated playground**: select any adapter directory, validate it immediately, and chat with your fine-tuned model using either the Prompt & responses view or the Full Chat View dialog.
 - **📖 Learn More**: Read the [complete GUI guide](gui-overview.md)

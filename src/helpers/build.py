@@ -32,6 +32,8 @@ async def run_build(
     page: ft.Page,
     # UI state/controls
     source_mode: ft.Dropdown,
+    data_source_dd: ft.Dropdown,
+    db_session_dd: ft.Dropdown,
     data_file: ft.TextField,
     merged_dir: ft.TextField,
     seed: ft.TextField,
@@ -80,8 +82,8 @@ async def run_build(
     await safe_update(page)
 
     # Parse inputs
-    data_path = data_file.value or "scraped_training_data.json"
-    source_val = (source_mode.value or "JSON file").strip()
+    db_session_id = (db_session_dd.value or "").strip()
+    source_val = (source_mode.value or "Database").strip()
     merged_path = merged_dir.value or "merged_dataset"
     try:
         seed_val = int(seed.value or 42)
@@ -277,7 +279,26 @@ async def run_build(
     add_step("Loading data", COLORS.BLUE, ICONS.UPLOAD_FILE)
     await safe_update(page)
     try:
-        records = await asyncio.to_thread(sd.load_records, data_path)
+        if source_val == "Database" and db_session_id:
+            # Load from database session
+            from db.scraped_data import get_pairs_for_session, get_scrape_session
+
+            session = get_scrape_session(int(db_session_id))
+            if not session:
+                add_step(f"Database session {db_session_id} not found", COLORS.RED, ICONS.ERROR_OUTLINE)
+                await safe_update(page)
+                return
+            pairs = await asyncio.to_thread(lambda: get_pairs_for_session(int(db_session_id)))
+            if not pairs:
+                add_step(f"No pairs found in session {db_session_id}", COLORS.RED, ICONS.ERROR_OUTLINE)
+                await safe_update(page)
+                return
+            records = pairs
+            add_step(f"Loaded {len(records)} pairs from database session", COLORS.GREEN, ICONS.CHECK_CIRCLE)
+        else:
+            add_step("No database session selected", COLORS.RED, ICONS.ERROR_OUTLINE)
+            await safe_update(page)
+            return
     except Exception as e:
         add_step(f"Failed loading data: {e}", COLORS.RED, ICONS.ERROR_OUTLINE)
         await safe_update(page)

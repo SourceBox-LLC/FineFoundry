@@ -177,7 +177,8 @@ async def run_merge(
     rows_host: ft.Column,
     merge_op: ft.Dropdown,
     merge_output_format: ft.Dropdown,
-    merge_save_dir: ft.TextField,
+    merge_session_name: ft.TextField,
+    merge_export_path: ft.TextField | None = None,
     merge_timeline: ft.ListView,
     merge_timeline_placeholder: ft.Control,
     merge_preview_host: ft.ListView,
@@ -210,25 +211,25 @@ async def run_merge(
     for r in rows:
         d = getattr(r, "data", None) or {}
         src_dd = d.get("source")
+        db_session_dd = d.get("db_session")
         ds_tf = d.get("ds")
         sp_dd = d.get("split")
         cfg_tf = d.get("config")
         in_tf = d.get("in")
         out_tf = d.get("out")
-        json_tf = d.get("json")
-        src = (getattr(src_dd, "value", "Hugging Face") or "Hugging Face") if src_dd else "Hugging Face"
+        src = (getattr(src_dd, "value", "Database") or "Database") if src_dd else "Database"
         repo = (getattr(ds_tf, "value", "") or "").strip() if ds_tf else ""
-        json_path = (getattr(json_tf, "value", "") or "").strip() if json_tf else ""
-        if (src == "Hugging Face" and repo) or (src == "JSON file" and json_path):
+        db_session_id = (getattr(db_session_dd, "value", "") or "").strip() if db_session_dd else ""
+        if (src == "Database" and db_session_id) or (src == "Hugging Face" and repo):
             entries.append(
                 {
                     "source": src,
+                    "db_session_id": db_session_id,
                     "repo": repo,
                     "split": (getattr(sp_dd, "value", "train") or "train") if sp_dd else "train",
                     "config": (getattr(cfg_tf, "value", "") or "").strip() if cfg_tf else "",
                     "in": (getattr(in_tf, "value", "") or "").strip() if in_tf else "",
                     "out": (getattr(out_tf, "value", "") or "").strip() if out_tf else "",
-                    "json": json_path,
                 }
             )
     if len(entries) < 2:
@@ -250,27 +251,13 @@ async def run_merge(
         await safe_update(page)
         return
 
-    out_path = merge_save_dir.value or "merged_dataset"
+    session_name = (merge_session_name.value or "merged_dataset").strip()
+    export_path = (merge_export_path.value if merge_export_path else "").strip() or None
     op = merge_op.value or "Concatenate"
-    fmt = (merge_output_format.value or "HF dataset dir").lower()
-    output_json = ("json" in fmt) or (out_path.lower().endswith(".json"))
+    fmt = (merge_output_format.value or "Database").lower()
+    wants_export = "export" in fmt
 
-    logger.info(f"Merge config - Operation: {op}, Output: {out_path}, Format: {fmt}, Datasets: {len(entries)}")
-
-    try:
-        if (not output_json) and all(ent.get("source") == "JSON file" for ent in entries):
-            output_json = True
-            if not out_path.lower().endswith(".json"):
-                out_path = f"{out_path}.json"
-            try:
-                merge_save_dir.value = out_path
-                if merge_output_format is not None:
-                    merge_output_format.value = "JSON file"
-            except Exception:
-                pass
-            await safe_update(page)
-    except Exception:
-        pass
+    logger.info(f"Merge config - Operation: {op}, Session: {session_name}, Format: {fmt}, Datasets: {len(entries)}")
 
     # Load and map each dataset
     hf_prepped = []  # list[Dataset]
@@ -278,8 +265,13 @@ async def run_merge(
     for i, ent in enumerate(entries, start=1):
         if merge_cancel.get("cancelled"):
             break
-        src = ent.get("source", "Hugging Face")
-        label = ent["repo"] if src == "Hugging Face" else ent.get("json", "(json)")
+        src = ent.get("source", "Database")
+        if src == "Database":
+            label = f"DB session {ent.get('db_session_id', '?')}"
+        elif src == "Hugging Face":
+            label = ent["repo"]
+        else:
+            label = ent.get("json", "(json)")
         split_lbl = ent["split"] if src == "Hugging Face" else "-"
         merge_timeline.controls.append(
             ft.Row([ft.Icon(ICONS.DOWNLOAD, color=COLORS.BLUE), ft.Text(f"Loading {label} [{split_lbl}]…")])
@@ -289,7 +281,31 @@ async def run_merge(
         except Exception:
             pass
         try:
-            if src == "Hugging Face":
+            if src == "Database":
+                # Load from database session
+                db_session_id = ent.get("db_session_id")
+                if not db_session_id:
+                    raise RuntimeError("Database session ID required")
+                from db.scraped_data import get_pairs_for_session, get_scrape_session
+
+                session = get_scrape_session(int(db_session_id))
+                if not session:
+                    raise RuntimeError(f"Session {db_session_id} not found")
+                records = await asyncio.to_thread(lambda: get_pairs_for_session(int(db_session_id)))
+                if not records:
+                    raise RuntimeError(f"No pairs in session {db_session_id}")
+                data = [{"input": r["input"], "output": r["output"]} for r in records]
+                # Always use JSON format for merging
+                json_sources.append(data)
+                merge_timeline.controls.append(
+                    ft.Row(
+                        [
+                            ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN),
+                            ft.Text(f"Prepared {len(data)} pairs from DB session"),
+                        ]
+                    )
+                )
+            elif src == "Hugging Face":
                 dss = await _load_and_prepare(
                     ent["repo"], ent["split"], ent["config"], ent["in"], ent["out"], timeline=merge_timeline, page=page
                 )
@@ -315,13 +331,8 @@ async def run_merge(
                             b = str((r.get("output") or "")).strip()
                             if a and b:
                                 data.append({"input": a, "output": b})
-                if output_json:
-                    json_sources.append(data)
-                else:
-                    if Dataset is None:
-                        raise RuntimeError("datasets library unavailable to convert JSON -> HF")
-                    ds = await asyncio.to_thread(lambda: Dataset.from_list(data))
-                    hf_prepped.append(ds)
+                # Always use JSON format for merging
+                json_sources.append(data)
                 merge_timeline.controls.append(
                     ft.Row(
                         [ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Prepared {os.path.basename(path)}")]
@@ -366,7 +377,8 @@ async def run_merge(
         return
 
     # Convert HF prepped to JSON if output is JSON
-    if output_json and hf_prepped:
+    # Convert HF datasets to JSON format for merging
+    if hf_prepped:
         for ds in hf_prepped:
             try:
                 exs = []
@@ -376,122 +388,91 @@ async def run_merge(
             except Exception:
                 pass
 
-    # Merge
+    # Merge - collect all examples into a single list
     try:
-        if output_json:
-            if not json_sources and not hf_prepped:
-                raise RuntimeError("No datasets to merge after preparation")
-            merged_examples: List[dict] = []
-            if op == "Interleave" and len(json_sources) > 1:
-                indices = [0] * len(json_sources)
-                total = sum(len(s) for s in json_sources)
-                while len(merged_examples) < total:
-                    for i, s in enumerate(json_sources):
-                        if indices[i] < len(s):
-                            merged_examples.append(s[indices[i]])
-                            indices[i] += 1
-            else:
-                for s in json_sources:
-                    merged_examples.extend(s)
-            # Save JSON
-            out_abs = os.path.abspath(out_path)
+        if not json_sources:
+            raise RuntimeError("No datasets to merge after preparation")
+
+        merged_examples: List[dict] = []
+        if op == "Interleave" and len(json_sources) > 1:
+            indices = [0] * len(json_sources)
+            total = sum(len(s) for s in json_sources)
+            while len(merged_examples) < total:
+                for i, s in enumerate(json_sources):
+                    if indices[i] < len(s):
+                        merged_examples.append(s[indices[i]])
+                        indices[i] += 1
+        else:
+            for s in json_sources:
+                merged_examples.extend(s)
+
+        # Save to database
+        from db.scraped_data import create_scrape_session, add_scraped_pairs
+
+        # Create a new scrape session for the merged data
+        session = await asyncio.to_thread(
+            create_scrape_session,
+            source="Merged",
+            source_details=session_name,
+            dataset_format="standard",
+            metadata={"operation": op, "source_count": len(entries)},
+        )
+        session_id = session["id"]
+
+        # Add all merged pairs to the session
+        pairs_to_add = [{"input": rec.get("input", ""), "output": rec.get("output", "")} for rec in merged_examples]
+        await asyncio.to_thread(add_scraped_pairs, session_id, pairs_to_add)
+
+        logger.info(f"Saved {len(merged_examples)} merged records to database session {session_id}")
+        merge_timeline.controls.append(
+            ft.Row(
+                [
+                    ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN),
+                    ft.Text(f"Saved {len(merged_examples)} pairs to database as '{session_name}'"),
+                ]
+            )
+        )
+        await safe_update(page)
+
+        # Optionally export to JSON file
+        if wants_export and export_path:
+            out_abs = os.path.abspath(export_path)
             os.makedirs(os.path.dirname(out_abs) or ".", exist_ok=True)
-            logger.info(f"Saving {len(merged_examples)} merged records to JSON: {out_abs}")
             await asyncio.to_thread(
                 lambda: open(out_abs, "w", encoding="utf-8").write(
                     json.dumps(merged_examples, ensure_ascii=False, indent=4)
                 )
             )
-            logger.info("Successfully saved merged JSON dataset")
+            logger.info(f"Exported merged dataset to JSON: {out_abs}")
             merge_timeline.controls.append(
-                ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Saved JSON to {out_abs}")])
+                ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Exported to {out_abs}")])
             )
             await safe_update(page)
-            # Populate inline preview with a small sample
-            try:
-                pairs = [
-                    (str(rec.get("input", "") or ""), str(rec.get("output", "") or ""))
-                    for rec in (merged_examples[:100] if merged_examples else [])
-                ]
-                merge_preview_host.controls.clear()
-                if pairs:
-                    lfx, rfx = compute_two_col_flex(pairs)
-                    merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-                    for a, b in pairs:
-                        merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-                try:
-                    merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
-                except Exception:
-                    pass
-                try:
-                    if update_merge_placeholders is not None:
-                        update_merge_placeholders()
-                except Exception:
-                    pass
-                await safe_update(page)
-            except Exception:
-                pass
-        else:
-            if Dataset is None or DatasetDict is None:
-                raise RuntimeError("datasets library unavailable for HF output")
-            if len(hf_prepped) == 1:
-                dd = DatasetDict({"train": hf_prepped[0]})
-            else:
-                try:
-                    from datasets import concatenate_datasets
 
-                    ds = concatenate_datasets(hf_prepped)
-                    dd = DatasetDict({"train": ds})
-                except Exception:
-                    dd = DatasetDict({"train": hf_prepped[0]})
-            out_dir = out_path
-            await asyncio.to_thread(lambda: (os.makedirs(out_dir, exist_ok=True), dd.save_to_disk(out_dir)))
-            merge_timeline.controls.append(
-                ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text(f"Saved HF dataset to {out_dir}")])
-            )
-            await safe_update(page)
-            # Populate inline preview with a small sample from the merged HF dataset
+        # Populate inline preview with a small sample
+        try:
+            pairs = [
+                (str(rec.get("input", "") or ""), str(rec.get("output", "") or ""))
+                for rec in (merged_examples[:100] if merged_examples else [])
+            ]
+            merge_preview_host.controls.clear()
+            if pairs:
+                lfx, rfx = compute_two_col_flex(pairs)
+                merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
+                for a, b in pairs:
+                    merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
             try:
-                # Prefer the 'train' split when available
-                ds = None
-                try:
-                    ds = dd.get("train") if hasattr(dd, "get") else None
-                except Exception:
-                    ds = None
-                if ds is None:
-                    # Fallback to any available split
-                    try:
-                        for k in getattr(dd, "keys", lambda: [])():
-                            ds = dd[k]
-                            break
-                    except Exception:
-                        ds = None
-                pairs = []
-                if ds is not None:
-                    try:
-                        k = min(100, len(ds))
-                    except Exception:
-                        k = 0
-                    try:
-                        idxs = list(range(k))
-                        page_ds = ds.select(idxs) if k > 0 else []
-                        for rec in page_ds:
-                            pairs.append((rec.get("input", "") or "", rec.get("output", "") or ""))
-                    except Exception:
-                        pass
-                merge_preview_host.controls.clear()
-                if pairs:
-                    lfx, rfx = compute_two_col_flex(pairs)
-                    merge_preview_host.controls.append(two_col_header(left_flex=lfx, right_flex=rfx))
-                    for a, b in pairs:
-                        merge_preview_host.controls.append(two_col_row(a, b, lfx, rfx))
-                try:
-                    merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
-                except Exception:
-                    pass
-                await safe_update(page)
+                merge_preview_placeholder.visible = len(merge_preview_host.controls) == 0
             except Exception:
                 pass
+            try:
+                if update_merge_placeholders is not None:
+                    update_merge_placeholders()
+            except Exception:
+                pass
+            await safe_update(page)
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Merge operation failed: {str(e)}", exc_info=True)
         merge_timeline.controls.append(

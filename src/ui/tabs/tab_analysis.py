@@ -28,10 +28,11 @@ def build_analysis_tab(
     analysis_busy_ring: ft.ProgressRing,
     # Dataset chooser controls
     analysis_source_dd: ft.Dropdown,
+    analysis_db_session_dd: ft.Dropdown,
+    analysis_db_refresh_btn: ft.IconButton,
     analysis_hf_repo: ft.TextField,
     analysis_hf_split: ft.TextField,
     analysis_hf_config: ft.TextField,
-    analysis_json_path: ft.TextField,
     analysis_dataset_hint: ft.Text,
     # Modules selection
     select_all_modules_cb: ft.Checkbox,
@@ -68,10 +69,11 @@ def build_analysis_tab(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         analysis_source_dd=analysis_source_dd,
+        analysis_db_session_dd=analysis_db_session_dd,
+        analysis_db_refresh_btn=analysis_db_refresh_btn,
         analysis_hf_repo=analysis_hf_repo,
         analysis_hf_split=analysis_hf_split,
         analysis_hf_config=analysis_hf_config,
-        analysis_json_path=analysis_json_path,
         analysis_dataset_hint=analysis_dataset_hint,
     )
 

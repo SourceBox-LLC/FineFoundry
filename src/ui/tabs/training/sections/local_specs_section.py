@@ -35,9 +35,12 @@ def build_local_specs_container(
     docker_log_timeline: ft.ListView,
     docker_log_placeholder: ft.Text,
     refresh_specs_click_cb,
-    # Local docker run controls
-    local_host_dir_tf: ft.TextField,
-    local_browse_btn: ft.OutlinedButton,
+    # Local docker run controls - managed training runs
+    local_training_run_dd: ft.Dropdown,
+    local_training_run_refresh_btn: ft.IconButton,
+    local_new_run_name_tf: ft.TextField,
+    local_create_run_btn: ft.OutlinedButton,
+    local_run_storage_info: ft.Text,
     local_container_name_tf: ft.TextField,
     local_use_gpu_cb: ft.Checkbox,
     local_pass_hf_token_cb: ft.Checkbox,
@@ -125,7 +128,15 @@ def build_local_specs_container(
                                                 "Runs the training script inside the selected Docker image with your dataset mounted at /data. Uses the same command builder as Runpod."
                                             ),
                                         ),
-                                        ft.Row([local_host_dir_tf, local_browse_btn], wrap=True, spacing=10),
+                                        ft.Row(
+                                            [local_training_run_dd, local_training_run_refresh_btn],
+                                            spacing=6,
+                                        ),
+                                        ft.Row(
+                                            [local_new_run_name_tf, local_create_run_btn],
+                                            spacing=10,
+                                        ),
+                                        local_run_storage_info,
                                         ft.Row(
                                             [local_container_name_tf, local_use_gpu_cb, local_pass_hf_token_cb],
                                             wrap=True,

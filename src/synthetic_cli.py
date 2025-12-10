@@ -34,11 +34,13 @@ import yaml
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+
 from helpers.synthetic import (
     SUPPORTED_EXTENSIONS,
     TYPE_SUFFIXES,
     is_url,
     create_config_file,
+    create_temp_workspace,
     convert_to_chatml,
     convert_to_standard,
 )
@@ -155,17 +157,17 @@ def check_vllm_running(port: int = 8000) -> bool:
 
 def deduplicate_data(data: List[Dict[str, Any]], dataset_format: str) -> List[Dict[str, Any]]:
     """Remove duplicate entries based on input/user content.
-    
+
     Args:
         data: List of conversation/pair dictionaries
         dataset_format: 'chatml' or 'standard'
-        
+
     Returns:
         Deduplicated list
     """
     seen = set()
     unique = []
-    
+
     for item in data:
         # Extract the key for deduplication
         if dataset_format.lower() == "standard":
@@ -178,24 +180,24 @@ def deduplicate_data(data: List[Dict[str, Any]], dataset_format: str) -> List[Di
                 if msg.get("role") == "user":
                     key = msg.get("content", "")
                     break
-        
+
         # Normalize key
         key = key.strip().lower()
-        
+
         if key and key not in seen:
             seen.add(key)
             unique.append(item)
-    
+
     return unique
 
 
 def load_existing_data(output_path: str, output_type: str) -> List[Dict[str, Any]]:
     """Load existing data from output file for resume functionality.
-    
+
     Args:
         output_path: Path to existing output
         output_type: 'json', 'hf', or 'parquet'
-        
+
     Returns:
         List of existing data or empty list
     """
@@ -208,6 +210,7 @@ def load_existing_data(output_path: str, output_type: str) -> List[Dict[str, Any
             if Path(output_path).exists():
                 try:
                     from datasets import load_from_disk
+
                     ds = load_from_disk(output_path)
                     if hasattr(ds, "get"):
                         ds = ds.get("train", ds)
@@ -218,6 +221,7 @@ def load_existing_data(output_path: str, output_type: str) -> List[Dict[str, Any
             if Path(output_path).exists():
                 try:
                     import pandas as pd
+
                     df = pd.read_parquet(output_path)
                     return df.to_dict("records")
                 except Exception:
@@ -235,14 +239,14 @@ def save_output(
     quiet: bool = False,
 ) -> bool:
     """Save data to the specified output format.
-    
+
     Args:
         data: List of conversation/pair dictionaries
         output_path: Path to save output
         output_type: 'json', 'hf', or 'parquet'
         dataset_format: 'chatml' or 'standard'
         quiet: Suppress output
-        
+
     Returns:
         True if successful
     """
@@ -251,10 +255,11 @@ def save_output(
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             log(f"💾 Saved JSON to: {output_path}", quiet)
-            
+
         elif output_type == "hf":
             try:
                 from datasets import Dataset, DatasetDict
+
                 ds = Dataset.from_list(data)
                 dd = DatasetDict({"train": ds})
                 Path(output_path).mkdir(parents=True, exist_ok=True)
@@ -266,10 +271,11 @@ def save_output(
                 with open(json_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 log(f"💾 Saved JSON to: {json_path}", quiet)
-                
+
         elif output_type == "parquet":
             try:
                 import pandas as pd
+
                 df = pd.DataFrame(data)
                 parquet_path = output_path if output_path.endswith(".parquet") else f"{output_path}.parquet"
                 df.to_parquet(parquet_path, index=False)
@@ -280,7 +286,7 @@ def save_output(
                 with open(json_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 log(f"💾 Saved JSON to: {json_path}", quiet)
-                
+
         return True
     except Exception as e:
         print(f"Error saving output: {e}", file=sys.stderr)
@@ -295,31 +301,31 @@ def push_to_hf_hub(
     quiet: bool = False,
 ) -> bool:
     """Push dataset to HuggingFace Hub.
-    
+
     Args:
         data: List of conversation/pair dictionaries
         repo_id: HuggingFace repo ID (e.g., 'username/dataset-name')
         dataset_format: 'chatml' or 'standard'
         private: Whether to create a private repo
         quiet: Suppress output
-        
+
     Returns:
         True if successful
     """
     try:
         from datasets import Dataset
-        
+
         log(f"🚀 Pushing to HuggingFace Hub: {repo_id}", quiet)
-        
+
         # Create dataset
         ds = Dataset.from_list(data)
-        
+
         # Push to hub
         ds.push_to_hub(repo_id, private=private)
-        
+
         log(f"✅ Successfully pushed to: https://huggingface.co/datasets/{repo_id}", quiet)
         return True
-        
+
     except ImportError:
         print("Error: 'datasets' and 'huggingface_hub' libraries required for Hub push", file=sys.stderr)
         print("Install with: pip install datasets huggingface_hub", file=sys.stderr)
@@ -334,24 +340,24 @@ def compute_dataset_stats(
     dataset_format: str,
 ) -> Dict[str, Any]:
     """Compute statistics for a dataset.
-    
+
     Args:
         data: List of conversation/pair dictionaries
         dataset_format: 'chatml' or 'standard'
-        
+
     Returns:
         Dictionary with statistics
     """
     if not data:
         return {"count": 0}
-    
+
     stats = {
         "count": len(data),
         "input_lengths": [],
         "output_lengths": [],
         "total_chars": 0,
     }
-    
+
     for item in data:
         if dataset_format.lower() == "standard":
             inp = item.get("input", "")
@@ -366,13 +372,13 @@ def compute_dataset_stats(
                     inp = msg.get("content", "")
                 elif msg.get("role") == "assistant" and not out:
                     out = msg.get("content", "")
-        
+
         inp_len = len(inp)
         out_len = len(out)
         stats["input_lengths"].append(inp_len)
         stats["output_lengths"].append(out_len)
         stats["total_chars"] += inp_len + out_len
-    
+
     # Compute aggregates
     if stats["input_lengths"]:
         stats["avg_input_len"] = sum(stats["input_lengths"]) / len(stats["input_lengths"])
@@ -381,14 +387,14 @@ def compute_dataset_stats(
         stats["avg_output_len"] = sum(stats["output_lengths"]) / len(stats["output_lengths"])
         stats["max_output_len"] = max(stats["output_lengths"])
         stats["min_output_len"] = min(stats["output_lengths"])
-    
+
     # Estimate tokens (rough: ~4 chars per token)
     stats["estimated_tokens"] = stats["total_chars"] // 4
-    
+
     # Remove raw lists for cleaner output
     del stats["input_lengths"]
     del stats["output_lengths"]
-    
+
     return stats
 
 
@@ -399,18 +405,18 @@ def run_with_retry(
     quiet: bool = False,
 ):
     """Run a function with retry logic for network errors.
-    
+
     Args:
         func: Function to call (should return result or raise exception)
         max_retries: Maximum number of retry attempts
         delay: Delay between retries in seconds
         quiet: Suppress output
-        
+
     Returns:
         Function result or None on failure
     """
     import time
-    
+
     last_error = None
     for attempt in range(max_retries):
         try:
@@ -419,19 +425,19 @@ def run_with_retry(
             last_error = e
             error_msg = str(e).lower()
             # Check if it's a retryable error
-            retryable = any(x in error_msg for x in [
-                "connection", "timeout", "network", "temporary",
-                "429", "503", "502", "504", "rate limit"
-            ])
-            
+            retryable = any(
+                x in error_msg
+                for x in ["connection", "timeout", "network", "temporary", "429", "503", "502", "504", "rate limit"]
+            )
+
             if retryable and attempt < max_retries - 1:
-                wait_time = delay * (2 ** attempt)  # Exponential backoff
+                wait_time = delay * (2**attempt)  # Exponential backoff
                 if not quiet:
                     log(f"  ⚠️ Retry {attempt + 1}/{max_retries} in {wait_time:.1f}s: {str(e)[:50]}", quiet)
                 time.sleep(wait_time)
             else:
                 break
-    
+
     if last_error:
         raise last_error
     return None
@@ -444,7 +450,7 @@ def save_progress(
     data_so_far: List[Dict[str, Any]],
 ) -> None:
     """Save generation progress to a file for resume capability.
-    
+
     Args:
         progress_file: Path to progress file
         sources_completed: List of fully processed source paths
@@ -466,10 +472,10 @@ def save_progress(
 
 def load_progress(progress_file: str) -> Optional[Dict[str, Any]]:
     """Load generation progress from a file.
-    
+
     Args:
         progress_file: Path to progress file
-        
+
     Returns:
         Progress dict or None if not found/invalid
     """
@@ -502,7 +508,7 @@ def run_subprocess(cmd: List[str], description: str, quiet: bool = False) -> boo
     return True
 
 
-def ingest_source(source: str, config_path: Path, multimodal: bool, quiet: bool) -> Optional[Path]:
+def ingest_source(source: str, config_path: Path, workspace: Path, multimodal: bool, quiet: bool) -> Optional[Path]:
     """Ingest a source and return the output text file path."""
     from urllib.parse import urlparse
     import subprocess
@@ -518,7 +524,7 @@ def ingest_source(source: str, config_path: Path, multimodal: bool, quiet: bool)
         print(f"  ❌ Ingestion failed: {result.stderr[:150]}", file=sys.stderr)
         return None
 
-    output_dir = Path("data/output")
+    output_dir = workspace / "output"
     if is_url(source):
         parsed = urlparse(source)
         base_name = parsed.netloc.replace(".", "_")
@@ -537,6 +543,7 @@ def ingest_source(source: str, config_path: Path, multimodal: bool, quiet: bool)
 def generate_content(
     chunk_file: str,
     config_path: Path,
+    workspace: Path,
     gen_type: str,
     num_pairs: int,
     quiet: bool,
@@ -564,18 +571,18 @@ def generate_content(
 
     chunk_name = Path(chunk_file).stem
     suffix = TYPE_SUFFIXES.get(gen_type, "_generated")
-    generated_path = Path(f"data/generated/{chunk_name}{suffix}.json")
+    generated_path = workspace / "generated" / f"{chunk_name}{suffix}.json"
 
     if generated_path.exists():
         return generated_path
 
-    for f in Path("data/generated").glob(f"{chunk_name}*.json"):
+    for f in (workspace / "generated").glob(f"{chunk_name}*.json"):
         return f
 
     return None
 
 
-def curate_content(json_file: Path, config_path: Path, threshold: float, quiet: bool) -> Path:
+def curate_content(json_file: Path, config_path: Path, workspace: Path, threshold: float, quiet: bool) -> Path:
     """Curate content using quality threshold."""
     import subprocess
 
@@ -597,7 +604,7 @@ def curate_content(json_file: Path, config_path: Path, threshold: float, quiet: 
             print(f"    ⚠️ Curation warning: {result.stderr[:100]}")
         return json_file
 
-    curated_path = Path(f"data/curated/{json_file.stem}_curated.json")
+    curated_path = workspace / "curated" / f"{json_file.stem}_curated.json"
     if curated_path.exists():
         return curated_path
 
@@ -732,17 +739,17 @@ def run_generation(
 
     # Progress file for mid-run resume
     progress_file = f"{output_path}.progress"
-    
+
     # Load existing data and progress if resuming
     existing_data: List[Dict[str, Any]] = []
     progress_state: Optional[Dict[str, Any]] = None
     sources_completed: List[str] = []
     chunks_completed: Dict[str, List[int]] = {}
-    
+
     if resume:
         existing_data = load_existing_data(output_path, output_type)
         progress_state = load_progress(progress_file)
-        
+
         if progress_state:
             sources_completed = progress_state.get("sources_completed", [])
             chunks_completed = progress_state.get("chunks_completed", {})
@@ -754,13 +761,12 @@ def run_generation(
         else:
             log("📝 No existing data found, starting fresh", quiet)
 
-    # Clear and create output directories
-    for folder in ["data/output", "data/generated", "data/curated", "data/final"]:
-        if Path(folder).exists():
-            shutil.rmtree(folder)
-        Path(folder).mkdir(parents=True, exist_ok=True)
+    # Create temp workspace directory
+    workspace = create_temp_workspace()
+    log(f"📁 Workspace: {workspace}", quiet)
 
-    config_path = create_config_file()
+    # Create config file pointing to temp workspace
+    config_path = create_config_file(str(workspace), config_dir=workspace)
 
     # Check if vLLM server is already running
     server_was_running = check_vllm_running()
@@ -779,7 +785,7 @@ def run_generation(
             max_seq_length=2048,
         )
         generator.prepare_qa_generation(
-            output_folder="data",
+            output_folder=str(workspace),
             temperature=0.7,
             top_p=0.95,
             overlap=64,
@@ -817,7 +823,7 @@ def run_generation(
             log(f"{'=' * 40}", quiet)
 
             # Ingest source
-            txt_file = ingest_source(source, config_path, multimodal, quiet)
+            txt_file = ingest_source(source, config_path, workspace, multimodal, quiet)
             if not txt_file:
                 log("  ⚠️ Failed to ingest, skipping...", quiet)
                 continue
@@ -847,7 +853,7 @@ def run_generation(
                     if pbar:
                         pbar.update(1)
                     continue
-                    
+
                 chunk_start = time.time()
                 debug(f"Processing chunk {i + 1}: {chunk_file}", verbose)
 
@@ -855,7 +861,7 @@ def run_generation(
                     log(f"\n  [{i + 1}/{len(chunks_to_process)}] Generating {gen_type}...", quiet)
 
                 # Generate content
-                gen_file = generate_content(chunk_file, config_path, gen_type, num_pairs, quiet)
+                gen_file = generate_content(chunk_file, config_path, workspace, gen_type, num_pairs, quiet)
                 if not gen_file:
                     if pbar:
                         pbar.set_postfix({"status": "failed"})
@@ -868,7 +874,7 @@ def run_generation(
                 # Optionally curate
                 if curate:
                     debug(f"Curating with threshold {curate_threshold}", verbose)
-                    gen_file = curate_content(gen_file, config_path, curate_threshold, quiet)
+                    gen_file = curate_content(gen_file, config_path, workspace, curate_threshold, quiet)
 
                 # Convert to fine-tuning format
                 ft_data = convert_to_ft_format(gen_file, config_path, quiet)
@@ -879,7 +885,7 @@ def run_generation(
                         pbar.set_postfix({"pairs": len(ft_data), "time": format_time(chunk_elapsed)})
                     else:
                         log(f"  ✅ Generated {len(ft_data)} pairs ({format_time(chunk_elapsed)})", quiet)
-                    
+
                     # Save progress after each chunk
                     if source not in chunks_completed:
                         chunks_completed[source] = []
@@ -892,7 +898,7 @@ def run_generation(
             if pbar:
                 pbar.close()
             sources_processed += 1
-            
+
             # Mark source as completed
             sources_completed.append(source)
             save_progress(progress_file, sources_completed, chunks_completed, all_conversations)
@@ -963,7 +969,7 @@ def run_generation(
                 log(f"   Total entries: {stats['count']}", quiet)
                 log(f"   Estimated tokens: {stats.get('estimated_tokens', 0):,}", quiet)
                 log(f"   Total characters: {stats.get('total_chars', 0):,}", quiet)
-                if stats.get('avg_input_len'):
+                if stats.get("avg_input_len"):
                     log(f"   Avg input length: {stats['avg_input_len']:.0f} chars", quiet)
                     log(f"   Avg output length: {stats['avg_output_len']:.0f} chars", quiet)
                     log(f"   Input range: {stats['min_input_len']}-{stats['max_input_len']} chars", quiet)
@@ -971,9 +977,7 @@ def run_generation(
 
             # Push to HuggingFace Hub if requested
             if push_to_hub:
-                hub_result = push_to_hf_hub(
-                    final_data, push_to_hub, dataset_format, private, quiet
-                )
+                hub_result = push_to_hf_hub(final_data, push_to_hub, dataset_format, private, quiet)
                 if not hub_result:
                     log("⚠️ Hub push failed, but local save succeeded", quiet)
 
@@ -1009,6 +1013,11 @@ def run_generation(
                 generator.cleanup()
             except Exception:
                 pass
+        # Clean up temp workspace
+        try:
+            shutil.rmtree(workspace, ignore_errors=True)
+        except Exception:
+            pass
 
 
 def main():

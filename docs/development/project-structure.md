@@ -14,15 +14,28 @@ FineFoundry-Core/
 ├── src/                       # Source code
 │   ├── main.py               # Main application entry point
 │   ├── save_dataset.py       # Dataset builder CLI
+│   ├── synthetic_cli.py      # Synthetic data generation CLI
+│   ├── db/                   # Database module (sole storage)
+│   │   ├── __init__.py       # Public exports
+│   │   ├── core.py           # Connection management, schema
+│   │   ├── settings.py       # Settings CRUD
+│   │   ├── training_configs.py # Training config CRUD
+│   │   ├── scraped_data.py   # Scrape sessions and pairs
+│   │   ├── training_runs.py  # Training runs CRUD
+│   │   └── logs.py           # Database logging handler
 │   ├── helpers/              # Helper modules
 │   │   ├── common.py         # Common utilities
-│   │   ├── logging_config.py # Logging configuration
+│   │   ├── logging_config.py # Database-backed logging
+│   │   ├── settings.py       # Settings helper (database)
+│   │   ├── settings_ollama.py# Ollama settings (database)
+│   │   ├── training_config.py# Training config helper (database)
+│   │   ├── scrape_db.py      # Scrape data helper (database)
 │   │   ├── merge.py          # Dataset merging logic
 │   │   ├── scrape.py         # Scraping helpers
-│   │   ├── training.py       # Training helpers (local + shared hyperparam builder)
+│   │   ├── synthetic.py      # Synthetic data generation
+│   │   ├── training.py       # Training helpers
 │   │   ├── training_pod.py   # Runpod training helpers
-│   │   ├── training_config.py# Training configuration helpers (saved_configs)
-│   │   ├── local_inference.py# Local inference helpers (Quick Local Inference + Inference tab)
+│   │   ├── local_inference.py# Local inference helpers
 │   │   ├── build.py          # Dataset building helpers
 │   │   ├── boards.py         # Board listing
 │   │   ├── datasets.py       # Dataset utilities
@@ -35,30 +48,19 @@ FineFoundry-Core/
 │   │   └── stackexchange_scraper.py
 │   ├── ui/                   # UI components
 │   │   └── tabs/             # Tab-specific UI (layouts + controllers)
-│   │       ├── tab_scrape.py
-│   │       ├── tab_build.py
-│   │       ├── tab_training.py
-│   │       ├── tab_inference.py
-│   │       ├── tab_merge.py
-│   │       ├── tab_analysis.py
-│   │       ├── tab_settings.py
-│   │       ├── scrape_controller.py    # Scrape tab controller
-│   │       ├── build_controller.py     # Build / Publish tab controller
-│   │       ├── merge_controller.py     # Merge Datasets tab controller
-│   │       ├── analysis_controller.py  # Dataset Analysis tab controller
-│   │       ├── training_controller.py  # Training tab controller
-│   │       ├── inference_controller.py # Inference tab controller
-│   │       ├── scrape/       # Scrape tab sections
-│   │       ├── build/        # Build tab sections
-│   │       ├── merge/        # Merge tab sections
-│   │       ├── analysis/     # Analysis tab sections
-│   │       └── training/     # Training tab sections
+│   │       ├── tab_*.py      # Tab layout builders
+│   │       ├── *_controller.py # Tab controllers
+│   │       └── */sections/   # Tab section modules
 │   └── runpod/               # Runpod integration
 │       ├── runpod_pod.py     # Pod management
 │       └── ensure_infra.py   # Infrastructure setup
-├── logs/                      # Log files (auto-created)
+├── tests/                     # Test suite
+│   ├── unit/                 # Unit tests
+│   └── integration/          # Integration tests
+├── training_outputs/          # Model artifacts (checkpoints, adapters)
+├── finefoundry.db            # SQLite database (auto-created)
 ├── img/                       # Images and assets
-├── requirements.txt           # Python dependencies
+├── pyproject.toml            # Project configuration
 ├── uv.lock                    # UV lock file
 └── README.md                  # Main README
 
@@ -94,10 +96,9 @@ Business logic separated from UI:
 
 #### `logging_config.py`
 
-- Centralized logging setup
-- Rotating file handlers
-- Console and file logging
-- Debug mode support
+- Database-backed logging via `DatabaseHandler`
+- Console output for real-time monitoring
+- Debug mode support via `FINEFOUNDRY_DEBUG` env var
 - See [Logging Guide](logging.md)
 
 #### `merge.py`
@@ -106,7 +107,8 @@ Business logic separated from UI:
 - `preview_merged()` - Dataset preview
 - Dataset loading and column mapping
 - Interleave and concatenate operations
-- JSON and HF dataset handling
+- Database session and HF dataset handling
+- Merged results saved to database with optional JSON export
 
 #### `scrape.py`
 
@@ -131,9 +133,11 @@ Business logic separated from UI:
 
 #### `training_config.py`
 
-- `saved_configs_dir()` / `list_saved_configs()` - Manage the `src/saved_configs/` directory
-- `validate_config()` - Lightweight schema validation for training configs
+- `list_saved_configs()` - List configs from database
+- `save_config()` / `read_json_file()` / `delete_config()` - Config CRUD operations
+- `rename_config()` - Rename existing configs
 - `get_last_used_config_name()` / `set_last_used_config_name()` - Track last-used config for auto-load on startup
+- All configs stored in SQLite database (no filesystem fallback)
 
 #### `local_inference.py`
 
@@ -152,7 +156,7 @@ Business logic separated from UI:
 
 #### `build.py`
 
-- `run_build()` - Dataset building from JSON
+- `run_build()` - Dataset building from database sessions or HF datasets
 - `run_push_async()` - Async Hub push
 - Split creation and validation
 - Dataset card generation
@@ -292,7 +296,7 @@ User (UI) → Scrape tab controller (`ui/tabs/scrape_controller.py`)
            ↓
          scrapers/{source}_scraper.py
            ↓
-         JSON file written
+         Database session created (db/scraped_data.py)
            ↓
          UI updated with progress
 ```
@@ -300,31 +304,31 @@ User (UI) → Scrape tab controller (`ui/tabs/scrape_controller.py`)
 ### Building Flow
 
 ```
-JSON file → helpers/build.py
-           ↓
-         Dataset validation
-           ↓
-         Train/val/test splits
-           ↓
-         HF DatasetDict
-           ↓
-         Save to disk / Push to Hub
+Database session or HF dataset → helpers/build.py
+                               ↓
+                             Dataset validation
+                               ↓
+                             Train/val/test splits
+                               ↓
+                             HF DatasetDict
+                               ↓
+                             Save to disk / Push to Hub
 ```
 
 ### Merging Flow
 
 ```
-Multiple sources → helpers/merge.py
-                  ↓
-                Column mapping
-                  ↓
-                Dataset loading
-                  ↓
-                Concatenate/Interleave
-                  ↓
-                Save (JSON or HF format)
-                  ↓
-                Preview generation
+Multiple sources (DB sessions / HF) → helpers/merge.py
+                                     ↓
+                                   Column mapping
+                                     ↓
+                                   Dataset loading
+                                     ↓
+                                   Concatenate/Interleave
+                                     ↓
+                                   Save to database (+ optional JSON export)
+                                     ↓
+                                   Preview generation
 ```
 
 ### Training Flow
@@ -437,8 +441,8 @@ See [Testing Guide](testing.md) for details on test types, commands, and coverag
 
 ## Build Artifacts
 
-- `logs/` - Log files (git ignored)
-- `*.json` - Scraped data (git ignored)
+- `finefoundry.db` - SQLite database (git ignored)
+- `training_outputs/` - Model artifacts (git ignored)
 - `hf_dataset/` - Built datasets (git ignored)
 - `__pycache__/` - Python cache (git ignored)
 - `.venv/` - Virtual environment (git ignored)

@@ -3,7 +3,7 @@
 The Merge Datasets tab allows you to combine multiple datasets from different sources into a single unified dataset. This is useful for:
 
 - Combining data from multiple scraping sessions
-- Merging Hugging Face datasets with local JSON files
+- Merging Hugging Face datasets with database sessions
 - Creating larger, more diverse training datasets
 - Consolidating datasets from different sources
 
@@ -13,11 +13,11 @@ The Merge Datasets tab allows you to combine multiple datasets from different so
 
 The merge process:
 
-1. Loads datasets from multiple sources (JSON files or Hugging Face repos)
+1. Loads datasets from multiple sources (database sessions or Hugging Face repos)
 1. Automatically maps input/output columns
 1. Filters empty rows
 1. Combines datasets using your chosen operation
-1. Saves to JSON or Hugging Face dataset format
+1. Saves to the database as a new session (with optional JSON export)
 1. Provides inline preview of merged results
 
 ## Interface Sections
@@ -36,8 +36,13 @@ Add multiple data sources to merge:
 **For each dataset row, configure:**
 
 - **Source**: Choose between:
+  - **Database Session**: Load from a previous scrape session
   - **Hugging Face**: Load from Hugging Face Hub
-  - **JSON file**: Load from local JSON file
+
+**Database Session options:**
+
+- **Session**: Select from your scrape history
+- Input/output columns are automatically mapped
 
 **Hugging Face options:**
 
@@ -46,11 +51,6 @@ Add multiple data sources to merge:
 - **Config**: (optional) dataset configuration name
 - **Input column**: Column name for inputs (auto-detected if empty)
 - **Output column**: Column name for outputs (auto-detected if empty)
-
-**JSON file options:**
-
-- **JSON path**: Path to your local JSON file
-- Input/output columns are automatically mapped from the file structure
 
 **Actions:**
 
@@ -62,11 +62,10 @@ Add multiple data sources to merge:
 Configure where and how to save the merged result:
 
 - **Output Format**:
-  - **JSON file**: Save as a single JSON file
-  - **HF dataset dir**: Save as a Hugging Face dataset directory
-- **Save directory/filename**: Where to save the merged dataset
-  - For JSON: e.g., `merged_dataset.json`
-  - For HF: e.g., `merged_dataset` (directory name)
+  - **Database**: Save as a new database session
+  - **Database + Export JSON**: Save to database and export to JSON file
+- **Session Name**: Name for the new merged session
+- **Export Path** (optional): Path for JSON export if selected
 
 **Actions:**
 
@@ -102,27 +101,28 @@ Displays real-time progress during the merge operation:
 
 ## Usage Examples
 
-### Example 1: Merge Two JSON Files
+### Example 1: Merge Two Database Sessions
 
 1. Click **➕ Add Dataset** twice to create two rows
 1. For each row:
-   - **Source**: JSON file
-   - **JSON path**: Path to your file (e.g., `scraped_data_1.json`, `scraped_data_2.json`)
-1. **Output Format**: JSON file
-1. **Save directory**: `combined_dataset.json`
+   - **Source**: Database Session
+   - **Session**: Select from your scrape history
+1. **Output Format**: Database
+1. **Session Name**: `combined_dataset`
 1. Click **Merge Datasets**
 
-### Example 2: Combine Hugging Face Dataset with Local Data
+### Example 2: Combine Hugging Face Dataset with Database Session
 
 1. **First row**:
    - **Source**: Hugging Face
    - **Dataset repo**: `username/existing-dataset`
    - **Split**: train
 1. **Second row**:
-   - **Source**: JSON file
-   - **JSON path**: `my_new_data.json`
-1. **Output Format**: HF dataset dir
-1. **Save directory**: `enhanced_dataset`
+   - **Source**: Database Session
+   - **Session**: Select your scrape session
+1. **Output Format**: Database + Export JSON
+1. **Session Name**: `enhanced_dataset`
+1. **Export Path**: `enhanced_dataset.json`
 1. **Operation**: Concatenate
 1. Click **Merge Datasets**
 
@@ -130,10 +130,10 @@ Displays real-time progress during the merge operation:
 
 For better data distribution when merging datasets of different types:
 
-1. Add 3+ datasets (any combination of HF and JSON)
+1. Add 3+ datasets (any combination of HF and Database Sessions)
 1. **Operation**: Interleave
-1. **Output Format**: JSON file
-1. **Save directory**: `interleaved_dataset.json`
+1. **Output Format**: Database
+1. **Session Name**: `interleaved_dataset`
 1. Click **Merge Datasets**
 
 Result: Records will be alternated from each source dataset.
@@ -162,14 +162,14 @@ FineFoundry automatically handles column mapping:
 
 ### Output Format Choice
 
-- **Use JSON** when:
-  - You need a simple, portable format
+- **Use Database only** when:
+  - You want to keep everything in the database
   - You're merging small to medium datasets (< 100k records)
-  - You want to quickly inspect the data
-- **Use HF dataset dir** when:
-  - You have large datasets (> 100k records)
-  - You plan to train with Hugging Face `datasets`
-  - You need memory-efficient data loading
+  - You plan to use the merged data in other tabs
+- **Use Database + Export JSON** when:
+  - You need a portable file for external tools
+  - You want to share the merged data
+  - You need a backup of the merged data
 
 ### Performance
 
@@ -179,9 +179,9 @@ FineFoundry automatically handles column mapping:
 
 ### Organization
 
-- Use descriptive filenames: `topic1_and_topic2_merged.json`
-- Keep source datasets separate for debugging
-- Document your merge operations (which datasets, what operation)
+- Use descriptive session names: `topic1_and_topic2_merged`
+- Keep source sessions separate for debugging
+- Document your merge operations (which sessions, what operation)
 
 ## Download Merged Dataset
 
@@ -198,7 +198,7 @@ After a successful merge, the **Download Merged Dataset** button appears at the 
 
 - The original merged dataset remains in the project directory
 - The downloaded copy uses the same filename you specified in Output
-- Works for both JSON files and HF dataset directories
+- Works for exported JSON files
 
 ## Troubleshooting
 
@@ -229,8 +229,8 @@ After a successful merge, the **Download Merged Dataset** button appears at the 
 ### Out of memory
 
 - Merge smaller batches of datasets
-- Use HF dataset dir format instead of JSON
 - Close other applications to free up RAM
+- Consider merging in stages (merge 2-3 at a time)
 
 ### Empty merged dataset
 

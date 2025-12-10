@@ -13,7 +13,6 @@ from typing import List
 
 import asyncio
 import json
-import os
 
 import flet as ft
 
@@ -215,11 +214,20 @@ def build_scrape_tab_with_logic(
         width=160,
         keyboard_type=ft.KeyboardType.NUMBER,
     )
-    output_path = ft.TextField(
-        label="Output JSON Path",
-        value="scraped_training_data.json",
-        width=360,
+    # JSON export removed - data is always saved to database only
+    # These controls are kept for internal compatibility but hidden
+    export_json_cb = ft.Checkbox(
+        label="Also export to JSON",
+        value=False,
+        visible=False,  # Hidden - JSON export removed
     )
+    output_path = ft.TextField(
+        label="Export JSON Path",
+        value="",
+        width=300,
+        visible=False,  # Hidden - JSON export removed
+    )
+
     dataset_format_dd = ft.Dropdown(
         label="Dataset Format",
         options=[ft.dropdown.Option("ChatML"), ft.dropdown.Option("Standard")],
@@ -507,7 +515,6 @@ def build_scrape_tab_with_logic(
             ml_val = int(min_len.value or 3)
         except Exception:
             ml_val = 3
-        out_path = output_path.value or "scraped_training_data.json"
         # Context params
         multiturn = bool(multiturn_sw.value)
         strat_val = strategy_dd.value or "cumulative"
@@ -574,7 +581,6 @@ def build_scrape_tab_with_logic(
                     max_posts=rp,
                     delay=dl,
                     min_len_val=ml_val,
-                    output_path=out_path,
                     multiturn=multiturn,
                     ctx_k=k_val,
                     ctx_max_chars=max_chars_val,
@@ -597,7 +603,6 @@ def build_scrape_tab_with_logic(
                     max_pairs=mp,
                     delay=dl,
                     min_len_val=ml_val,
-                    output_path=out_path,
                     ui_proxy_enabled=bool(proxy_enable_cb.value),
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
@@ -643,7 +648,6 @@ def build_scrape_tab_with_logic(
                     curate=bool(synthetic_curate_cb.value),
                     curate_threshold=syn_threshold,
                     multimodal=bool(synthetic_multimodal_cb.value),
-                    output_path=out_path,
                     dataset_format=(dataset_format_dd.value or "ChatML"),
                     model=synthetic_model.value or "unsloth/Llama-3.2-3B-Instruct",
                 )
@@ -660,7 +664,6 @@ def build_scrape_tab_with_logic(
                     max_pairs_total=mp,
                     delay=dl,
                     min_len_val=ml_val,
-                    output_path=out_path,
                     multiturn=multiturn,
                     ctx_strategy=strat_val,
                     ctx_k=k_val,
@@ -724,53 +727,34 @@ def build_scrape_tab_with_logic(
         page.update()
 
     async def on_preview_dataset():
-        """Open a modal dialog showing the full dataset from the output JSON path."""
+        """Open a modal dialog showing the full dataset from database."""
         # Immediate feedback that the click was received
         page.snack_bar = ft.SnackBar(ft.Text("Opening dataset preview..."))
         page.open(page.snack_bar)
         await safe_update(page)
 
-        # Resolve dataset path robustly (supports launching app from different CWDs)
-        orig_path = output_path.value or "scraped_training_data.json"
-        candidates = []
-        if os.path.isabs(orig_path):
-            candidates.append(orig_path)
-        else:
-            candidates.extend(
-                [
-                    orig_path,
-                    os.path.abspath(orig_path),
-                    os.path.join(os.getcwd(), orig_path),
-                    os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_path),
-                ]
-            )
-        # Deduplicate while preserving order
-        seen = set()
-        resolved_list = []
-        for pth in candidates:
-            ap = os.path.abspath(pth)
-            if ap not in seen:
-                seen.add(ap)
-                resolved_list.append(ap)
-        existing = next((p for p in resolved_list if os.path.exists(p)), None)
-        if not existing:
-            page.snack_bar = ft.SnackBar(
-                ft.Text(
-                    "Dataset file not found. Tried:\n" + "\n".join(resolved_list[:4]),
-                )
-            )
+        data = None
+        source_label = "Database"
+
+        # Load from database (most recent session)
+        try:
+            from db.scraped_data import list_scrape_sessions, get_pairs_for_session
+
+            sessions = list_scrape_sessions(limit=1)
+            if sessions:
+                session = sessions[0]
+                pairs = await asyncio.to_thread(lambda: get_pairs_for_session(session["id"]))
+                if pairs:
+                    data = pairs
+                    source_label = f"DB Session {session['id']} ({session['source']})"
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to load from database: {e}"))
             page.open(page.snack_bar)
             await safe_update(page)
             return
 
-        try:
-            data = await asyncio.to_thread(
-                lambda: json.load(open(existing, "r", encoding="utf-8")),
-            )
-            if not isinstance(data, list):
-                raise ValueError("Expected a JSON list of records")
-        except Exception as e:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to open {existing}: {e}"))
+        if not data or not isinstance(data, list):
+            page.snack_bar = ft.SnackBar(ft.Text("No dataset found. Run a scrape first to populate the database."))
             page.open(page.snack_bar)
             await safe_update(page)
             return
@@ -864,7 +848,7 @@ def build_scrape_tab_with_logic(
 
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text(f"Dataset Viewer — {len(data)} rows"),
+            title=ft.Text(f"Dataset Viewer — {source_label} ({len(data)} rows)"),
             content=ft.Container(
                 width=900,
                 height=600,
@@ -905,46 +889,29 @@ def build_scrape_tab_with_logic(
         await safe_update(page)
 
     async def on_preview_raw_dataset():
-        """Open a modal dialog showing the raw JSON contents of the output path."""
-        # Resolve dataset path similarly to on_preview_dataset
-        orig_path = output_path.value or "scraped_training_data.json"
-        candidates = []
-        if os.path.isabs(orig_path):
-            candidates.append(orig_path)
-        else:
-            candidates.extend(
-                [
-                    orig_path,
-                    os.path.abspath(orig_path),
-                    os.path.join(os.getcwd(), orig_path),
-                    os.path.join(os.path.dirname(os.path.dirname(__file__)), orig_path),
-                ]
-            )
-        seen = set()
-        resolved_list = []
-        for pth in candidates:
-            ap = os.path.abspath(pth)
-            if ap not in seen:
-                seen.add(ap)
-                resolved_list.append(ap)
-        existing = next((p for p in resolved_list if os.path.exists(p)), None)
-        if not existing:
-            page.snack_bar = ft.SnackBar(
-                ft.Text(
-                    "Dataset file not found. Tried:\n" + "\n".join(resolved_list[:4]),
-                )
-            )
+        """Open a modal dialog showing the raw JSON contents from database."""
+        raw_text = None
+        source_label = "Database"
+
+        # Load from database (most recent session)
+        try:
+            from db.scraped_data import list_scrape_sessions, get_pairs_for_session
+
+            sessions = list_scrape_sessions(limit=1)
+            if sessions:
+                session = sessions[0]
+                pairs = await asyncio.to_thread(lambda: get_pairs_for_session(session["id"]))
+                if pairs:
+                    raw_text = json.dumps(pairs, indent=2, ensure_ascii=False)
+                    source_label = f"DB Session {session['id']} ({session['source']})"
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to load from database: {e}"))
             page.open(page.snack_bar)
             await safe_update(page)
             return
 
-        # Read raw text content
-        try:
-            raw_text = await asyncio.to_thread(
-                lambda: open(existing, "r", encoding="utf-8").read(),
-            )
-        except Exception as e:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Failed to read {existing}: {e}"))
+        if not raw_text:
+            page.snack_bar = ft.SnackBar(ft.Text("No dataset found. Run a scrape first to populate the database."))
             page.open(page.snack_bar)
             await safe_update(page)
             return
@@ -965,7 +932,7 @@ def build_scrape_tab_with_logic(
 
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text(f"Raw Dataset — {os.path.basename(existing)}"),
+            title=ft.Text(f"Raw Dataset — {source_label}"),
             content=content_ctl,
             actions=[],
         )
@@ -1076,6 +1043,7 @@ def build_scrape_tab_with_logic(
         max_pairs=max_pairs,
         delay=delay,
         min_len=min_len,
+        export_json_cb=export_json_cb,
         output_path=output_path,
         dataset_format_dd=dataset_format_dd,
         multiturn_sw=multiturn_sw,

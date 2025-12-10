@@ -47,7 +47,7 @@ Error handling:
 Logging:
 
 - Use the central logging configuration instead of `print`.
-- Log via the logger obtained from the logging helpers so logs appear in the correct files under `logs/`.
+- Log via the logger obtained from `helpers.logging_config.get_logger()` so logs are stored in the database.
 - Use appropriate log levels (`debug`, `info`, `warning`, `error`) and avoid spamming logs inside tight loops.
 
 For more detail on logging, see the **[Logging Guide](logging.md)**.

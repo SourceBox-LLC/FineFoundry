@@ -1,10 +1,10 @@
 # Build & Publish Tab
 
-The Build & Publish tab converts raw JSON data into a structured Hugging Face dataset and optionally pushes it to the Hub with a generated dataset card.
+The Build & Publish tab converts your scraped data into a structured Hugging Face dataset and optionally pushes it to the Hub with a generated dataset card.
 
 Use this tab to:
 
-- Load a scraped JSON file (e.g. from the Scrape tab)
+- Load data from a database session or Hugging Face dataset
 - Create train/validation/test splits with reproducible settings
 - Save a `datasets.DatasetDict` to disk
 - Push datasets to the Hugging Face Hub with a basic README card
@@ -17,7 +17,7 @@ ______________________________________________________________________
 
 Typical workflow:
 
-1. Select a **Data file (JSON)** produced by scraping or other sources.
+1. Select a **Database Session** from your scrape history, or a **Hugging Face** dataset.
 1. Configure **splits**, **min length**, and shuffling.
 1. Click **Build Dataset** to create a `DatasetDict` on disk.
 1. Optionally enable **Push to Hub**, fill in repo details and token.
@@ -29,9 +29,9 @@ ______________________________________________________________________
 
 ### 1. Data Source
 
-- **Data file (JSON)**
-  - Path to your dataset (commonly `scraped_training_data.json`).
-  - Must have schema like `[{"input": "...", "output": "..."}, ...]`.
+- **Database Session** or **Hugging Face**
+  - Select from your scrape history or load from Hugging Face Hub.
+  - Data must have `input` and `output` fields.
 
 ### 2. Split & Filtering Parameters
 
@@ -48,7 +48,7 @@ ______________________________________________________________________
 ### 4. Build Actions
 
 - **Build Dataset** button
-  - Reads JSON, applies filtering and splitting, and writes the dataset to `Save dir`.
+  - Loads data from the selected source, applies filtering and splitting, and writes the dataset to `Save dir`.
   - Shows logs / status for success or errors.
 
 ### 5. Push to Hub
@@ -67,7 +67,7 @@ ______________________________________________________________________
 
 ### Example 1: Local splits only
 
-1. Set **Data file (JSON)** to `scraped_training_data.json`.
+1. Select your **Database Session** from the dropdown.
 1. Set **Validation** to `0.05` and **Test** to `0.0`.
 1. Enable **Shuffle** and choose a **Seed** (e.g. 42).
 1. Set **Save dir** to `hf_dataset`.
@@ -77,7 +77,7 @@ Result: a `DatasetDict` saved under `hf_dataset/` with `train` and `validation` 
 
 ### Example 2: Prepare a dataset for training + Hub
 
-1. Point to your scraped JSON.
+1. Select your scrape session from the dropdown.
 1. Choose validation/test fractions (e.g. 5% validation, 5% test).
 1. Set **Save dir** to something like `my_dataset`.
 1. Enable **Push to Hub** and provide:
@@ -101,7 +101,7 @@ ______________________________________________________________________
 
 ## Related Topics
 
-- [Scrape Tab](scrape-tab.md) – create the initial JSON dataset.
+- [Scrape Tab](scrape-tab.md) – create the initial dataset.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple datasets before building.
 - [Analysis Tab](analysis-tab.md) – analyze the built dataset.
 - [Training Tab](training-tab.md) – fine-tune models on your dataset.

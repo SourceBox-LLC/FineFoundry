@@ -67,10 +67,10 @@ Current integration tests include:
   - Runs `save_dataset.main()` end-to-end against a tiny JSON file (standard pairs + ChatML).
   - Asserts an HF `DatasetDict` is saved to disk and has the expected structure.
 
-- `test_merge_json_interleave.py`
+- `test_synthetic_e2e.py`
 
-  - Uses the merge helpers to interleave two small JSON datasets into a single JSON output.
-  - Verifies the interleave order and that the download button and snackbar state look correct.
+  - End-to-end tests for synthetic data generation flows.
+  - Tests dedup stats, resume flow, standard format, and empty data handling.
 
 - `test_tab_controllers_smoke.py`
 

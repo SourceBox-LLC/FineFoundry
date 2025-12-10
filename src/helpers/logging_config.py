@@ -1,45 +1,40 @@
 """Centralized logging configuration for FineFoundry.
 
 This module provides a unified logging setup with:
-- File and console handlers
-- Rotating log files
+- Database logging (SQLite)
+- Optional console output
 - Configurable log levels
-- Structured logging format
 """
 
 import logging
 import os
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from typing import Optional
 
+from db.logs import DatabaseHandler
 
-# Default log directory
-LOG_DIR = Path.cwd() / "logs"
-LOG_DIR.mkdir(exist_ok=True)
 
-# Log format
+# Log format for console output
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def setup_logger(
     name: str,
-    log_file: Optional[str] = None,
+    log_file: Optional[str] = None,  # Deprecated, ignored
     level: int = logging.INFO,
     console_output: bool = True,
-    max_bytes: int = 10 * 1024 * 1024,  # 10MB
-    backup_count: int = 5,
+    max_bytes: int = 10 * 1024 * 1024,  # Deprecated, ignored
+    backup_count: int = 5,  # Deprecated, ignored
 ) -> logging.Logger:
-    """Set up a logger with file and optional console handlers.
+    """Set up a logger with database and optional console handlers.
 
     Args:
         name: Logger name (typically __name__ from calling module)
-        log_file: Log file name (defaults to {name}.log)
+        log_file: Deprecated, ignored (logs go to database)
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         console_output: Whether to also log to console
-        max_bytes: Max size of each log file before rotation
-        backup_count: Number of backup files to keep
+        max_bytes: Deprecated, ignored
+        backup_count: Deprecated, ignored
 
     Returns:
         Configured logger instance
@@ -53,20 +48,9 @@ def setup_logger(
     logger.setLevel(level)
     formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
-    # File handler with rotation
-    if log_file is None:
-        log_file = f"{name.replace('.', '_')}.log"
-    file_path = LOG_DIR / log_file
-
-    file_handler = RotatingFileHandler(
-        file_path,
-        maxBytes=max_bytes,
-        backupCount=backup_count,
-        encoding="utf-8",
-    )
-    file_handler.setLevel(level)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    # Database handler
+    db_handler = DatabaseHandler(level)
+    logger.addHandler(db_handler)
 
     # Console handler (optional)
     if console_output:

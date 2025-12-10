@@ -130,6 +130,44 @@ def init_db(db_path: Optional[str] = None) -> None:
         )
     """)
 
+    # Training runs table - managed storage for training outputs
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS training_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            base_model TEXT,
+            dataset_source TEXT,
+            dataset_id TEXT,
+            storage_path TEXT NOT NULL,
+            output_dir TEXT,
+            adapter_path TEXT,
+            checkpoint_path TEXT,
+            hp_json TEXT,
+            logs_json TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            metadata_json TEXT
+        )
+    """)
+
+    # Application logs table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS app_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT (datetime('now')),
+            level TEXT NOT NULL,
+            logger TEXT,
+            message TEXT NOT NULL,
+            module TEXT,
+            func_name TEXT,
+            line_no INTEGER,
+            exc_info TEXT
+        )
+    """)
+
     # Create indexes for common queries
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_scraped_pairs_session 
@@ -137,8 +175,23 @@ def init_db(db_path: Optional[str] = None) -> None:
     """)
 
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp 
+        ON app_logs(timestamp)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_app_logs_level 
+        ON app_logs(level)
+    """)
+
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_training_configs_target 
         ON training_configs(train_target)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_training_runs_status 
+        ON training_runs(status)
     """)
 
     conn.commit()

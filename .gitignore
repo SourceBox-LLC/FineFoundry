@@ -24,11 +24,13 @@ hf_config.json
 runpod_config.json
 ollama_config.json
 
-# User data directories
+# User data directories (legacy - now in database)
 saved_configs/
-logs/
 hf_dataset/
 merged_dataset/
+
+# Training outputs (model artifacts)
+training_outputs/
 
 # Scraped data files
 scraped_training_data.json
@@ -60,9 +62,7 @@ dist/
 build/
 *.egg-info/
 
-# Synthetic data generation
+# Synthetic data generation (now uses temp directories)
 unsloth_compiled_cache/
-data/
 synthetic_data.json
-synthetic_data_kit_config.yaml
 .coverage

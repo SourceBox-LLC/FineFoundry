@@ -77,19 +77,84 @@ def build_build_tab_with_logic(
     # Source selector for dataset preview/processing
     source_mode = ft.Dropdown(
         options=[
-            ft.dropdown.Option("JSON file"),
+            ft.dropdown.Option("Database"),
             ft.dropdown.Option("Merged dataset"),
         ],
-        value="JSON file",
+        value="Database",
         width=180,
     )
 
-    # Data source and processing controls
+    # Data source - Database only (JSON removed as user option)
+    data_source_dd = ft.Dropdown(
+        label="Data source",
+        options=[
+            ft.dropdown.Option("Database"),
+        ],
+        value="Database",
+        width=160,
+        visible=False,  # Hidden since only one option
+    )
+    db_session_dd = ft.Dropdown(
+        label="Scrape session",
+        options=[],
+        width=360,
+        visible=True,
+        tooltip="Select a scrape session from the database",
+    )
+    db_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh sessions",
+        visible=True,
+    )
+    # Data file kept for internal use only (not user-facing)
     data_file = ft.TextField(
         label="Data file (JSON)",
-        value="scraped_training_data.json",
+        value="",
         width=360,
+        visible=False,
     )
+
+    def _refresh_db_sessions(_=None):
+        """Refresh the database session dropdown."""
+        try:
+            from db.scraped_data import list_scrape_sessions
+
+            sessions = list_scrape_sessions(limit=50)
+            options = []
+            for s in sessions:
+                label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
+                if s.get("source_details"):
+                    label = f"{s['source']}: {s['source_details'][:30]} - {s['pair_count']} pairs"
+                options.append(ft.dropdown.Option(key=str(s["id"]), text=label))
+            db_session_dd.options = options
+            if options and not db_session_dd.value:
+                db_session_dd.value = options[0].key
+        except Exception as e:
+            db_session_dd.options = [ft.dropdown.Option(key="", text=f"Error: {e}")]
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    db_refresh_btn.on_click = _refresh_db_sessions
+
+    def _update_data_source(_=None):
+        # Always use database - JSON file option removed
+        db_session_dd.visible = True
+        db_refresh_btn.visible = True
+        data_file.visible = False
+        _refresh_db_sessions()
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    data_source_dd.on_change = _update_data_source
+    # Initialize sessions on load
+    try:
+        _refresh_db_sessions()
+    except Exception:
+        pass
     merged_dir = ft.TextField(
         label="Merged dataset dir",
         value="merged_dataset",
@@ -156,24 +221,30 @@ def build_build_tab_with_logic(
     val_slider.on_change = on_split_change
     test_slider.on_change = on_split_change
 
-    # Toggle UI fields based on source selection (JSON vs Merged dataset)
+    # Toggle UI fields based on source selection (Database vs Merged dataset)
     def on_source_change(_):
-        mode = (source_mode.value or "JSON file").strip()
-        is_json = mode == "JSON file"
+        mode = (source_mode.value or "Database").strip()
+        is_merged = mode == "Merged dataset"
         try:
-            data_file.visible = is_json
-            merged_dir.visible = not is_json
-            # Enable JSON-only processing params for JSON mode; disable in merged mode
+            # Show database controls only in Database mode
+            db_session_dd.visible = not is_merged
+            db_refresh_btn.visible = not is_merged
+            data_file.visible = False  # Always hidden - JSON removed as user option
+            merged_dir.visible = is_merged
+            # Enable processing params for Database mode; disable in merged mode
             for ctl in [seed, shuffle, min_len_b, val_slider, test_slider]:
                 try:
-                    ctl.disabled = not is_json
+                    ctl.disabled = is_merged
                 except Exception:
                     pass
+            if not is_merged:
+                _refresh_db_sessions()
         except Exception:
             pass
         page.update()
 
     source_mode.on_change = on_source_change
+    data_source_dd.on_change = on_source_change
     # Initialize visibility/disabled state
     on_source_change(None)
 
@@ -441,12 +512,19 @@ def build_build_tab_with_logic(
             await safe_update(page)
             return
 
-        path = (data_file.value or "scraped_training_data.json").strip()
+        # Load records from database
         try:
-            records = await asyncio.to_thread(sd.load_records, path)
+            db_session_id = (db_session_dd.value or "").strip()
+            if not db_session_id:
+                raise RuntimeError("No database session selected")
+            from db.scraped_data import get_pairs_for_session
+
+            records = await asyncio.to_thread(lambda: get_pairs_for_session(int(db_session_id)))
+            if not records:
+                raise RuntimeError(f"No pairs in session {db_session_id}")
         except Exception as e:  # pragma: no cover - runtime error path
             page.snack_bar = ft.SnackBar(
-                ft.Text(f"Failed to load data file: {e}"),
+                ft.Text(f"Failed to load data: {e}"),
             )
             page.open(page.snack_bar)
             await safe_update(page)
@@ -600,6 +678,8 @@ def build_build_tab_with_logic(
         return await run_build_helper(
             page=page,
             source_mode=source_mode,
+            data_source_dd=data_source_dd,
+            db_session_dd=db_session_dd,
             data_file=data_file,
             merged_dir=merged_dir,
             seed=seed,
@@ -694,6 +774,9 @@ def build_build_tab_with_logic(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         source_mode=source_mode,
+        data_source_dd=data_source_dd,
+        db_session_dd=db_session_dd,
+        db_refresh_btn=db_refresh_btn,
         data_file=data_file,
         merged_dir=merged_dir,
         seed=seed,

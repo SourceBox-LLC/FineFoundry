@@ -16,6 +16,7 @@ def _make_controls_for_hf():
         "train_hf_split": D("train"),
         "train_hf_config": D(""),
         "train_json_path": D(""),
+        "train_db_session_dd": D(""),
         "base_model": D("base-model"),
         "out_dir_tf": D("/data/out"),
         "epochs_tf": D("5"),
@@ -24,6 +25,10 @@ def _make_controls_for_hf():
         "grad_acc_tf": D("2"),
         "max_steps_tf": D("100"),
         "use_lora_cb": Dummy(True),
+        "lora_r_dd": D("16"),
+        "lora_alpha_tf": D("32"),
+        "lora_dropout_tf": D("0"),
+        "use_rslora_cb": Dummy(False),
         "packing_cb": Dummy(True),
         "auto_resume_cb": Dummy(False),
         "push_cb": Dummy(True),
@@ -68,16 +73,16 @@ def test_build_hp_from_controls_hf_dataset():
     assert hp["optim"] == "adamw"
 
 
-def test_build_hp_from_controls_json_path_source():
+def test_build_hp_from_controls_database_source():
     controls = _make_controls_for_hf()
-    controls["train_source"].value = "JSON file"
+    controls["train_source"].value = "Database"
     controls["train_hf_repo"].value = ""
-    controls["train_json_path"].value = "/data/train.json"
+    controls["train_db_session_dd"].value = "123"
 
     hp = training.build_hp_from_controls(**controls)
 
     assert "hf_dataset_id" not in hp
-    assert hp["json_path"] == "/data/train.json"
+    assert hp["db_session_id"] == "123"
 
 
 def test_build_hp_default_values():
@@ -92,6 +97,7 @@ def test_build_hp_default_values():
         "train_hf_split": D(""),
         "train_hf_config": D(""),
         "train_json_path": D(""),
+        "train_db_session_dd": D(""),
         "base_model": D(""),
         "out_dir_tf": D(""),
         "epochs_tf": D(""),
@@ -100,6 +106,10 @@ def test_build_hp_default_values():
         "grad_acc_tf": D(""),
         "max_steps_tf": D(""),
         "use_lora_cb": Dummy(False),
+        "lora_r_dd": D(""),
+        "lora_alpha_tf": D(""),
+        "lora_dropout_tf": D(""),
+        "use_rslora_cb": Dummy(False),
         "packing_cb": Dummy(False),
         "auto_resume_cb": Dummy(False),
         "push_cb": Dummy(False),

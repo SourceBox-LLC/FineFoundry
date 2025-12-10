@@ -21,6 +21,7 @@ def build_hp_from_controls(
     train_hf_split: ft.Dropdown,
     train_hf_config: ft.TextField,
     train_json_path: ft.TextField,
+    train_db_session_dd: ft.Dropdown,
     base_model: ft.TextField,
     out_dir_tf: ft.TextField,
     epochs_tf: ft.TextField,
@@ -29,6 +30,10 @@ def build_hp_from_controls(
     grad_acc_tf: ft.TextField,
     max_steps_tf: ft.TextField,
     use_lora_cb: ft.Checkbox,
+    lora_r_dd: ft.Dropdown,
+    lora_alpha_tf: ft.TextField,
+    lora_dropout_tf: ft.TextField,
+    use_rslora_cb: ft.Checkbox,
     packing_cb: ft.Checkbox,
     auto_resume_cb: ft.Checkbox,
     push_cb: ft.Checkbox,
@@ -54,7 +59,7 @@ def build_hp_from_controls(
     repo = (train_hf_repo.value or "").strip()
     split = (train_hf_split.value or "train").strip()
     cfg = (train_hf_config.value or "").strip()
-    jpath = (train_json_path.value or "").strip()
+    # Note: train_json_path is kept for backward compatibility but not used (database storage)
     model = (base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
     out_dir = (out_dir_tf.value or "/data/outputs/runpod_run").strip()
 
@@ -68,13 +73,28 @@ def build_hp_from_controls(
         "use_lora": bool(getattr(use_lora_cb, "value", False)),
         "output_dir": out_dir,
     }
-    if (src == "Hugging Face") and repo:
+    # LoRA configuration
+    if bool(getattr(use_lora_cb, "value", False)):
+        _lora_r = (lora_r_dd.value or "16").strip()
+        hp["lora_r"] = _lora_r
+        _lora_alpha = (lora_alpha_tf.value or "").strip()
+        if _lora_alpha:
+            hp["lora_alpha"] = _lora_alpha
+        _lora_dropout = (lora_dropout_tf.value or "0").strip()
+        if _lora_dropout and _lora_dropout != "0":
+            hp["lora_dropout"] = _lora_dropout
+        if bool(getattr(use_rslora_cb, "value", False)):
+            hp["use_rslora"] = True
+    # Dataset source handling
+    if src == "Hugging Face" and repo:
         hp["hf_dataset_id"] = repo
         hp["hf_dataset_split"] = split
-    elif jpath:
-        hp["json_path"] = jpath
-    if (src == "Hugging Face") and cfg:
-        hp["hf_dataset_config"] = cfg
+        if cfg:
+            hp["hf_dataset_config"] = cfg
+    elif src == "Database":
+        db_session_id = (train_db_session_dd.value or "").strip()
+        if db_session_id:
+            hp["db_session_id"] = db_session_id
     if bool(getattr(packing_cb, "value", False)):
         hp["packing"] = True
     if bool(getattr(auto_resume_cb, "value", False)):
@@ -175,6 +195,7 @@ def build_hp_from_controls(
         "json_path",
         "hf_dataset_id",
         "hf_dataset_split",
+        "db_session_id",
         "base_model",
         "epochs",
         "lr",
@@ -314,7 +335,8 @@ async def run_local_training(
     train_hf_repo: ft.TextField,
     train_hf_split: ft.Dropdown,
     train_json_path: ft.TextField,
-    local_host_dir_tf: ft.TextField,
+    train_db_session_dd: ft.Dropdown,
+    local_training_run_dd: ft.Dropdown,
     local_container_name_tf: ft.TextField,
     local_train_status: ft.Text,
     local_train_progress: ft.ProgressBar,
@@ -339,9 +361,27 @@ async def run_local_training(
         return
 
     img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
-    host_dir = (local_host_dir_tf.value or "").strip()
-    if not host_dir:
-        local_train_status.value = "Set Host data directory to mount at /data."
+
+    # Get managed storage path from training run
+    training_run_id = (local_training_run_dd.value or "").strip()
+    if not training_run_id:
+        local_train_status.value = "Select or create a training run first."
+        local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+        await safe_update(page)
+        return
+
+    try:
+        from db.training_runs import get_run_storage_paths, update_training_run
+
+        paths = get_run_storage_paths(int(training_run_id))
+        if not paths:
+            local_train_status.value = f"Training run {training_run_id} not found."
+            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            await safe_update(page)
+            return
+        host_dir = paths["root"]
+    except Exception as e:
+        local_train_status.value = f"Error getting training run storage: {e}"
         local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
         await safe_update(page)
         return
@@ -367,23 +407,91 @@ async def run_local_training(
     # Build HP and dataset flags similar to pod flow
     hp = build_hp_fn() or {}
     try:
-        if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-            src_ui = train_source.value or "Hugging Face"
+        if not (hp.get("hf_dataset_id") or hp.get("json_path") or hp.get("db_session_id")):
+            src_ui = train_source.value or "Database"
             repo_ui = (train_hf_repo.value or "").strip()
             split_ui = (train_hf_split.value or "train").strip()
-            jpath_ui = (train_json_path.value or "").strip()
-            if (src_ui == "Hugging Face") and repo_ui:
+            db_session_ui = (train_db_session_dd.value or "").strip()
+            if src_ui == "Database" and db_session_ui:
+                hp["db_session_id"] = db_session_ui
+            elif (src_ui == "Hugging Face") and repo_ui:
                 hp["hf_dataset_id"] = repo_ui
                 hp["hf_dataset_split"] = split_ui
-            elif jpath_ui:
-                hp["json_path"] = jpath_ui
-        if not (hp.get("hf_dataset_id") or hp.get("json_path")):
-            local_train_status.value = "Dataset not set. Provide HF dataset or JSON path."
+        if not (hp.get("hf_dataset_id") or hp.get("json_path") or hp.get("db_session_id")):
+            local_train_status.value = "Dataset not set. Select a database session or HF dataset."
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
             await safe_update(page)
             return
     except Exception:
         pass
+
+    # For database sessions, export to temp JSON file in mounted directory
+    try:
+        db_session_id = hp.get("db_session_id", "")
+        if db_session_id:
+            from db.scraped_data import get_pairs_for_session, get_scrape_session
+
+            session = get_scrape_session(int(db_session_id))
+            if not session:
+                local_train_status.value = f"Database session {db_session_id} not found."
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                await safe_update(page)
+                return
+            pairs = get_pairs_for_session(int(db_session_id))
+            if not pairs:
+                local_train_status.value = f"No pairs found in session {db_session_id}."
+                local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+                await safe_update(page)
+                return
+            # Export to ChatML format for training
+            chatml_data = []
+            for p in pairs:
+                chatml_data.append(
+                    {
+                        "messages": [
+                            {"role": "user", "content": p["input"]},
+                            {"role": "assistant", "content": p["output"]},
+                        ]
+                    }
+                )
+            # Write to temp file in mounted directory
+            json_filename = f"db_session_{db_session_id}.json"
+            dest_path = os.path.join(host_dir, json_filename)
+            with open(dest_path, "w", encoding="utf-8") as f:
+                json.dump(chatml_data, f, ensure_ascii=False, indent=2)
+            # Update hp to use the container path
+            hp["json_path"] = f"/data/{json_filename}"
+            del hp["db_session_id"]  # Remove db_session_id, trainer uses json_path
+            await _append_local_log_line(
+                page,
+                local_train_timeline,
+                local_train_timeline_placeholder,
+                local_log_buffer,
+                local_save_logs_btn,
+                f"Exported {len(pairs)} pairs from DB session {db_session_id} to {json_filename}",
+                ICONS_module=ICONS_module,
+            )
+    except Exception as ex:
+        local_train_status.value = f"Failed to export database session: {ex}"
+        local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+        await safe_update(page)
+        return
+
+    # For local JSON files, copy to mounted directory and update path for container
+    try:
+        host_json_path = hp.get("json_path", "")
+        if host_json_path and os.path.isfile(host_json_path):
+            # Copy JSON file to the mounted host directory
+            json_filename = os.path.basename(host_json_path)
+            dest_path = os.path.join(host_dir, json_filename)
+            shutil.copy2(host_json_path, dest_path)
+            # Update hp to use the container path (/data is the mount point)
+            hp["json_path"] = f"/data/{json_filename}"
+    except Exception as ex:
+        local_train_status.value = f"Failed to copy JSON file: {ex}"
+        local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+        await safe_update(page)
+        return
 
     # Show the hyperparameters to confirm what will be passed as --flags
     try:
@@ -483,6 +591,18 @@ async def run_local_training(
                 local_save_logs_btn.disabled = True
         except Exception:
             pass
+        # Update training run status to running
+        try:
+            from db.training_runs import update_training_run
+            from datetime import datetime
+
+            update_training_run(
+                int(training_run_id),
+                status="running",
+                started_at=datetime.now().isoformat(),
+            )
+        except Exception:
+            pass
         await safe_update(page)
     except Exception:
         pass
@@ -531,14 +651,13 @@ async def run_local_training(
             try:
                 out_dir = (hp.get("output_dir") or "").strip()
                 base_model_name = (hp.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
-                host_root = (local_host_dir_tf.value or "").strip()
                 abs_out_dir = ""
                 if out_dir:
                     if out_dir.startswith("/data"):
                         rel = out_dir[len("/data") :].lstrip("/")
-                        abs_out_dir = os.path.join(host_root, rel)
+                        abs_out_dir = os.path.join(host_dir, rel)
                     else:
-                        abs_out_dir = os.path.join(host_root, out_dir.lstrip("/"))
+                        abs_out_dir = os.path.join(host_dir, out_dir.lstrip("/"))
                 if abs_out_dir:
                     adapter_path = os.path.join(abs_out_dir, "adapter")
                     try:
@@ -546,6 +665,21 @@ async def run_local_training(
                         train_state["local_infer"]["adapter_path"] = adapter_path
                         train_state["local_infer"]["base_model"] = base_model_name
                         train_state["local_infer"]["model_loaded"] = False
+                    except Exception:
+                        pass
+                    # Update training run with completed status and paths
+                    try:
+                        from db.training_runs import update_training_run
+                        from datetime import datetime
+
+                        update_training_run(
+                            int(training_run_id),
+                            status="completed",
+                            output_dir=abs_out_dir,
+                            adapter_path=adapter_path,
+                            completed_at=datetime.now().isoformat(),
+                            logs=local_log_buffer[:500],  # Save last 500 log lines
+                        )
                     except Exception:
                         pass
             except Exception:
@@ -569,13 +703,54 @@ async def run_local_training(
                 )
             except Exception:
                 pass
+            # Update training run status to failed
+            try:
+                from db.training_runs import update_training_run
+                from datetime import datetime
+
+                update_training_run(
+                    int(training_run_id),
+                    status="failed",
+                    completed_at=datetime.now().isoformat(),
+                    logs=local_log_buffer[:500],
+                    metadata={"exit_code": 137, "error": "OOM or killed"},
+                )
+            except Exception:
+                pass
         else:
             local_train_status.value = f"Container exited with code {rc}."
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+            # Update training run status to failed
+            try:
+                from db.training_runs import update_training_run
+                from datetime import datetime
+
+                update_training_run(
+                    int(training_run_id),
+                    status="failed",
+                    completed_at=datetime.now().isoformat(),
+                    logs=local_log_buffer[:500],
+                    metadata={"exit_code": rc},
+                )
+            except Exception:
+                pass
     except Exception as ex:
         local_train_status.value = f"Failed to start container: {ex}"
         try:
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
+        except Exception:
+            pass
+        # Update training run status to failed
+        try:
+            from db.training_runs import update_training_run
+            from datetime import datetime
+
+            update_training_run(
+                int(training_run_id),
+                status="failed",
+                completed_at=datetime.now().isoformat(),
+                metadata={"error": str(ex)},
+            )
         except Exception:
             pass
     finally:

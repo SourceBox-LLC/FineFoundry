@@ -6,9 +6,9 @@ Adapted from unsloth-synth-test - uses the exact same approach that works.
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 from urllib.parse import urlparse
@@ -38,9 +38,12 @@ def is_url(path: str) -> bool:
         return False
 
 
-def create_config_file(output_folder: str = "data") -> Path:
-    """Create synthetic-data-kit config file - exact same as working version."""
-    config_path = Path("synthetic_data_kit_config.yaml")
+def create_config_file(output_folder: str, config_dir: Optional[Path] = None) -> Path:
+    """Create synthetic-data-kit config file in the specified directory."""
+    if config_dir:
+        config_path = config_dir / "synthetic_data_kit_config.yaml"
+    else:
+        config_path = Path("synthetic_data_kit_config.yaml")
     config_content = f"""# Synthetic Data Kit Configuration
 output_folder: {output_folder}
 vllm:
@@ -50,9 +53,21 @@ vllm:
     return config_path
 
 
+def create_temp_workspace() -> Path:
+    """Create a temporary workspace directory for synthetic data generation."""
+    temp_dir = Path(tempfile.mkdtemp(prefix="finefoundry_synth_"))
+    # Create subdirectories
+    (temp_dir / "output").mkdir()
+    (temp_dir / "generated").mkdir()
+    (temp_dir / "curated").mkdir()
+    (temp_dir / "final").mkdir()
+    return temp_dir
+
+
 async def ingest_source_async(
     source_path: str,
     config_path: Path,
+    workspace: Path,
     multimodal: bool = False,
     log_fn: Optional[Callable] = None,
 ) -> Optional[Path]:
@@ -84,7 +99,7 @@ async def ingest_source_async(
                 await log_fn(f"  ❌ Ingestion failed: {stderr[:150]}")
         return None
 
-    output_dir = Path("data/output")
+    output_dir = workspace / "output"
 
     if is_url(source_path):
         parsed = urlparse(source_path)
@@ -104,6 +119,7 @@ async def ingest_source_async(
 async def generate_content_async(
     chunk_file: str,
     config_path: Path,
+    workspace: Path,
     gen_type: str = "qa",
     num_pairs: int = 25,
     log_fn: Optional[Callable] = None,
@@ -144,12 +160,12 @@ async def generate_content_async(
 
     chunk_name = Path(chunk_file).stem
     suffix = TYPE_SUFFIXES.get(gen_type, "_generated")
-    generated_path = Path(f"data/generated/{chunk_name}{suffix}.json")
+    generated_path = workspace / "generated" / f"{chunk_name}{suffix}.json"
 
     if generated_path.exists():
         return generated_path
 
-    for f in Path("data/generated").glob(f"{chunk_name}*.json"):
+    for f in (workspace / "generated").glob(f"{chunk_name}*.json"):
         return f
 
     return None
@@ -158,6 +174,7 @@ async def generate_content_async(
 async def curate_content_async(
     json_file: Path,
     config_path: Path,
+    workspace: Path,
     threshold: float = 7.5,
     log_fn: Optional[Callable] = None,
 ) -> Path:
@@ -182,7 +199,7 @@ async def curate_content_async(
             await log_fn("    ⚠️ Curation error, using original")
         return json_file
 
-    curated_path = Path(f"data/curated/{json_file.stem}_cleaned.json")
+    curated_path = workspace / "curated" / f"{json_file.stem}_cleaned.json"
     if curated_path.exists():
         return curated_path
 
@@ -192,6 +209,7 @@ async def curate_content_async(
 async def convert_to_ft_format_async(
     json_file: Path,
     config_path: Path,
+    workspace: Path,
     log_fn: Optional[Callable] = None,
 ) -> Optional[Path]:
     """Convert to fine-tuning format (async)."""
@@ -207,11 +225,11 @@ async def convert_to_ft_format_async(
 
     await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
 
-    ft_path = Path(f"data/final/{json_file.stem}_ft.json")
+    ft_path = workspace / "final" / f"{json_file.stem}_ft.json"
     if ft_path.exists():
         return ft_path
 
-    for f in Path("data/final").glob(f"{json_file.stem}*.json"):
+    for f in (workspace / "final").glob(f"{json_file.stem}*.json"):
         return f
 
     return None
@@ -259,7 +277,6 @@ async def run_synthetic_generation(
     curate: bool = False,
     curate_threshold: float = 7.5,
     multimodal: bool = False,
-    output_path: str = "synthetic_data.json",
     dataset_format: str = "ChatML",
     model: str = "unsloth/Llama-3.2-3B-Instruct",
 ) -> None:
@@ -328,13 +345,12 @@ async def run_synthetic_generation(
     await log("⏳ Loading model and starting vLLM server...")
     await log("   (This may take 30-60 seconds on first run)")
 
-    # Clear and create output directories
-    for folder in ["data/output", "data/generated", "data/curated", "data/final"]:
-        if Path(folder).exists():
-            shutil.rmtree(folder)
-        Path(folder).mkdir(parents=True, exist_ok=True)
+    # Create temp workspace directory
+    workspace = create_temp_workspace()
+    await log(f"   Workspace: {workspace}")
 
-    config_path = create_config_file()
+    # Create config file pointing to temp workspace
+    config_path = create_config_file(str(workspace), config_dir=workspace)
 
     # Initialize generator (run in thread to not block UI)
     try:
@@ -346,7 +362,7 @@ async def run_synthetic_generation(
                 max_seq_length=2048,
             )
             gen.prepare_qa_generation(
-                output_folder="data",
+                output_folder=str(workspace),
                 temperature=0.7,
                 top_p=0.95,
                 overlap=64,
@@ -408,7 +424,7 @@ async def run_synthetic_generation(
             await log(f"{'=' * 40}")
 
             # Ingest source (async)
-            txt_file = await ingest_source_async(source_str, config_path, multimodal, log)
+            txt_file = await ingest_source_async(source_str, config_path, workspace, multimodal, log)
             if not txt_file:
                 await log("  ⚠️ Failed to ingest, skipping...")
                 continue
@@ -438,17 +454,17 @@ async def run_synthetic_generation(
                 await log(f"\n  [{i + 1}/{len(chunks_to_process)}] Generating {gen_type}...")
 
                 # Generate content (async)
-                gen_file = await generate_content_async(chunk_file, config_path, gen_type, num_pairs, log)
+                gen_file = await generate_content_async(chunk_file, config_path, workspace, gen_type, num_pairs, log)
                 if not gen_file:
                     await log("    ❌ Generation failed for this chunk")
                     continue
 
                 # Optionally curate (async)
                 if curate:
-                    gen_file = await curate_content_async(gen_file, config_path, curate_threshold, log)
+                    gen_file = await curate_content_async(gen_file, config_path, workspace, curate_threshold, log)
 
                 # Convert to fine-tuning format (async)
-                ft_file = await convert_to_ft_format_async(gen_file, config_path, log)
+                ft_file = await convert_to_ft_format_async(gen_file, config_path, workspace, log)
                 if ft_file:
                     all_ft_files.append(ft_file)
                     total_pairs += num_pairs  # Approximate count
@@ -479,13 +495,7 @@ async def run_synthetic_generation(
             total_pairs = len(final_data)
             pairs_output = dataset_format.lower() == "standard"
 
-            # Write to output file
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(final_data, f, ensure_ascii=False, indent=2)
-
-            await log(f"💾 Saved to: {output_path}")
-
-            # Save to database
+            # Save to database first (always)
             try:
                 source_details = f"sources={len(sources)}, type={gen_type}, model={model}"
                 if pairs_output:
@@ -510,7 +520,9 @@ async def run_synthetic_generation(
                 await log(f"⚠️ Database save warning: {db_err}")
 
             total_elapsed = time.time() - start_time
-            await log(f"\n✨ Done! Generated {total_pairs} {'pairs' if pairs_output else 'conversations'} in {format_time(total_elapsed)}")
+            await log(
+                f"\n✨ Done! Generated {total_pairs} {'pairs' if pairs_output else 'conversations'} in {format_time(total_elapsed)}"
+            )
             await update_stats(sources_processed, total_pairs)
 
             # Update labels to match other scrapers
@@ -565,6 +577,11 @@ async def run_synthetic_generation(
         await log("\n🧹 Cleaning up...")
         try:
             generator.cleanup()
+        except Exception:
+            pass
+        # Clean up temp workspace
+        try:
+            shutil.rmtree(workspace, ignore_errors=True)
         except Exception:
             pass
 

@@ -14,7 +14,9 @@ Use this tab to:
 - Select a data source and configure parameters
 - Choose pairing strategies (for web scrapers) or generation types (for synthetic)
 - Monitor progress and logs in real time
-- Preview the resulting JSON dataset
+- Preview the resulting dataset
+
+All scraped data is automatically saved to the database.
 
 ![Scrape Tab](../../img/ff_scrape_tab.png)
 
@@ -28,9 +30,9 @@ Typical workflow:
 1. Configure source-specific parameters.
 1. Click **Start** and watch the progress / logs.
 1. When finished, preview the dataset in the two-column grid.
-1. Feed the resulting JSON into the **Build / Publish** and **Training** tabs.
+1. Use the resulting database session in the **Build / Publish**, **Merge**, and **Training** tabs.
 
-The output is a JSON file like:
+Data is stored in the database using the standard schema:
 
 ```json
 [
@@ -45,6 +47,8 @@ Or in ChatML format:
   {"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
 ]
 ```
+
+You can export data to JSON via the database helpers if needed for external tools.
 
 ______________________________________________________________________
 
@@ -84,10 +88,11 @@ ______________________________________________________________________
 
 ### 3. Common Parameters
 
-- **Target JSON file** — Path to the output JSON file (default: `scraped_training_data.json`)
 - **Dataset Format** — Standard (input/output) or ChatML (messages array)
 - **Delay (s)** — Polite delay between HTTP requests (for web scrapers)
 - **Min Length** — Minimum character count per side for a pair to be kept
+
+All scraped data is automatically saved to the database as a new session.
 
 ### 4. Progress & Logs
 
@@ -97,8 +102,8 @@ ______________________________________________________________________
 
 ### 5. Output & Preview
 
-- **Output path** — Where the JSON file will be written
 - **Preview grid** — Two-column preview of the first N `input` / `output` pairs so you can inspect data before building or training
+- All data is automatically saved to the database as a new scrape session
 
 ______________________________________________________________________
 
@@ -159,13 +164,13 @@ ______________________________________________________________________
 - **Min Length filter** — Reduce low-signal or spammy pairs.
 - **Synthetic generation** — Use high-quality source documents for better results.
 - **Model choice** — Larger models produce better synthetic data but require more VRAM.
-- **After generation** — Pass the JSON through **Build / Publish** and **Dataset Analysis** before training.
+- **After generation** — Use **Build / Publish** and **Dataset Analysis** to prepare your data before training.
 
 ______________________________________________________________________
 
 ## Related Topics
 
-- [Build & Publish Tab](build-publish-tab.md) – turn raw JSON into train/val/test splits.
+- [Build & Publish Tab](build-publish-tab.md) – turn scraped data into train/val/test splits.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple scraped datasets.
 - [Analysis Tab](analysis-tab.md) – inspect dataset quality before training.
 - [Training Tab](training-tab.md) – fine-tune models on your prepared dataset.

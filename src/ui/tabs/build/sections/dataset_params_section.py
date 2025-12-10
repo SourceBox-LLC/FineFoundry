@@ -13,6 +13,9 @@ def build_dataset_params_section(
     _mk_help_handler,
     # Dataset params
     source_mode,
+    data_source_dd,
+    db_session_dd,
+    db_refresh_btn,
     data_file,
     merged_dir,
     seed,
@@ -30,12 +33,13 @@ def build_dataset_params_section(
             section_title(
                 "Dataset Params",
                 ICONS.SETTINGS,
-                "Choose input source, preprocessing, and output path for building a dataset.",
-                on_help_click=_mk_help_handler("Choose input source, preprocessing, and output path for building a dataset."),
+                "Choose input source, preprocessing, and output path. Data is loaded from database by default.",
+                on_help_click=_mk_help_handler("Choose input source, preprocessing, and output path. Data is loaded from database by default."),
             ),
             ft.Container(
                 content=ft.Column([
-                    ft.Row([source_mode, data_file, merged_dir, seed, shuffle, min_len_b, save_dir], wrap=True),
+                    ft.Row([source_mode, data_source_dd, db_session_dd, db_refresh_btn, data_file, merged_dir], wrap=True),
+                    ft.Row([seed, shuffle, min_len_b, save_dir], wrap=True),
                     ft.Divider(),
                     section_title(
                         "Splits",

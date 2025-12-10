@@ -138,16 +138,16 @@ def build_training_tab_with_logic(
     train_source = ft.Dropdown(
         label="Dataset source",
         options=[
+            ft.dropdown.Option("Database"),
             ft.dropdown.Option("Hugging Face"),
-            ft.dropdown.Option("JSON file"),
         ],
-        value="Hugging Face",
+        value="Database",
         width=180,
     )
     train_hf_repo = ft.TextField(
         label="Dataset repo (e.g., username/dataset)",
         width=360,
-        visible=True,
+        visible=False,  # Hidden by default since Database is default source
     )
     train_hf_split = ft.Dropdown(
         label="Split",
@@ -158,17 +158,117 @@ def build_training_tab_with_logic(
         ],
         value="train",
         width=140,
+        visible=False,  # Hidden by default
+    )
+    train_hf_config = ft.TextField(label="Config (optional)", width=180, visible=False)  # Hidden by default
+    # JSON path kept for internal use only (not user-facing)
+    train_json_path = ft.TextField(label="JSON path", width=300, visible=False)
+
+    # Database session selector (visible by default since Database is default source)
+    train_db_session_dd = ft.Dropdown(
+        label="Scrape session",
+        options=[],
+        width=400,
+        visible=True,
+        tooltip="Select a scrape session from the database",
+    )
+    train_db_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh sessions",
         visible=True,
     )
-    train_hf_config = ft.TextField(label="Config (optional)", width=180, visible=True)
-    train_json_path = ft.TextField(label="JSON path", width=360, visible=False)
+    train_db_pair_count = ft.Text("", visible=True)
+
+    # File picker for JSON dataset
+    def _on_json_file_picked(e: ft.FilePickerResultEvent):
+        if e.files and len(e.files) > 0:
+            train_json_path.value = e.files[0].path
+            try:
+                page.update()
+            except Exception:
+                pass
+
+    json_file_picker = ft.FilePicker(on_result=_on_json_file_picked)
+    page.overlay.append(json_file_picker)
+
+    def _pick_json_file(_=None):
+        json_file_picker.pick_files(
+            dialog_title="Select JSON Dataset",
+            allowed_extensions=["json", "jsonl"],
+            allow_multiple=False,
+        )
+
+    train_json_browse_btn = ft.IconButton(
+        icon=ft.Icons.FOLDER_OPEN,
+        tooltip="Browse for JSON file",
+        visible=False,
+        on_click=_pick_json_file,
+    )
+
+    def _refresh_db_sessions(_=None):
+        """Refresh the database session dropdown with available scrape sessions."""
+        try:
+            from db.scraped_data import list_scrape_sessions
+
+            sessions = list_scrape_sessions(limit=50)
+            options = []
+            for s in sessions:
+                label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
+                if s.get("source_details"):
+                    label = f"{s['source']}: {s['source_details'][:30]} - {s['pair_count']} pairs"
+                options.append(ft.dropdown.Option(key=str(s["id"]), text=label))
+            train_db_session_dd.options = options
+            if options and not train_db_session_dd.value:
+                train_db_session_dd.value = options[0].key
+                _update_db_pair_count(None)
+        except Exception as e:
+            train_db_session_dd.options = [ft.dropdown.Option(key="", text=f"Error: {e}")]
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def _update_db_pair_count(_=None):
+        """Update the pair count display when session changes."""
+        try:
+            session_id = train_db_session_dd.value
+            if session_id:
+                from db.scraped_data import get_scrape_session
+
+                session = get_scrape_session(int(session_id))
+                if session:
+                    train_db_pair_count.value = f"📊 {session['pair_count']} pairs available"
+                else:
+                    train_db_pair_count.value = ""
+            else:
+                train_db_pair_count.value = ""
+        except Exception:
+            train_db_pair_count.value = ""
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    train_db_session_dd.on_change = _update_db_pair_count
+    train_db_refresh_btn.on_click = _refresh_db_sessions
 
     def _update_train_source(_=None):
-        is_hf = (getattr(train_source, "value", "Hugging Face") or "Hugging Face") == "Hugging Face"
+        src = getattr(train_source, "value", "Database") or "Database"
+        is_hf = src == "Hugging Face"
+        is_db = src == "Database"
+        # HuggingFace controls
         train_hf_repo.visible = is_hf
         train_hf_split.visible = is_hf
         train_hf_config.visible = is_hf
-        train_json_path.visible = not is_hf
+        # Database controls
+        train_db_session_dd.visible = is_db
+        train_db_refresh_btn.visible = is_db
+        train_db_pair_count.visible = is_db
+        if is_db:
+            _refresh_db_sessions()
+        # JSON controls always hidden (internal use only)
+        train_json_path.visible = False
+        train_json_browse_btn.visible = False
         try:
             page.update()
         except Exception:  # pragma: no cover - UI best-effort
@@ -272,12 +372,41 @@ def build_training_tab_with_logic(
         value="unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
         width=320,
     )
-    epochs_tf = ft.TextField(label="Epochs", value="3", width=120)
+    epochs_tf = ft.TextField(
+        label="Epochs", value="1", width=120, tooltip="Recommended: 1-3 epochs. More can cause overfitting."
+    )
     lr_tf = ft.TextField(label="Learning rate", value="2e-4", width=160)
     batch_tf = ft.TextField(label="Per-device batch size", value="2", width=200)
     grad_acc_tf = ft.TextField(label="Grad accum steps", value="4", width=180)
-    max_steps_tf = ft.TextField(label="Max steps", value="200", width=180)
+    max_steps_tf = ft.TextField(
+        label="Max steps", value="-1", width=180, tooltip="-1 = train full epochs. Set positive value to limit steps."
+    )
     use_lora_cb = ft.Checkbox(label="Use LoRA", value=True)
+    lora_r_dd = ft.Dropdown(
+        label="LoRA Rank",
+        value="16",
+        options=[ft.dropdown.Option(x) for x in ["8", "16", "32", "64", "128"]],
+        width=100,
+        tooltip="Higher rank = more capacity but slower. 16-32 recommended.",
+    )
+    lora_alpha_tf = ft.TextField(
+        label="LoRA Alpha",
+        value="",
+        width=100,
+        hint_text="2×r",
+        tooltip="Scaling factor. Default: 2×rank for aggressive learning. Leave empty for auto.",
+    )
+    lora_dropout_tf = ft.TextField(
+        label="LoRA Dropout",
+        value="0",
+        width=100,
+        tooltip="Regularization. 0 = Unsloth optimized, 0.05-0.1 if overfitting.",
+    )
+    use_rslora_cb = ft.Checkbox(
+        label="RSLoRA",
+        value=False,
+        tooltip="Rank-stabilized LoRA. Better for high ranks (64+).",
+    )
     out_dir_tf = ft.TextField(label="Output dir", value="/data/outputs/runpod_run", width=260)
 
     # New HP toggles/fields
@@ -393,8 +522,9 @@ def build_training_tab_with_logic(
             ft.dropdown.Option("cosine"),
             ft.dropdown.Option("constant"),
         ],
-        value="linear",
+        value="cosine",
         width=160,
+        tooltip="Cosine often gives better convergence than linear.",
     )
     optim_dd = ft.Dropdown(
         label="Optimizer",
@@ -424,8 +554,10 @@ def build_training_tab_with_logic(
         value="none",
         width=160,
     )
-    fp16_cb = ft.Checkbox(label="Use FP16", value=True)
-    bf16_cb = ft.Checkbox(label="Use BF16 (if supported)", value=False)
+    fp16_cb = ft.Checkbox(label="Use FP16", value=False, tooltip="Auto-selected by trainer based on GPU support.")
+    bf16_cb = ft.Checkbox(
+        label="Use BF16 (if supported)", value=False, tooltip="Auto-selected by trainer based on GPU support."
+    )
 
     advanced_params_section = ft.Column(
         [
@@ -671,6 +803,11 @@ def build_training_tab_with_logic(
         _update_skill_controls()
     except Exception:
         pass
+    # Initialize database sessions dropdown (since Database is default source)
+    try:
+        _refresh_db_sessions()
+    except Exception:
+        pass
 
     def _build_hp() -> dict:
         """Build train.py flags via helper (delegated)."""
@@ -680,6 +817,7 @@ def build_training_tab_with_logic(
             train_hf_split=train_hf_split,
             train_hf_config=train_hf_config,
             train_json_path=train_json_path,
+            train_db_session_dd=train_db_session_dd,
             base_model=base_model,
             out_dir_tf=out_dir_tf,
             epochs_tf=epochs_tf,
@@ -688,6 +826,10 @@ def build_training_tab_with_logic(
             grad_acc_tf=grad_acc_tf,
             max_steps_tf=max_steps_tf,
             use_lora_cb=use_lora_cb,
+            lora_r_dd=lora_r_dd,
+            lora_alpha_tf=lora_alpha_tf,
+            lora_dropout_tf=lora_dropout_tf,
+            use_rslora_cb=use_rslora_cb,
             packing_cb=packing_cb,
             auto_resume_cb=auto_resume_cb,
             push_cb=push_cb,
@@ -750,15 +892,16 @@ def build_training_tab_with_logic(
 
             def _do_save(_=None):
                 name = (name_tf.value or default_name).strip()
-                d = _saved_configs_dir()
-                path = os.path.join(
-                    d,
-                    name if name.endswith(".json") else f"{name}.json",
-                )
+                if not name:
+                    return
+                # Remove .json extension if present (database stores by name only)
+                if name.lower().endswith(".json"):
+                    name = name[:-5]
                 try:
-                    with open(path, "w", encoding="utf-8") as f:
-                        json.dump(payload, f, indent=2)
-                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
+                    from helpers.training_config import save_config
+
+                    save_config(name, payload)
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {name}"))
                     page.snack_bar.open = True
                     _refresh_config_list()
                 except Exception as ex:
@@ -860,6 +1003,7 @@ def build_training_tab_with_logic(
             train_hf_repo=train_hf_repo,
             train_hf_split=train_hf_split,
             train_json_path=train_json_path,
+            train_db_session_dd=train_db_session_dd,
             train_timeline=train_timeline,
             train_progress=train_progress,
             train_prog_label=train_prog_label,
@@ -1072,8 +1216,9 @@ def build_training_tab_with_logic(
         for name in all_files:
             tgt_val = ""
             try:
-                path = os.path.join(_saved_configs_dir(), name)
-                conf = _read_json_file(path) or {}
+                # Remove .json extension if present
+                config_name = name[:-5] if name.lower().endswith(".json") else name
+                conf = _read_json_file(config_name) or {}
                 meta = conf.get("meta") or {}
                 tgt_val = str(meta.get("train_target") or "").strip().lower()
             except Exception:
@@ -1577,6 +1722,10 @@ def build_training_tab_with_logic(
         train_hf_split=train_hf_split,
         train_hf_config=train_hf_config,
         train_json_path=train_json_path,
+        train_json_browse_btn=train_json_browse_btn,
+        train_db_session_dd=train_db_session_dd,
+        train_db_refresh_btn=train_db_refresh_btn,
+        train_db_pair_count=train_db_pair_count,
         visible=False,
     )
 
@@ -1599,6 +1748,10 @@ def build_training_tab_with_logic(
         grad_acc_tf=grad_acc_tf,
         max_steps_tf=max_steps_tf,
         use_lora_cb=use_lora_cb,
+        lora_r_dd=lora_r_dd,
+        lora_alpha_tf=lora_alpha_tf,
+        lora_dropout_tf=lora_dropout_tf,
+        use_rslora_cb=use_rslora_cb,
         out_dir_tf=out_dir_tf,
         packing_row=packing_row,
         auto_resume_row=auto_resume_row,
@@ -1707,33 +1860,125 @@ def build_training_tab_with_logic(
     )
 
     # ---------- LOCAL DOCKER: Run Training ----------
-    local_host_dir_tf = ft.TextField(
-        label="Host data directory (mounted to /data)",
-        width=600,
+    # Training run selector (managed storage)
+    local_training_run_dd = ft.Dropdown(
+        label="Training run",
+        options=[],
+        width=400,
+        tooltip="Select or create a training run for managed storage",
+    )
+    local_training_run_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh training runs",
+    )
+    local_new_run_name_tf = ft.TextField(
+        label="New run name",
+        width=280,
         dense=True,
-        hint_text="Absolute path on your machine to mount as /data in the container",
+        hint_text="Name for new training run",
+    )
+    local_create_run_btn = ft.OutlinedButton(
+        "Create Run",
+        icon=getattr(ICONS, "ADD", ICONS.CHECK),
+    )
+    local_run_storage_info = ft.Text(
+        "",
+        size=11,
+        color=WITH_OPACITY(0.7, BORDER_BASE),
     )
 
-    def _on_local_dir_picked(e):
+    def _refresh_training_runs(_=None):
+        """Refresh the training runs dropdown."""
         try:
-            sel = getattr(e, "path", None) or ""
-            if sel:
-                local_host_dir_tf.value = sel
+            from db.training_runs import list_training_runs
+
+            runs = list_training_runs(limit=50)
+            options = []
+            for r in runs:
+                status_icon = {"pending": "⏳", "running": "🔄", "completed": "✅", "failed": "❌"}.get(r["status"], "")
+                label = f"{status_icon} {r['name']} ({r['status']}) - {r['created_at'][:10]}"
+                options.append(ft.dropdown.Option(key=str(r["id"]), text=label))
+            local_training_run_dd.options = options
+            if options and not local_training_run_dd.value:
+                local_training_run_dd.value = options[0].key
+                _update_run_storage_info()
+        except Exception as e:
+            local_training_run_dd.options = [ft.dropdown.Option(key="", text=f"Error: {e}")]
+        try:
             page.update()
         except Exception:
             pass
 
-    local_dir_picker = ft.FilePicker(on_result=_on_local_dir_picked)
+    def _update_run_storage_info(_=None):
+        """Update the storage info text for selected run."""
+        try:
+            run_id = local_training_run_dd.value
+            if run_id:
+                from db.training_runs import get_run_storage_paths
+
+                paths = get_run_storage_paths(int(run_id))
+                if paths:
+                    local_run_storage_info.value = f"Storage: {paths['root']}"
+                else:
+                    local_run_storage_info.value = ""
+            else:
+                local_run_storage_info.value = ""
+            page.update()
+        except Exception:
+            pass
+
+    def _create_training_run(_=None):
+        """Create a new training run."""
+        try:
+            name = (local_new_run_name_tf.value or "").strip()
+            if not name:
+                name = f"run_{int(time.time())}"
+
+            # Get current dataset info
+            src = train_source.value or "Database"
+            dataset_id = ""
+            if src == "Database":
+                dataset_id = train_db_session_dd.value or ""
+            elif src == "Hugging Face":
+                dataset_id = train_hf_repo.value or ""
+
+            model = base_model.value or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
+
+            from db.training_runs import create_training_run
+
+            run = create_training_run(
+                name=name,
+                base_model=model,
+                dataset_source=src,
+                dataset_id=dataset_id,
+            )
+
+            # Refresh and select the new run
+            _refresh_training_runs()
+            local_training_run_dd.value = str(run["id"])
+            _update_run_storage_info()
+            local_new_run_name_tf.value = ""
+            page.update()
+        except Exception as e:
+            local_run_storage_info.value = f"Error creating run: {e}"
+            page.update()
+
+    local_training_run_refresh_btn.on_click = _refresh_training_runs
+    local_training_run_dd.on_change = _update_run_storage_info
+    local_create_run_btn.on_click = _create_training_run
+
+    # Initialize training runs on load
     try:
-        page.overlay.append(local_dir_picker)
+        _refresh_training_runs()
     except Exception:
         pass
-    local_browse_btn = ft.OutlinedButton(
-        "Browse…",
-        icon=getattr(ICONS, "FOLDER_OPEN", getattr(ICONS, "FOLDER", ICONS.SEARCH)),
-        on_click=lambda e: local_dir_picker.get_directory_path(
-            dialog_title="Select host data directory to mount as /data"
-        ),
+
+    # Hidden field for backward compatibility (stores managed path)
+    local_host_dir_tf = ft.TextField(
+        label="Host data directory (mounted to /data)",
+        width=600,
+        dense=True,
+        visible=False,  # Hidden - managed internally
     )
     local_container_name_tf = ft.TextField(
         label="Container name",
@@ -1969,7 +2214,8 @@ def build_training_tab_with_logic(
             train_hf_repo=train_hf_repo,
             train_hf_split=train_hf_split,
             train_json_path=train_json_path,
-            local_host_dir_tf=local_host_dir_tf,
+            train_db_session_dd=train_db_session_dd,
+            local_training_run_dd=local_training_run_dd,
             local_container_name_tf=local_container_name_tf,
             local_train_status=local_train_status,
             local_train_progress=local_train_progress,
@@ -2183,8 +2429,11 @@ def build_training_tab_with_logic(
         docker_log_timeline=docker_log_timeline,
         docker_log_placeholder=docker_log_placeholder,
         refresh_specs_click_cb=lambda e: page.run_task(on_refresh_local_specs),
-        local_host_dir_tf=local_host_dir_tf,
-        local_browse_btn=local_browse_btn,
+        local_training_run_dd=local_training_run_dd,
+        local_training_run_refresh_btn=local_training_run_refresh_btn,
+        local_new_run_name_tf=local_new_run_name_tf,
+        local_create_run_btn=local_create_run_btn,
+        local_run_storage_info=local_run_storage_info,
         local_container_name_tf=local_container_name_tf,
         local_use_gpu_cb=local_use_gpu_cb,
         local_pass_hf_token_cb=local_pass_hf_token_cb,
@@ -2307,17 +2556,18 @@ def build_training_tab_with_logic(
                 name = (name_tf.value or default_name).strip()
                 if not name:
                     return
-                d = _saved_configs_dir()
-                path = os.path.join(d, name if name.endswith(".json") else f"{name}.json")
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2, ensure_ascii=False)
-                    f.write("\n")
+                # Remove .json extension if present (database stores by name only)
+                if name.lower().endswith(".json"):
+                    name = name[:-5]
+                from helpers.training_config import save_config
+
+                save_config(name, payload)
                 try:
-                    set_last_used_config_name_helper(os.path.basename(path))
+                    set_last_used_config_name_helper(name)
                 except Exception:
                     pass
                 try:
-                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {os.path.basename(path)}"))
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Saved config: {name}"))
                     page.snack_bar.open = True
                 except Exception:
                     pass
@@ -2401,9 +2651,12 @@ def build_training_tab_with_logic(
                 train_hf_repo.value = hp.get("hf_dataset_id", "")
                 train_hf_split.value = hp.get("hf_dataset_split", "train")
                 train_hf_config.value = hp.get("hf_dataset_config", train_hf_config.value)
+            elif "db_session_id" in hp:
+                train_source.value = "Database"
+                # db_session_id will be loaded via refresh
+            # Legacy json_path configs default to Database
             elif "json_path" in hp:
-                train_source.value = "JSON file"
-                train_json_path.value = hp.get("json_path", "")
+                train_source.value = "Database"
             # toggles
             packing_cb.value = bool(hp.get("packing", packing_cb.value))
             auto_resume_cb.value = bool(hp.get("auto_resume", auto_resume_cb.value))
@@ -2516,8 +2769,11 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
             return
-        path = os.path.join(_saved_configs_dir(), name)
-        conf = _read_json_file(path)
+        # Remove .json extension if present (database stores by name only)
+        config_name = name[:-5] if name.lower().endswith(".json") else name
+        from helpers.training_config import read_json_file
+
+        conf = read_json_file(config_name)
         if not isinstance(conf, dict):
             try:
                 page.snack_bar = ft.SnackBar(ft.Text("Failed to load config: invalid JSON or unreadable file."))
@@ -2570,25 +2826,22 @@ def build_training_tab_with_logic(
                 new_name = (new_tf.value or name).strip()
                 if not new_name:
                     return
-                if not new_name.lower().endswith(".json"):
-                    new_name = f"{new_name}.json"
-                d = _saved_configs_dir()
-                src = os.path.join(d, name)
-                dst = os.path.join(d, new_name)
-                # No-op if unchanged (case-insensitive on Windows)
-                try:
-                    if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
-                        dlg.open = False
-                        await safe_update(page)
-                        return
-                except Exception:
-                    pass
-                if os.path.exists(dst):
-                    page.snack_bar = ft.SnackBar(ft.Text("A config with that name already exists."))
+                # Remove .json extension if present (database stores by name only)
+                old_name = name[:-5] if name.lower().endswith(".json") else name
+                new_name = new_name[:-5] if new_name.lower().endswith(".json") else new_name
+                # No-op if unchanged
+                if old_name.lower() == new_name.lower():
+                    dlg.open = False
+                    await safe_update(page)
+                    return
+                from helpers.training_config import rename_config
+
+                success, msg = rename_config(old_name, new_name)
+                if not success:
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Rename failed: {msg}"))
                     page.snack_bar.open = True
                     await safe_update(page)
                     return
-                os.rename(src, dst)
                 _refresh_config_list()
                 try:
                     config_files_dd.value = new_name
@@ -2649,21 +2902,15 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
             return
-        d = _saved_configs_dir()
-        path = os.path.join(d, name)
-        raw_text = ""
-        conf = None
+        # Remove .json extension if present (database stores by name only)
+        config_name = name[:-5] if name.lower().endswith(".json") else name
+        from helpers.training_config import read_json_file
+
+        conf = read_json_file(config_name) or {}
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                raw_text = f.read()
+            raw_text = json.dumps(conf, indent=2, ensure_ascii=False)
         except Exception:
-            raw_text = ""
-        if not raw_text:
-            conf = _read_json_file(path) or {}
-            try:
-                raw_text = json.dumps(conf, indent=2, ensure_ascii=False)
-            except Exception:
-                raw_text = "{}"
+            raw_text = "{}"
 
         editor_tf = ft.TextField(
             label=f"Editing: {name}",
@@ -2716,9 +2963,9 @@ def build_training_tab_with_logic(
                 await safe_update(page)
                 return
             try:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(data, indent=2, ensure_ascii=False))
-                    f.write("\n")
+                from helpers.training_config import save_config
+
+                save_config(config_name, data)
             except Exception as ex:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Save failed: {ex}"))
                 page.snack_bar.open = True
@@ -2840,9 +3087,11 @@ def build_training_tab_with_logic(
 
         async def _do_delete(_=None):
             try:
-                d = _saved_configs_dir()
-                path = os.path.join(d, name)
-                os.remove(path)
+                from helpers.training_config import delete_config
+
+                # Remove .json extension if present
+                config_name = name[:-5] if name.lower().endswith(".json") else name
+                delete_config(config_name)
                 _refresh_config_list()
                 try:
                     if (train_state.get("loaded_config_name") or "") == name:
@@ -2851,7 +3100,7 @@ def build_training_tab_with_logic(
                         config_summary_txt.value = ""
                 except Exception:
                     pass
-                page.snack_bar = ft.SnackBar(ft.Text(f"Deleted: {name}"))
+                page.snack_bar = ft.SnackBar(ft.Text(f"Deleted: {config_name}"))
                 page.snack_bar.open = True
             except Exception as ex:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Delete failed: {ex}"))
@@ -2881,9 +3130,9 @@ def build_training_tab_with_logic(
     if last_name:
         conf_for_last: dict = {}
         try:
-            d = _saved_configs_dir()
-            path = os.path.join(d, last_name)
-            conf_for_last = _read_json_file(path) or {}
+            # Remove .json extension if present
+            config_name = last_name[:-5] if last_name.lower().endswith(".json") else last_name
+            conf_for_last = _read_json_file(config_name) or {}
         except Exception:
             conf_for_last = {}
         try:

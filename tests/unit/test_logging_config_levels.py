@@ -4,12 +4,14 @@ from helpers import logging_config
 
 
 def test_set_global_log_level_updates_finefoundry_loggers(tmp_path, monkeypatch):
-    # Redirect log files to a temporary directory for this test
-    monkeypatch.setattr(logging_config, "LOG_DIR", tmp_path)
+    # Clear any existing handlers to avoid duplicates
+    for name in ["finefoundry.test_level1", "finefoundry.test_level2"]:
+        logger = logging.getLogger(name)
+        logger.handlers.clear()
 
     # Create a couple of finefoundry loggers
-    logger1 = logging_config.get_logger("finefoundry.test1")
-    logger2 = logging_config.get_logger("finefoundry.test2")
+    logger1 = logging_config.get_logger("finefoundry.test_level1")
+    logger2 = logging_config.get_logger("finefoundry.test_level2")
 
     logging_config.set_global_log_level(logging.DEBUG)
 

@@ -1,4 +1,0 @@
-# Synthetic Data Kit Configuration
-output_folder: data
-vllm:
-  base_url: "http://localhost:8000/v1"

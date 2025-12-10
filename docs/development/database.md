@@ -1,6 +1,6 @@
 # Database Architecture
 
-FineFoundry uses SQLite for unified data storage, replacing the previous scattered JSON files. This provides better data integrity, queryability, and a single source of truth for all application data.
+FineFoundry uses SQLite as the **sole storage mechanism** for all application data. There are no filesystem fallbacks or legacy JSON files.
 
 ## Overview
 
@@ -10,7 +10,11 @@ The database file `finefoundry.db` is created in the project root on first run. 
 - **Training Configs** — Saved hyperparameter configurations
 - **Scrape Sessions** — Metadata for each scrape run
 - **Scraped Pairs** — Individual input/output pairs from scraping
+- **Training Runs** — Managed training runs with logs, adapters, checkpoints
+- **App Logs** — Application logs (replaces file-based logging)
 - **App State** — Internal state (last used config, schema version)
+
+The only file-based storage is `training_outputs/` for binary model artifacts (checkpoints, adapters) which cannot be stored in SQLite.
 
 ## Schema
 
@@ -76,6 +80,50 @@ CREATE TABLE scraped_pairs (
 );
 ```
 
+### training_runs
+
+Managed training runs with metadata and file paths.
+
+```sql
+CREATE TABLE training_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',    -- pending, running, completed, failed, cancelled
+    base_model TEXT,
+    dataset_source TEXT,              -- "huggingface", "database"
+    dataset_id TEXT,                  -- HF repo or session ID
+    storage_path TEXT,                -- Path to training_outputs/<run_name>/
+    output_dir TEXT,
+    adapter_path TEXT,
+    checkpoint_path TEXT,
+    hp_json TEXT,                     -- Hyperparameters JSON
+    logs_json TEXT,                   -- Training logs JSON
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    metadata_json TEXT
+);
+```
+
+### app_logs
+
+Application logs stored in the database (replaces file-based logging).
+
+```sql
+CREATE TABLE app_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    level TEXT NOT NULL,              -- DEBUG, INFO, WARNING, ERROR, CRITICAL
+    logger TEXT,                      -- Logger name (e.g., "finefoundry.helpers.scrape")
+    message TEXT NOT NULL,
+    module TEXT,
+    func_name TEXT,
+    line_no INTEGER,
+    exc_info TEXT                     -- Exception traceback if any
+);
+```
+
 ### app_state
 
 Internal application state.
@@ -87,7 +135,7 @@ CREATE TABLE app_state (
 );
 ```
 
-Used for: `last_used_config`, `schema_version`, `json_migration_complete`.
+Used for: `last_used_config`, `schema_version`.
 
 ## Module Structure
 
@@ -98,7 +146,8 @@ src/db/
 ├── settings.py          # Settings CRUD
 ├── training_configs.py  # Training config CRUD
 ├── scraped_data.py      # Scrape sessions and pairs CRUD
-└── migrate.py           # JSON to SQLite migration
+├── training_runs.py     # Training runs CRUD
+└── logs.py              # Database logging handler
 ```
 
 ## Usage
@@ -137,52 +186,79 @@ add_scraped_pairs(session_id, [
 pairs = get_pairs_for_session(session_id)
 ```
 
-### Migration
-
-Existing JSON files are automatically migrated on first run:
+### Training Runs
 
 ```python
-from db import init_db, migrate_from_json
-from db.migrate import is_migration_complete
+from db.training_runs import (
+    create_training_run,
+    get_training_run,
+    update_training_run,
+    delete_training_run,
+    list_training_runs,
+    get_managed_storage_root,
+)
 
-init_db()
-if not is_migration_complete():
-    results = migrate_from_json()
-    print(results)
+# Create a new training run (auto-creates storage directory)
+run = create_training_run(
+    name="my_finetune",
+    base_model="unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
+    dataset_source="database",
+    dataset_id="123",
+)
+# run["storage_path"] = "training_outputs/my_finetune_20241209_123456/"
+
+# Update status
+update_training_run(run["id"], status="running")
+
+# List all runs
+runs = list_training_runs(status="completed")
 ```
 
-The migration handles:
+### Logging
 
-- `ff_settings.json` → `settings` table
-- `saved_configs/*.json` → `training_configs` table
-- `scraped_training_data.json` → `scraped_pairs` table (both standard and ChatML formats)
+```python
+from db import get_logs, get_log_count, clear_logs
+
+# Get recent logs
+logs = get_logs(limit=100, level="ERROR")
+
+# Get log count
+count = get_log_count(level="WARNING")
+
+# Clear old logs
+clear_logs(older_than_days=30)
+```
 
 ### Export to JSON
 
 For compatibility with external tools:
 
 ```python
-from db.migrate import export_all_to_json
+from helpers.scrape_db import export_to_json
 
-outputs = export_all_to_json("/path/to/backup")
-# Returns: {"settings": "...", "training_configs": "...", "scraped_data": "..."}
+# Export a scrape session to JSON
+export_to_json(session_id, "/path/to/output.json")
 ```
 
 ## Thread Safety
 
 The database uses thread-local connections, making it safe to use from multiple threads. Each thread gets its own connection that is reused for the lifetime of the thread.
 
-## Backward Compatibility
-
-- JSON files are still written during scraping for compatibility with the Build & Publish workflow
-- The `helpers/training_config.py` module falls back to filesystem if database operations fail
-- Existing JSON files are preserved after migration (not deleted)
-
 ## File Locations
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
 | `finefoundry.db` | Main SQLite database (project root) |
-| `ff_settings.json` | Legacy settings (migrated, kept for backup) |
-| `saved_configs/*.json` | Legacy training configs (migrated) |
-| `scraped_training_data.json` | Scrape output (still written for compatibility) |
+| `training_outputs/` | Binary model artifacts (checkpoints, adapters) |
+
+### Temporary Files
+
+- **Synthetic data generation** uses OS temp directories (`/tmp/finefoundry_synth_*`) that are automatically cleaned up after generation completes.
+- **Docker/RunPod training** exports database sessions to temporary JSON files in mounted directories (required by Unsloth trainer).
+
+### Optional Exports
+
+Users can optionally export data to JSON for external tools:
+- Merged datasets can be exported to JSON via the Merge tab
+- Scrape sessions can be exported via `helpers.scrape_db.export_to_json()`
+- Training logs can be saved to files via the Training tab

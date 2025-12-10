@@ -184,24 +184,25 @@ ______________________________________________________________________
 
 ## Dataset Building Issues
 
-### "Failed to load JSON file"
+### "Failed to load database session"
 
-**Problem**: JSON file is corrupted or wrong format
+**Problem**: Database session not found or corrupted
 
 **Solution**:
 
-1. Validate JSON syntax:
-   ```bash
-   python -m json.tool your_file.json
+1. Verify the session exists in the database:
+   ```python
+   from db import list_scrape_sessions
+   sessions = list_scrape_sessions()
+   print(sessions)
    ```
-1. Check file encoding (should be UTF-8)
-1. Verify schema matches expected format:
-   ```json
-   [
-     {"input": "text", "output": "text"}
-   ]
+1. Check the session has data:
+   ```python
+   from db import get_pairs_for_session
+   pairs = get_pairs_for_session(session_id)
+   print(f"Found {len(pairs)} pairs")
    ```
-1. Re-scrape if file is corrupted
+1. Re-scrape if session data is missing
 
 ### "No records after filtering"
 
@@ -211,7 +212,7 @@ ______________________________________________________________________
 
 - Reduce minimum length requirement
 - Check that scraped data has actual content
-- Preview raw JSON to verify data quality
+- Preview the database session to verify data quality
 - Check logs for specific filtering reasons
 
 ### Push to Hub fails (401/403)
@@ -348,7 +349,7 @@ For local Docker training, the Training tab's Beginner preset **Auto Set (local)
 
 - Use the Training tab's **Save current setup** buttons (or Configuration mode) to snapshot known‑good setups.
 - Re‑load a saved config instead of re‑entering values manually, especially when switching between Runpod and local runs.
-- Config JSON files live under `src/saved_configs/`, and the last used config auto-loads on startup.
+- Configs are stored in the database, and the last used config auto-loads on startup.
 - Enable DEBUG logging (see [Logging Guide](../development/logging.md))
 
 ______________________________________________________________________
@@ -374,10 +375,7 @@ ______________________________________________________________________
 **Solution**:
 
 - Manually specify column names for HF datasets
-- For JSON files, ensure schema matches:
-  ```json
-  [{"input": "...", "output": "..."}]
-  ```
+- For database sessions, data uses standard schema automatically
 - Check for typos in column names
 - Verify dataset actually has the columns you specified
 
@@ -388,9 +386,8 @@ ______________________________________________________________________
 **Solution**:
 
 - Merge fewer datasets at once
-- Use HF dataset dir format instead of JSON
 - Close other applications
-- Merge in batches
+- Merge in batches (2-3 at a time)
 - Upgrade system RAM if consistently hitting limits
 
 ______________________________________________________________________
@@ -452,16 +449,15 @@ ______________________________________________________________________
 
 - Use paginated preview dialogs instead of inline previews
 - Open datasets in external tools for large datasets
-- Use HF dataset dir format for better performance
 - Consider dataset subsampling for preview purposes
 
-### Logs filling up disk space
+### Database growing too large
 
 **Solutions**:
 
-- Log files auto-rotate at 10MB
-- Old backups (`.log.1` through `.log.5`) can be safely deleted
-- See [Logging Guide](../development/logging.md) for details
+- Clear old logs: `from db import clear_logs; clear_logs(older_than_days=30)`
+- Delete old scrape sessions you no longer need
+- See [Database Guide](../development/database.md) for details
 - Disable DEBUG mode if enabled
 
 ______________________________________________________________________
@@ -484,23 +480,25 @@ uv run src/main.py
 
 ### View logs
 
-```bash
-# Real-time monitoring
-tail -f logs/__main__.log
-tail -f logs/helpers_merge.log
+Logs are stored in the SQLite database (`finefoundry.db`). Access them programmatically:
 
-# Search for errors
-grep "ERROR" logs/*.log
+```python
+from db import get_logs, get_log_count
 
-# View recent activity
-tail -100 logs/__main__.log
+# Get recent errors
+errors = get_logs(level="ERROR", limit=50)
+
+# Get log count
+count = get_log_count(level="WARNING")
 ```
 
-### Log locations
+Or query directly with SQLite:
 
-- `logs/__main__.log` - Main application logs
-- `logs/helpers_merge.log` - Merge operation logs
-- Additional module logs as needed
+```bash
+sqlite3 finefoundry.db "SELECT * FROM app_logs WHERE level='ERROR' ORDER BY timestamp DESC LIMIT 10"
+```
+
+Logs are also printed to the console in real-time.
 
 See the complete [Logging Guide](../development/logging.md) for more details.
 

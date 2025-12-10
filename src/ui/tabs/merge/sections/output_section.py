@@ -13,7 +13,8 @@ def build_output_section(
     WITH_OPACITY,
     _mk_help_handler,
     merge_output_format: ft.Dropdown,
-    merge_save_dir: ft.TextField,
+    merge_session_name: ft.TextField,
+    merge_export_path: ft.TextField,
     merge_actions: ft.Row,
 ) -> ft.Container:
     return ft.Container(
@@ -22,13 +23,16 @@ def build_output_section(
                 section_title(
                     "Output",
                     getattr(ICONS, "SAVE_ALT", ICONS.SAVE),
-                    "Set output format and save directory.",
-                    on_help_click=_mk_help_handler("Set output format and save directory."),
+                    "Save merged dataset to database.",
+                    on_help_click=_mk_help_handler(
+                        "Merged datasets are saved to the database. Optionally export to JSON."
+                    ),
                 ),
                 ft.Container(
                     content=ft.Column(
                         [
-                            ft.Row([merge_output_format, merge_save_dir], wrap=True),
+                            ft.Row([merge_output_format, merge_session_name], wrap=True),
+                            merge_export_path,
                             merge_actions,
                         ],
                         spacing=10,

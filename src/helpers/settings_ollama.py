@@ -1,6 +1,6 @@
 """Ollama settings and API helpers.
 
-Now uses SQLite database for storage. Maintains backward-compatible API.
+Uses SQLite database for storage.
 """
 
 from __future__ import annotations

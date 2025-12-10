@@ -99,20 +99,24 @@ class TestIngestSource:
         """Test ingesting a non-existent file returns None."""
         config_path = tmp_path / "config.yaml"
         config_path.write_text("output_folder: data")
+        workspace = tmp_path
+        (workspace / "output").mkdir(exist_ok=True)
         
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="File not found")
-            result = ingest_source("/nonexistent/file.pdf", config_path, False, True)
+            result = ingest_source("/nonexistent/file.pdf", config_path, workspace, False, True)
             assert result is None
 
     def test_ingest_url_failure(self, tmp_path):
         """Test ingesting an invalid URL returns None."""
         config_path = tmp_path / "config.yaml"
         config_path.write_text("output_folder: data")
+        workspace = tmp_path
+        (workspace / "output").mkdir(exist_ok=True)
         
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="Connection failed")
-            result = ingest_source("https://invalid.example.com/doc.pdf", config_path, False, True)
+            result = ingest_source("https://invalid.example.com/doc.pdf", config_path, workspace, False, True)
             assert result is None
 
 

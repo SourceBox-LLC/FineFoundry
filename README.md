@@ -74,16 +74,14 @@ Built with Flet for a fast, native-like UI. Includes:
 ## 🧭 Contents
 
 - `src/main.py` — Flet desktop app (Scrape, Build/Publish, Training, Merge, Analysis, Settings)
-- `src/db/` — SQLite database module for unified data storage
-- `src/scrapers/fourchan_scraper.py` — 4chan scraper and text cleaners (library)
-- `src/scrapers/reddit_scraper.py` — Reddit scraper CLI + conversational pair builder
-- `src/scrapers/stackexchange_scraper.py` — Stack Exchange Q/A scraper (programmatic)
-- `src/helpers/synthetic.py` — Synthetic data generation using Unsloth's SyntheticDataKit
+- `src/db/` — SQLite database module (sole storage mechanism)
+- `src/helpers/` — Business logic helpers (settings, training, scraping, synthetic)
+- `src/scrapers/` — Data scrapers (4chan, Reddit, Stack Exchange)
+- `src/ui/` — UI components and tab controllers
+- `src/runpod/` — Runpod infrastructure automation
 - `src/save_dataset.py` — CLI dataset builder and Hub pusher
-- `src/runpod/ensure_infra.py` — Runpod infrastructure automation (network volume + template)
-- `src/runpod/runpod_pod.py` — Runpod pod helper (create/run, patch command, logs)
-- `requirements.txt` — pinned dependencies
 - `finefoundry.db` — SQLite database (auto-created on first run)
+- `training_outputs/` — Model artifacts (checkpoints, adapters)
 
 <a id="prerequisites"></a>
 
@@ -167,9 +165,9 @@ Choose from multiple data sources:
 - **Stack Exchange**: Q&A pairs from Stack Overflow and other sites.
 - **Synthetic**: Generate training data from documents using local LLMs (see below).
 
-**Parameters**: `Max Threads`, `Max Pairs`, `Delay (s)`, `Min Length`, `Output JSON Path`.
+**Parameters**: `Max Threads`, `Max Pairs`, `Delay (s)`, `Min Length`.
 
-Click **Start** to scrape. Live progress, stats, and logs are shown. **Preview Dataset** to inspect the first rows in a two-column grid.
+Click **Start** to scrape. Live progress, stats, and logs are shown. **Preview Dataset** to inspect the first rows in a two-column grid. All scraped data is automatically saved to the database.
 
 #### Synthetic Data Generation
 
@@ -184,9 +182,9 @@ Generate Q&A pairs, chain-of-thought reasoning, or summaries from your own docum
    - **Max Chunks**: Maximum document chunks to process
 1. Click **Start** — a snackbar appears immediately while the model loads (~30-60s on first run)
 1. Watch live progress as chunks are processed and pairs generated
-1. Results are saved to the output JSON and database
+1. Results are automatically saved to the database
 
-Default output is `scraped_training_data.json` in the project root. Schema is a list of objects:
+Generated data uses the standard schema:
 
 ```json
 [
@@ -194,13 +192,15 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 ]
 ```
 
+You can export data to JSON via the database helpers if needed for external tools.
+
 <a id="build--publish-tab"></a>
 
 ### 🏗️ Build / Publish tab
 
 ![Build / Publish tab](img/ff_buld_publish.png)
 
-- Point to your `Data file (JSON)` (defaults to `scraped_training_data.json`).
+- Select a **Database Session** from your scrape history, or point to a **Hugging Face** dataset.
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.
 - Set split fractions with sliders (`Validation`, `Test`).
 - Click **Build Dataset** to create `datasets.DatasetDict` and save to `Save dir`.
@@ -217,7 +217,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 ![Training tab](img/ff_training.png)
 
 - **Training target**: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
-- **Dataset source**: select Hugging Face repo and split, or point to a JSON file.
+- **Dataset source**: select a **Database Session** from your scrape history, or a **Hugging Face** repo and split.
 - **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, LR, Per-device batch size, Grad accum steps, Max steps, Packing, Auto-resume.
 - **Output**: `Output dir` is used inside the container (typically under `/data/outputs/...`) and mapped back into your host folder when using Runpod or local Docker.
 - **Push to Hub**: toggle to upload trained weights/adapters; set HF repo id and ensure authentication (HF token in Settings or env).
@@ -235,9 +235,9 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
   - Test the trained adapter with prompt input, temperature / max token sliders, presets (Deterministic / Balanced / Creative), and a clear-history button.
   - When you click **Run Inference**, the button is disabled and a small progress ring plus status text indicate that the fine-tuned model is loading and generating; the response appears in the panel once it is ready.
 - **Training configurations**:
-  - Save the current setup (dataset, hyperparameters, training target, Runpod infra or local Docker settings) as a JSON config.
+  - Save the current setup (dataset, hyperparameters, training target, Runpod infra or local Docker settings) as a named configuration.
   - Load configs from the **Configuration** section to quickly restore full training setups.
-  - Config files live under `src/saved_configs/`, and the last used config auto-loads on startup.
+  - Configurations are stored in the database and the last used config auto-loads on startup.
 
 #### 💡 Training notes & tips
 
@@ -261,9 +261,9 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 
 ![Merge Datasets tab](img/ff_merge.png)
 
-- Combine multiple JSON files and/or Hugging Face datasets into a single dataset.
+- Combine multiple **Database Sessions** and/or **Hugging Face** datasets into a single dataset.
 - Automatically maps input/output columns and filters empty rows.
-- Optionally normalize and save merged results to a JSON path or build a `datasets.DatasetDict`.
+- Merged results are saved to the database as a new session, with optional JSON export.
 
 <a id="dataset-analysis-tab"></a>
 
@@ -271,7 +271,7 @@ Default output is `scraped_training_data.json` in the project root. Schema is a 
 
 ![Dataset Analysis tab](img/ff_dataset_analysis.png)
 
-- Select dataset source (Hugging Face or JSON) and click Analyze dataset.
+- Select dataset source (Database Session or Hugging Face) and click Analyze dataset.
 - Use "Select all" to toggle all modules at once.
 - Toggles gate computation and visibility:
   - Basic Stats
@@ -569,16 +569,18 @@ Reddit and Stack Exchange details are documented in their CLI/usage sections bel
 
 ## 💾 Data Storage
 
-FineFoundry uses a SQLite database (`finefoundry.db`) for unified data storage:
+FineFoundry uses SQLite (`finefoundry.db`) as the **sole storage mechanism** for all application data:
 
 - **Settings** — HF token, RunPod API key, Ollama config, proxy settings
 - **Training Configs** — Saved hyperparameter configurations
 - **Scrape Sessions** — History of all scrape runs with metadata (4chan, Reddit, Stack Exchange, Synthetic)
 - **Scraped Pairs** — All input/output pairs from scraping and synthetic generation
+- **Training Runs** — Managed training runs with logs, adapters, checkpoints
+- **App Logs** — Application logs (database-backed, not file-based)
 
-The database is auto-created on first run. Existing JSON files (`ff_settings.json`, `saved_configs/*.json`) are automatically migrated.
+The database is auto-created on first run. The only file-based storage is `training_outputs/` for binary model artifacts (checkpoints, adapters).
 
-JSON files are still written during scraping/generation for compatibility with the Build & Publish workflow and external tools.
+For detailed schema and API documentation, see [Database Architecture](docs/development/database.md).
 
 <a id="dataset-artifacts"></a>
 
@@ -647,7 +649,7 @@ Tests live under `tests/` and are discovered by `pytest` (configured via `pyproj
 
 - **Integration tests (`tests/integration/`)**
 
-  - End-to-end flows such as `save_dataset.main` (JSON → normalized pairs → on-disk HF dataset), dataset merge JSON interleave, and tab-controller smoke tests (Scrape/Build/Merge/Analysis/Training/Inference controllers building successfully on a dummy `Page`).
+  - End-to-end flows such as `save_dataset.main` (data → normalized pairs → on-disk HF dataset), synthetic data generation, and tab-controller smoke tests (Scrape/Build/Merge/Analysis/Training/Inference controllers building successfully on a dummy `Page`).
 
   - Marked with `@pytest.mark.integration` so you can select or skip them:
 

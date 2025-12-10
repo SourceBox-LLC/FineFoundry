@@ -1,7 +1,7 @@
 """Application settings helpers.
 
 Provides a unified interface for loading and saving settings.
-Now uses SQLite database for storage. Maintains backward-compatible API.
+Uses SQLite database for storage.
 """
 
 from __future__ import annotations

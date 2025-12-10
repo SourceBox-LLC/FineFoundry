@@ -58,8 +58,7 @@ from helpers.settings import (
     load_runpod_config as load_runpod_config_from_db,
     save_runpod_config as save_runpod_config_to_db,
 )
-from db import init_db, migrate_from_json
-from db.migrate import is_migration_complete
+from db import init_db
 
 # Set terminal title to uppercase for the current session
 set_terminal_title("PYTHON: MAIN")
@@ -148,9 +147,9 @@ Tabs:
 - Provide `HF_TOKEN` in Settings or via environment/CLI login.
 
 ## Merge Datasets
-- Combine JSON files and/or HF datasets.
+- Combine database sessions and/or HF datasets.
 - Auto‑map `input`/`output` columns; filter empty rows.
-- Save merged JSON or build a `datasets.DatasetDict`.
+- Merged data is saved to the database as a new session.
 
 ## Training
 - Training target: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
@@ -160,7 +159,7 @@ Tabs:
 
 ### Local Training (Docker)
 - Requires Docker Desktop / `docker` CLI available on your machine.
-- Set **Host data dir** to a folder on your machine; it will be mounted at `/data` inside the container.
+- Select or create a **Training run** for managed storage; the run's directory is mounted at `/data` inside the container.
 - Configure image, container name, GPU usage, and whether to **Pass HF token to container** (for private datasets / `--push`).
 - Click **Start Local Training** to run the same `train.py` command used for Runpod, but inside a local container.
 - After a successful local run, a **Quick Local Inference** panel appears so you can test the trained adapter immediately.
@@ -178,10 +177,10 @@ Tabs:
   - Dataset + hyperparameters
   - Training target (Runpod or local)
   - Runpod infrastructure or local Docker settings
-- Saved configs are simple JSON files under `src/saved_configs/`. The last used config auto‑loads on startup so you can continue where you left off.
+- Saved configs are stored in the database. The last used config auto‑loads on startup so you can continue where you left off.
 
 ## Dataset Analysis
-- Select dataset source (HF or JSON) and click **Analyze dataset**.
+- Select dataset source (Database or HF) and click **Analyze dataset**.
 - Use **Select all** to toggle modules. Only enabled modules are computed and shown.
 - Modules: Basic Stats • Duplicates • Sentiment • Class balance (length) •
   Extra proxies (Coverage overlap, Data leakage, Conversation depth, Speaker balance,
@@ -375,13 +374,9 @@ Tabs:
     use_env_cb.on_change = update_proxy_controls
     update_proxy_controls()
 
-    # Initialize database and run migration if needed
+    # Initialize database
     try:
         init_db()
-        if not is_migration_complete():
-            logger.info("Running one-time migration from JSON to SQLite...")
-            migrate_from_json()
-            logger.info("Migration complete")
     except Exception as e:
         logger.warning(f"Database initialization warning: {e}")
 

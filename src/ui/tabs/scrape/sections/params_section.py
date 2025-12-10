@@ -19,7 +19,8 @@ def build_params_section(
     max_pairs,
     delay,
     min_len,
-    output_path,
+    export_json_cb,  # Kept for compatibility but not displayed
+    output_path,  # Kept for compatibility but not displayed
     dataset_format_dd,
     multiturn_sw,
     scrape_actions,
@@ -30,9 +31,9 @@ def build_params_section(
                 section_title(
                     "Parameters",
                     getattr(ICONS, "TUNE", ICONS.SETTINGS),
-                    "Set scraping/generation limits, path, and output format. For synthetic data, select files and generation type.",
+                    "Set scraping/generation limits and output format. Data is saved to database automatically.",
                     on_help_click=_mk_help_handler(
-                        "Set scraping/generation limits, path, and output format. For synthetic data, select files and generation type."
+                        "Set scraping/generation limits and output format. Data is saved to database automatically."
                     ),
                 ),
                 ft.Container(
@@ -41,7 +42,7 @@ def build_params_section(
                             reddit_params_row,
                             se_params_row,
                             synthetic_params_row,
-                            ft.Row([max_threads, max_pairs, delay, min_len, output_path, dataset_format_dd], wrap=True),
+                            ft.Row([max_threads, max_pairs, delay, min_len, dataset_format_dd], wrap=True),
                             ft.Row([multiturn_sw], wrap=True),
                             scrape_actions,
                         ],

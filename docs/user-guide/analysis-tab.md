@@ -4,7 +4,7 @@ The Dataset Analysis tab provides interactive insights into your datasets so you
 
 Use this tab to:
 
-- Load a JSON or Hugging Face dataset
+- Load a database session or Hugging Face dataset
 - Run a configurable set of analysis modules (stats, duplicates, sentiment, etc.)
 - Visualize distributions and proxy metrics for data quality
 
@@ -16,7 +16,7 @@ ______________________________________________________________________
 
 Typical workflow:
 
-1. Select a **dataset source** (JSON file or Hugging Face repo).
+1. Select a **dataset source** (Database Session or Hugging Face repo).
 1. Enable the analysis **modules** you care about.
 1. Click **Analyze dataset**.
 1. Review summary stats and module outputs.
@@ -28,8 +28,8 @@ ______________________________________________________________________
 
 ### 1. Dataset Source
 
-- **Source selector** – Choose JSON file or Hugging Face dataset.
-- **Path / repo fields** – Provide the file path or repo id + split.
+- **Source selector** – Choose Database Session or Hugging Face dataset.
+- **Session / repo fields** – Select a scrape session or provide repo id + split.
 
 ### 2. Analysis Modules
 

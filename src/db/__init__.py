@@ -35,7 +35,23 @@ from .scraped_data import (
     export_session_to_json,
     delete_scrape_session,
 )
-from .migrate import migrate_from_json
+from .training_runs import (
+    create_training_run,
+    get_training_run,
+    list_training_runs,
+    update_training_run,
+    delete_training_run,
+    get_run_storage_paths,
+    get_latest_run,
+    get_managed_storage_root,
+)
+from .logs import (
+    DatabaseHandler,
+    get_logs,
+    clear_logs,
+    get_log_count,
+    setup_database_logging,
+)
 
 __all__ = [
     # Core
@@ -65,6 +81,19 @@ __all__ = [
     "get_pairs_for_session",
     "export_session_to_json",
     "delete_scrape_session",
-    # Migration
-    "migrate_from_json",
+    # Training runs
+    "create_training_run",
+    "get_training_run",
+    "list_training_runs",
+    "update_training_run",
+    "delete_training_run",
+    "get_run_storage_paths",
+    "get_latest_run",
+    "get_managed_storage_root",
+    # Logging
+    "DatabaseHandler",
+    "get_logs",
+    "clear_logs",
+    "get_log_count",
+    "setup_database_logging",
 ]

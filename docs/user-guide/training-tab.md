@@ -6,7 +6,7 @@ Use this tab to:
 
 - Fine‑tune models with beginner‑friendly presets or full expert control
 - Run the **same training script** on cloud GPUs (Runpod) or your local machine
-- Save and reload complete training setups as reusable JSON configs
+- Save and reload complete training setups as reusable configurations (stored in database)
 - Sanity‑check a completed local run with **Quick Local Inference**
 
 ![Training Tab](../../img/ff_training.png)
@@ -49,8 +49,8 @@ ______________________________________________________________________
 ### 2. Dataset & Output
 
 - **Dataset source**
+  - **Database Session**: Select from your scrape history.
   - **Hugging Face**: `Dataset repo`, `Split`, optional `Config`.
-  - **JSON file**: Local `.json` file (must follow the `[{"input": "...", "output": "..."}]` schema).
 - **Output directory**
   - Path used **inside the container** (usually under `/data/outputs/...`).
   - Mapped back to a real directory on your Runpod network volume or local host mount.
@@ -119,13 +119,12 @@ When you click **Run Inference**:
 ### 7. Configuration (Saved Setups)
 
 - **Mode selector / Configuration section** – manage saved training configs.
-- **Saved config dropdown** – list of JSON configs, filtered by current training target.
+- **Saved config dropdown** – list of configs from the database, filtered by current training target.
 - **Actions**
-  - **Refresh list** – re‑scan the `src/saved_configs/` folder.
+  - **Refresh list** – reload configs from the database.
   - **Load** – apply a saved config to all UI fields (dataset, hyperparameters, target, infra).
-  - **Edit** – open the config JSON in your editor.
-  - **Rename** – change filename from within the app.
-  - **Delete** – remove a config file.
+  - **Rename** – change config name from within the app.
+  - **Delete** – remove a config from the database.
 - **Save current setup** buttons
   - One in the Configuration section.
   - Additional convenience buttons near training controls.
@@ -137,7 +136,7 @@ Configs include:
 - Hyperparameters and skill level / Beginner preset.
 - Runpod infra settings or local Docker settings.
 
-The last used config is tracked and **auto‑loads on startup**.
+All configurations are stored in the SQLite database. The last used config is tracked and **auto‑loads on startup**.
 
 ______________________________________________________________________
 
@@ -221,15 +220,15 @@ ______________________________________________________________________
 
 ## Training Configurations (Save / Load)
 
-Training configs are JSON files under `src/saved_configs/` and capture the **entire training setup**.
+Training configs are stored in the database and capture the **entire training setup**.
 
 ### Saving
 
 - Click a **Save current setup** button.
 - Enter a descriptive name.
-- The app writes a JSON file capturing:
+- The app saves a configuration capturing:
   - Training target (Runpod vs local).
-  - Dataset source + split / JSON path.
+  - Dataset source + split / session ID.
   - Hyperparameters, skill level, and Beginner preset key.
   - Runpod infra or local Docker settings.
 - The name is recorded as the **last used config** for auto‑load on startup.

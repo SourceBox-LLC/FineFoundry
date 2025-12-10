@@ -35,7 +35,6 @@ async def run_stackexchange_scrape(
     max_pairs: int,
     delay: float,
     min_len_val: int,
-    output_path: str,
     ui_proxy_enabled: bool,
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
@@ -127,10 +126,7 @@ async def run_stackexchange_scrape(
             payload = results or []
         else:
             payload = pairs_to_chatml(results or [])
-        await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
-        )
-        # Save to database
+        # Save to database first (always)
         try:
             if pairs_output:
                 await asyncio.to_thread(
@@ -153,12 +149,12 @@ async def run_stackexchange_scrape(
         except Exception as db_err:
             log(f"Database save warning: {db_err}")
         if pairs_output:
-            log(f"Wrote {len(payload)} pairs to {output_path}")
+            log(f"Scraped {len(payload)} pairs")
             count = len(payload)
             head = payload[:10]
             preview_pairs = [((ex.get("input", "") or ""), (ex.get("output", "") or "")) for ex in head]
         else:
-            log(f"Wrote {len(payload)} conversations to {output_path}")
+            log(f"Scraped {len(payload)} conversations")
             count = len(payload)
             head = payload[:10]
             for c in head:
@@ -193,50 +189,6 @@ async def run_stackexchange_scrape(
                         preview_pairs.append((user_text or "", assistant_text or ""))
                 except Exception:
                     pass
-        if not preview_pairs:
-            # Fallback: read from saved file and derive a few pairs
-            try:
-                loaded = await asyncio.to_thread(lambda: json.load(open(output_path, "r", encoding="utf-8")))
-                if isinstance(loaded, list) and loaded:
-                    tmp: List[tuple[str, str]] = []
-                    if pairs_output:
-                        for ex in loaded[:10]:
-                            if isinstance(ex, dict):
-                                tmp.append(((ex.get("input", "") or ""), (ex.get("output", "") or "")))
-                    else:
-                        for rec in loaded[:10]:
-                            if not isinstance(rec, dict):
-                                continue
-                            msgs = rec.get("messages", []) or []
-                            u = None
-                            a = None
-                            for m in msgs:
-                                if not isinstance(m, dict):
-                                    continue
-                                role = m.get("role")
-                                text = (m.get("content") or "").strip()
-                                if not text:
-                                    continue
-                                if role == "user" and u is None:
-                                    u = text
-                                elif role == "assistant" and u is not None:
-                                    a = text
-                                    break
-                            if not (u and a):
-                                texts = [
-                                    (m.get("content") or "").strip()
-                                    for m in msgs
-                                    if isinstance(m, dict) and (m.get("content") or "").strip()
-                                ]
-                                if len(texts) >= 2:
-                                    u, a = texts[0], texts[1]
-                                elif len(texts) == 1:
-                                    u, a = texts[0], ""
-                            if u or a:
-                                tmp.append((u or "", a or ""))
-                    preview_pairs = tmp or preview_pairs
-            except Exception:
-                pass
         if not preview_pairs:
             preview_pairs = [("(no preview)", "")]
     except Exception as e:
@@ -274,7 +226,6 @@ async def run_reddit_scrape(
     max_posts: int,
     delay: float,
     min_len_val: int,
-    output_path: str,
     multiturn: bool,
     ctx_k: int,
     ctx_max_chars: Optional[int],
@@ -477,15 +428,7 @@ async def run_reddit_scrape(
                     pass
             pairs_count = len(standard_pairs)
 
-        # Write to desired output path (ChatML or Standard)
-        dest = output_path or "scraped_training_data.json"
-        dest_abs = os.path.abspath(dest)
-        os.makedirs(os.path.dirname(dest_abs) or ".", exist_ok=True)
-        payload = chatml_convs if not pairs_output else standard_pairs
-        await asyncio.to_thread(
-            lambda: open(dest_abs, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
-        )
-        # Save to database
+        # Save to database first (always)
         try:
             if pairs_output:
                 await asyncio.to_thread(
@@ -508,9 +451,9 @@ async def run_reddit_scrape(
         except Exception as db_err:
             log(f"Database save warning: {db_err}")
         if pairs_output:
-            log(f"Wrote {pairs_count} pairs to: {dest_abs}")
+            log(f"Scraped {pairs_count} pairs")
         else:
-            log(f"Wrote {conv_count} conversations to: {dest_abs}")
+            log(f"Scraped {conv_count} conversations")
 
         # Build preview
         if pairs_output:
@@ -571,50 +514,6 @@ async def run_reddit_scrape(
     try:
         preview_host.controls.clear()
         if not sample_pairs:
-            # Fallback: read from saved file
-            try:
-                loaded = await asyncio.to_thread(lambda: json.load(open(dest_abs, "r", encoding="utf-8")))
-                if isinstance(loaded, list) and loaded:
-                    tmp: List[tuple[str, str]] = []
-                    if pairs_output:
-                        for ex in loaded[:10]:
-                            if isinstance(ex, dict):
-                                tmp.append(((ex.get("input", "") or ""), (ex.get("output", "") or "")))
-                    else:
-                        for rec in loaded[:10]:
-                            if not isinstance(rec, dict):
-                                continue
-                            msgs = rec.get("messages", []) or []
-                            u = None
-                            a = None
-                            for m in msgs:
-                                if not isinstance(m, dict):
-                                    continue
-                                role = m.get("role")
-                                text = (m.get("content") or "").strip()
-                                if not text:
-                                    continue
-                                if role == "user" and u is None:
-                                    u = text
-                                elif role == "assistant" and u is not None:
-                                    a = text
-                                    break
-                            if not (u and a):
-                                texts = [
-                                    (m.get("content") or "").strip()
-                                    for m in msgs
-                                    if isinstance(m, dict) and (m.get("content") or "").strip()
-                                ]
-                                if len(texts) >= 2:
-                                    u, a = texts[0], texts[1]
-                                elif len(texts) == 1:
-                                    u, a = texts[0], ""
-                            if u or a:
-                                tmp.append((u or "", a or ""))
-                    sample_pairs = tmp or sample_pairs
-            except Exception:
-                pass
-        if not sample_pairs:
             sample_pairs = [("(no preview)", "")]  # graceful empty state
         lfx, rfx = compute_two_col_flex(sample_pairs)
         hdr_left = "Input" if pairs_output else "User"
@@ -650,7 +549,6 @@ async def run_real_scrape(
     max_pairs_total: int,
     delay: float,
     min_len_val: int,
-    output_path: str,
     multiturn: bool,
     ctx_strategy: str,
     ctx_k: int,
@@ -826,10 +724,7 @@ async def run_real_scrape(
                 payload = conversations_accum
             else:
                 payload = pairs_to_chatml(pairs_accum)
-        await asyncio.to_thread(
-            lambda: open(output_path, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=4))
-        )
-        # Save to database
+        # Save to database first (always)
         try:
             boards_str = ",".join(boards[:5]) + ("..." if len(boards) > 5 else "")
             if pairs_output:
@@ -873,15 +768,9 @@ async def run_real_scrape(
             log("Saved to database")
         except Exception as db_err:
             log(f"Database save warning: {db_err}")
-        log(
-            (
-                f"Wrote {len(payload)} pairs to {output_path}"
-                if pairs_output
-                else f"Wrote {len(payload)} conversations to {output_path}"
-            )
-        )
+        log((f"Scraped {len(payload)} pairs" if pairs_output else f"Scraped {len(payload)} conversations"))
     except Exception as e:
-        log(f"Failed to write {output_path}: {e}")
+        log(f"Failed to save to database: {e}")
         await safe_update(page)
         return
 
@@ -912,50 +801,6 @@ async def run_real_scrape(
         else:
             head = pairs_accum[:10]
         sample_pairs = [(ex.get("input", "") or "", ex.get("output", "") or "") for ex in head]
-        if not sample_pairs:
-            # Fallback: read from saved file
-            try:
-                loaded = await asyncio.to_thread(lambda: json.load(open(output_path, "r", encoding="utf-8")))
-                if isinstance(loaded, list) and loaded:
-                    tmp: List[tuple[str, str]] = []
-                    if pairs_output:
-                        for ex in loaded[:10]:
-                            if isinstance(ex, dict):
-                                tmp.append(((ex.get("input", "") or ""), (ex.get("output", "") or "")))
-                    else:
-                        for rec in loaded[:10]:
-                            if not isinstance(rec, dict):
-                                continue
-                            msgs = rec.get("messages", []) or []
-                            u = None
-                            a = None
-                            for m in msgs:
-                                if not isinstance(m, dict):
-                                    continue
-                                role = m.get("role")
-                                text = (m.get("content") or "").strip()
-                                if not text:
-                                    continue
-                                if role == "user" and u is None:
-                                    u = text
-                                elif role == "assistant" and u is not None:
-                                    a = text
-                                    break
-                            if not (u and a):
-                                texts = [
-                                    (m.get("content") or "").strip()
-                                    for m in msgs
-                                    if isinstance(m, dict) and (m.get("content") or "").strip()
-                                ]
-                                if len(texts) >= 2:
-                                    u, a = texts[0], texts[1]
-                                elif len(texts) == 1:
-                                    u, a = texts[0], ""
-                            if u or a:
-                                tmp.append((u or "", a or ""))
-                    sample_pairs = tmp or sample_pairs
-            except Exception:
-                pass
         if not sample_pairs:
             sample_pairs = [("(no preview)", "")]
     else:
