@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List
 
 import flet as ft
 
@@ -365,7 +366,13 @@ def build_inference_tab_with_logic(
         "Clear history",
         icon=getattr(ICONS, "DELETE_SWEEP", getattr(ICONS, "DELETE", ICONS.CLOSE)),
     )
+    infer_export_btn = ft.TextButton(
+        "Export chats",
+        icon=getattr(ICONS, "DOWNLOAD", getattr(ICONS, "SAVE_ALT", ICONS.SAVE)),
+    )
     infer_busy_ring = ft.ProgressRing(visible=False, width=24, height=24, stroke_width=3)
+    # Buffer for storing chat history (prompt/response pairs) for export
+    infer_chat_buffer: List[Dict[str, str]] = []
 
     infer_full_chat_btn = ft.OutlinedButton(
         "Full Chat View",
@@ -416,6 +423,10 @@ def build_inference_tab_with_logic(
             except Exception:
                 pass
             try:
+                infer_chat_buffer.clear()
+            except Exception:
+                pass
+            try:
                 infer_status.value = "Idle — history cleared."
             except Exception:
                 pass
@@ -433,6 +444,47 @@ def build_inference_tab_with_logic(
                 pass
         except Exception:
             pass
+
+    def _on_save_infer_chats(e):
+        """Save inference chat history to a file."""
+        try:
+            path = getattr(e, "path", None)
+            if not path:
+                return
+            if not infer_chat_buffer:
+                infer_status.value = "No chats to export."
+                page.update()
+                return
+            # Format as readable text
+            lines = []
+            for i, chat in enumerate(infer_chat_buffer, 1):
+                lines.append(f"=== Chat {i} ===")
+                lines.append(f"Prompt:\n{chat.get('prompt', '')}")
+                lines.append(f"\nResponse:\n{chat.get('response', '')}")
+                lines.append("")
+            txt = "\n".join(lines)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(txt)
+            infer_status.value = f"Exported {len(infer_chat_buffer)} chats to: {path}"
+            page.update()
+        except Exception as ex:
+            infer_status.value = f"Failed to export chats: {ex}"
+            try:
+                page.update()
+            except Exception:
+                pass
+
+    infer_chats_picker = ft.FilePicker(on_result=_on_save_infer_chats)
+    try:
+        page.overlay.append(infer_chats_picker)
+    except Exception:
+        pass
+
+    infer_export_btn.on_click = lambda e: infer_chats_picker.save_file(
+        dialog_title="Export chat history",
+        file_name=f"inference-chats-{int(time.time())}.txt",
+        allowed_extensions=["txt", "md"],
+    )
 
     def _close_infer_chat_dialog(e=None):  # noqa: ARG001
         try:
@@ -687,6 +739,8 @@ def build_inference_tab_with_logic(
                     spacing=4,
                 ),
             )
+            # Store in chat buffer for export
+            infer_chat_buffer.append({"prompt": prompt, "response": text})
             # Keep shared chat history in sync with the main Prompt & responses view
             try:
                 state = train_state.setdefault("inference", {})
@@ -1006,6 +1060,8 @@ def build_inference_tab_with_logic(
                     spacing=6,
                 ),
             )
+            # Store in chat buffer for export
+            infer_chat_buffer.append({"prompt": msg, "response": text})
             # Mirror chat turns into the main Prompt & responses history list
             try:
                 infer_output_placeholder.visible = False
@@ -1090,6 +1146,7 @@ def build_inference_tab_with_logic(
         infer_prompt_tf=infer_prompt_tf,
         infer_generate_btn=infer_generate_btn,
         infer_clear_btn=infer_clear_btn,
+        infer_export_btn=infer_export_btn,
         infer_busy_ring=infer_busy_ring,
         infer_output=infer_output,
         infer_output_placeholder=infer_output_placeholder,

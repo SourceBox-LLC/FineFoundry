@@ -74,6 +74,7 @@ def generate_text(
     prompt: str,
     max_new_tokens: int = 256,
     temperature: float = 0.7,
+    repetition_penalty: float = 1.15,
 ) -> str:
     import torch as _torch
 
@@ -83,7 +84,18 @@ def generate_text(
 
     model, tokenizer = load_model(base_model, adapter_path)
 
-    inputs = tokenizer([text], return_tensors="pt")
+    # Apply chat template if available (for instruct models)
+    if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
+        messages = [{"role": "user", "content": text}]
+        formatted_prompt = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+    else:
+        # Fallback for models without chat template
+        formatted_prompt = text
+
+    inputs = tokenizer([formatted_prompt], return_tensors="pt")
+    input_length = inputs["input_ids"].shape[1]
     try:
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
     except Exception:
@@ -96,5 +108,9 @@ def generate_text(
             temperature=float(temperature),
             do_sample=True,
             top_p=0.9,
+            repetition_penalty=float(repetition_penalty),
         )
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # Only decode the new tokens (exclude the prompt)
+    new_tokens = outputs[0][input_length:]
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()

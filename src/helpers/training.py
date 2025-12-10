@@ -665,6 +665,10 @@ async def run_local_training(
                         train_state["local_infer"]["adapter_path"] = adapter_path
                         train_state["local_infer"]["base_model"] = base_model_name
                         train_state["local_infer"]["model_loaded"] = False
+                        # Store dataset session ID for sample prompts feature
+                        db_session_val = (train_db_session_dd.value or "").strip()
+                        if db_session_val:
+                            train_state["local_infer"]["dataset_session_id"] = db_session_val
                     except Exception:
                         pass
                     # Update training run with completed status and paths

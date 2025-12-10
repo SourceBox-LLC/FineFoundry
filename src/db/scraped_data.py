@@ -335,3 +335,34 @@ def get_total_pair_count(db_path: Optional[str] = None) -> int:
     row = cursor.fetchone()
 
     return row["count"] if row else 0
+
+
+def get_random_prompts_for_session(
+    session_id: int, count: int = 5, db_path: Optional[str] = None
+) -> List[str]:
+    """Get random input prompts from a scrape session for quick testing.
+
+    Args:
+        session_id: Session ID
+        count: Number of random prompts to return (default 5)
+        db_path: Optional database path
+
+    Returns:
+        List of input text strings (prompts)
+    """
+    init_db(db_path)
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT input_text
+        FROM scraped_pairs
+        WHERE session_id = ?
+        ORDER BY RANDOM()
+        LIMIT ?
+    """,
+        (session_id, count),
+    )
+
+    return [row["input_text"] for row in cursor.fetchall()]

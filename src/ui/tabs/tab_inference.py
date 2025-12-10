@@ -28,6 +28,7 @@ def build_inference_tab(
     infer_prompt_tf: ft.TextField,
     infer_generate_btn: ft.ElevatedButton,
     infer_clear_btn: ft.TextButton,
+    infer_export_btn: ft.TextButton,
     infer_busy_ring: ft.ProgressRing,
     infer_output: ft.ListView,
     infer_output_placeholder: ft.Text,
@@ -94,7 +95,7 @@ def build_inference_tab(
                     spacing=10,
                 ),
                 ft.Row(
-                    [infer_generate_btn, infer_clear_btn, infer_busy_ring],
+                    [infer_generate_btn, infer_clear_btn, infer_export_btn, infer_busy_ring],
                     wrap=True,
                     spacing=10,
                 ),

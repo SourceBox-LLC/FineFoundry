@@ -2035,6 +2035,17 @@ def build_training_tab_with_logic(
         value="Balanced",
         width=220,
     )
+    # Sample prompts dropdown - populated from training dataset
+    local_infer_sample_prompts_dd = ft.Dropdown(
+        label="Sample prompts from dataset (optional)",
+        options=[],
+        width=700,
+        hint_text="Select a sample prompt or enter your own below",
+    )
+    local_infer_refresh_samples_btn = ft.IconButton(
+        icon=getattr(ICONS, "REFRESH", ICONS.REPLAY),
+        tooltip="Get new random samples",
+    )
     local_infer_temp_slider = ft.Slider(
         label="Temperature: {value}",
         min=0.1,
@@ -2064,7 +2075,13 @@ def build_training_tab_with_logic(
         "Clear history",
         icon=getattr(ICONS, "DELETE_SWEEP", getattr(ICONS, "DELETE", ICONS.CLOSE)),
     )
+    local_infer_export_btn = ft.TextButton(
+        "Export chats",
+        icon=getattr(ICONS, "DOWNLOAD", getattr(ICONS, "SAVE_ALT", ICONS.SAVE)),
+    )
     local_infer_busy_ring = ft.ProgressRing(visible=False, width=24, height=24, stroke_width=3)
+    # Buffer for storing chat history (prompt/response pairs)
+    local_infer_chat_buffer: List[Dict[str, str]] = []
     local_infer_group_container = ft.Container(
         content=ft.Column(
             [
@@ -2079,6 +2096,11 @@ def build_training_tab_with_logic(
                 local_infer_status,
                 local_infer_meta,
                 local_infer_preset_dd,
+                ft.Row(
+                    [local_infer_sample_prompts_dd, local_infer_refresh_samples_btn],
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
                 local_infer_prompt_tf,
                 ft.Row(
                     [
@@ -2089,7 +2111,7 @@ def build_training_tab_with_logic(
                     spacing=10,
                 ),
                 ft.Row(
-                    [local_infer_btn, local_infer_clear_btn, local_infer_busy_ring],
+                    [local_infer_btn, local_infer_clear_btn, local_infer_export_btn, local_infer_busy_ring],
                     wrap=True,
                     spacing=10,
                 ),
@@ -2116,11 +2138,12 @@ def build_training_tab_with_logic(
     def on_local_infer_clear(e=None):
         try:
             local_infer_output.controls.clear()
+            local_infer_chat_buffer.clear()
             try:
                 local_infer_output_placeholder.visible = True
             except Exception:
                 pass
-            local_infer_status.value = "Idle  history cleared."
+            local_infer_status.value = "Idle  history cleared."
             page.update()
         except Exception:
             pass
@@ -2146,6 +2169,58 @@ def build_training_tab_with_logic(
         except Exception:
             pass
 
+    def _refresh_sample_prompts(e=None):
+        """Refresh the sample prompts dropdown with random prompts from the training dataset."""
+        try:
+            # Get the dataset session ID from training state
+            session_id = train_state.get("local_infer", {}).get("dataset_session_id")
+            if not session_id:
+                # Try to get from current UI selection
+                src = train_source.value or "Database"
+                if src == "Database":
+                    session_id = train_db_session_dd.value
+            if not session_id:
+                local_infer_sample_prompts_dd.options = []
+                local_infer_sample_prompts_dd.value = None
+                page.update()
+                return
+
+            from db.scraped_data import get_random_prompts_for_session
+
+            prompts = get_random_prompts_for_session(int(session_id), count=5)
+            if prompts:
+                # Truncate long prompts for display
+                options = []
+                for i, prompt in enumerate(prompts):
+                    display_text = prompt[:80] + "..." if len(prompt) > 80 else prompt
+                    display_text = display_text.replace("\n", " ")
+                    options.append(ft.dropdown.Option(key=prompt, text=f"{i + 1}. {display_text}"))
+                local_infer_sample_prompts_dd.options = options
+                local_infer_sample_prompts_dd.value = None
+            else:
+                local_infer_sample_prompts_dd.options = []
+                local_infer_sample_prompts_dd.value = None
+            page.update()
+        except Exception:
+            pass
+
+    def _on_sample_prompt_selected(e=None):
+        """When a sample prompt is selected, populate the prompt text field."""
+        try:
+            selected = local_infer_sample_prompts_dd.value
+            if selected:
+                local_infer_prompt_tf.value = selected
+                page.update()
+        except Exception:
+            pass
+
+    # Wire up sample prompts handlers
+    try:
+        local_infer_sample_prompts_dd.on_change = _on_sample_prompt_selected
+        local_infer_refresh_samples_btn.on_click = _refresh_sample_prompts
+    except Exception:
+        pass
+
     def _on_save_logs(e):
         try:
             path = getattr(e, "path", None)
@@ -2170,6 +2245,48 @@ def build_training_tab_with_logic(
         page.overlay.append(local_logs_picker)
     except Exception:
         pass
+
+    def _on_save_chats(e):
+        """Save chat history to a file."""
+        try:
+            path = getattr(e, "path", None)
+            if not path:
+                return
+            if not local_infer_chat_buffer:
+                local_infer_status.value = "No chats to export."
+                page.update()
+                return
+            # Format as readable text
+            lines = []
+            for i, chat in enumerate(local_infer_chat_buffer, 1):
+                lines.append(f"=== Chat {i} ===")
+                lines.append(f"Prompt:\n{chat.get('prompt', '')}")
+                lines.append(f"\nResponse:\n{chat.get('response', '')}")
+                lines.append("")
+            txt = "\n".join(lines)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(txt)
+            local_infer_status.value = f"Exported {len(local_infer_chat_buffer)} chats to: {path}"
+            page.update()
+        except Exception as ex:
+            local_infer_status.value = f"Failed to export chats: {ex}"
+            try:
+                page.update()
+            except Exception:
+                pass
+
+    local_chats_picker = ft.FilePicker(on_result=_on_save_chats)
+    try:
+        page.overlay.append(local_chats_picker)
+    except Exception:
+        pass
+
+    local_infer_export_btn.on_click = lambda e: local_chats_picker.save_file(
+        dialog_title="Export chat history",
+        file_name=f"inference-chats-{int(time.time())}.txt",
+        allowed_extensions=["txt", "md"],
+    )
+
     try:
         local_infer_preset_dd.on_change = on_local_infer_preset_change
     except Exception:
@@ -2238,10 +2355,12 @@ def build_training_tab_with_logic(
             if adapter_path and os.path.isdir(adapter_path):
                 local_infer_group_container.visible = True
                 local_infer_status.value = (
-                    "Training finished  Quick Local Inference is ready. "
-                    "Enter a prompt below to test your fine-tuned model."
+                    "Training finished  Quick Local Inference is ready. "
+                    "Enter a prompt below or select a sample from your dataset."
                 )
-                local_infer_meta.value = f"Adapter: {adapter_path}  Base model: {base_model_name}"
+                local_infer_meta.value = f"Adapter: {adapter_path}  Base model: {base_model_name}"
+                # Auto-populate sample prompts from the training dataset
+                _refresh_sample_prompts()
             else:
                 local_infer_status.value = (
                     "Quick local inference not available yet. Ensure training completed successfully."
@@ -2328,12 +2447,14 @@ def build_training_tab_with_logic(
                     spacing=4,
                 )
             )
+            # Store in chat buffer for export
+            local_infer_chat_buffer.append({"prompt": prompt, "response": text})
             try:
                 train_state.setdefault("local_infer", {})
                 train_state["local_infer"]["model_loaded"] = True
             except Exception:
                 pass
-            local_infer_status.value = "Idle  last inference complete."
+            local_infer_status.value = "Idle  last inference complete."
         except Exception as ex:
             local_infer_status.value = f"Inference failed: {ex}"
         finally:

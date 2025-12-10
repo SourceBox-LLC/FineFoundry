@@ -423,3 +423,58 @@ class TestEdgeCases:
 
         assert '"quotes"' in loaded[0]["input"]
         assert "<html>" in loaded[0]["output"]
+
+
+# =============================================================================
+# get_random_prompts_for_session() tests
+# =============================================================================
+
+
+class TestGetRandomPromptsForSession:
+    """Tests for getting random sample prompts from a session."""
+
+    def test_get_random_prompts_basic(self, temp_db):
+        """Test getting random prompts from a session."""
+        from db.scraped_data import get_random_prompts_for_session
+
+        pairs = [
+            {"input": f"Question {i}", "output": f"Answer {i}"} for i in range(10)
+        ]
+        session_id = save_scrape_to_db(source="test", pairs=pairs)
+
+        prompts = get_random_prompts_for_session(session_id, count=5)
+
+        assert len(prompts) == 5
+        assert all(p.startswith("Question") for p in prompts)
+
+    def test_get_random_prompts_less_than_count(self, temp_db):
+        """Test when session has fewer pairs than requested count."""
+        from db.scraped_data import get_random_prompts_for_session
+
+        pairs = [
+            {"input": "Q1", "output": "A1"},
+            {"input": "Q2", "output": "A2"},
+        ]
+        session_id = save_scrape_to_db(source="test", pairs=pairs)
+
+        prompts = get_random_prompts_for_session(session_id, count=5)
+
+        assert len(prompts) == 2
+
+    def test_get_random_prompts_empty_session(self, temp_db):
+        """Test with a session that has no pairs."""
+        from db.scraped_data import get_random_prompts_for_session, create_scrape_session
+
+        session_id = create_scrape_session(source="test")
+
+        prompts = get_random_prompts_for_session(session_id, count=5)
+
+        assert prompts == []
+
+    def test_get_random_prompts_invalid_session(self, temp_db):
+        """Test with an invalid session ID."""
+        from db.scraped_data import get_random_prompts_for_session
+
+        prompts = get_random_prompts_for_session(99999, count=5)
+
+        assert prompts == []
