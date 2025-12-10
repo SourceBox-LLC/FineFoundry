@@ -79,20 +79,32 @@ Once the adapter is validated, the lower half of the tab becomes active.
   - `Deterministic` – lower temperature, shorter max tokens.
   - `Balanced` – default middle‑of‑the‑road settings.
   - `Creative` – higher temperature and longer responses.
+- **Dataset for sample prompts** dropdown
+  - Select **any saved dataset** from the database to sample prompts from.
+  - Click the refresh button to reload available datasets.
+  - Unlike Quick Local Inference (which only uses the training dataset), here you can test against any dataset.
+- **Sample prompts** dropdown
+  - Shows 5 random prompts from the selected dataset.
+  - Click the refresh button to get new random samples.
+  - Selecting a sample automatically fills the prompt text area.
 - **Prompt** text area
   - Multi‑line field for your instruction or question.
+  - Can be filled manually or by selecting a sample prompt above.
 - **Sliders**
   - **Temperature** – controls randomness.
   - **Max new tokens** – upper bound on generated tokens.
 - **Buttons**
   - **Generate** – runs inference using the shared `local_inference` helper.
   - **Clear history** – clears the shared conversation history (both here and in Full Chat View).
+  - **Export chats** – save your prompt/response history to a text file.
   - **Full Chat View** – opens the full‑screen‑style chat dialog (see below).
 - **Output list**
   - Shows a scrollable list of **Prompt / Response** pairs.
   - A subtle placeholder message appears when there are no responses yet.
 
 > 💡 **On the UI:** In the Inference tab screenshot above, this section lives under the "Prompt & responses" header. The **Full Chat View** button sits just below the history box on the right.
+
+> 💡 **Sample prompts vs Training tab:** The Inference tab lets you select **any saved dataset** for sample prompts, while Quick Local Inference in the Training tab automatically uses the dataset the model was trained on. This makes the Inference tab ideal for testing your model against different datasets.
 
 ### Generation behavior
 
@@ -103,6 +115,7 @@ When you click **Generate**:
 - Status shows either:
   - *"Loading fine‑tuned model and generating response..."* on first call, or
   - *"Generating response from fine‑tuned model..."* on subsequent calls.
+- The model uses proper **chat templates** for instruct models and includes **repetition penalty** to prevent degenerate outputs.
 - The response is appended to the output list and recorded in the shared chat history.
 - Status returns to an idle message once complete.
 

@@ -93,19 +93,23 @@ Quick Local Inference is your **instant demo station** for freshly trained adapt
   - Status line (idle/loading/generating, errors).
   - Meta line showing adapter path and base model.
 - **Controls**
-  - Prompt text area.
   - **Preset** dropdown: Deterministic / Balanced / Creative.
+  - **Sample prompts from dataset** – Dropdown with 5 random prompts from your training dataset for quick testing. Click the refresh button to get new samples.
+  - Prompt text area – Enter your own prompt or select a sample above.
   - Temperature slider.
   - Max new tokens slider.
   - **Run Inference** button.
   - **Clear history** button.
+  - **Export chats** button – Save your prompt/response history to a text file.
 - **Output**
   - Scrollable list of prompt/response pairs.
   - Placeholder text when there are no responses yet.
 
 > 💡 **Where to see it:** The Quick Local Inference panel is visible near the bottom of the Training tab UI (see the Training tab screenshot in the main README and at the top of this guide).
 
-For deeper prompting and a dedicated chat experience after you have a good adapter, see the [Inference Tab](inference-tab.md), which lets you select any adapter directory and includes a Full Chat View dialog.
+> 💡 **Sample prompts:** After training completes, 5 random prompts from your training dataset are automatically loaded into the sample prompts dropdown. This lets you quickly verify your model learned from the training data without manually copying prompts.
+
+For deeper prompting and a dedicated chat experience after you have a good adapter, see the [Inference Tab](inference-tab.md), which lets you select **any saved dataset** for sample prompts and includes a Full Chat View dialog.
 
 When you click **Run Inference**:
 
@@ -114,6 +118,7 @@ When you click **Run Inference**:
 - Status shows either:
   - *"Loading fine‑tuned model and generating response..."* (first call), or
   - *"Generating response from fine‑tuned model..."* (subsequent calls).
+- The model uses proper **chat templates** for instruct models and includes **repetition penalty** to prevent degenerate outputs.
 - Once the response is ready, the spinner disappears, the button is re‑enabled, and the output appears in the list.
 
 ### 7. Configuration (Saved Setups)
