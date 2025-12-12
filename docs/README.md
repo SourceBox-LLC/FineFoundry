@@ -8,6 +8,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 
 - [Quick Start Guide](user-guide/quick-start.md) - Get up and running in minutes
 - [Installation](user-guide/installation.md) - Detailed installation instructions
+- [Upgrade Notes](user-guide/upgrade-notes.md) - Important changes between versions
 
 ### 👤 User Guides
 
