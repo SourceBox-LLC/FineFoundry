@@ -21,7 +21,7 @@ from helpers.common import safe_update
 from helpers.datasets import guess_input_output_columns
 from helpers.logging_config import get_logger
 from helpers.theme import ACCENT_COLOR, BORDER_BASE, ICONS
-from helpers.ui import WITH_OPACITY
+from helpers.ui import WITH_OPACITY, build_offline_banner, offline_reason_text
 
 # Optional datasets dependency (for HF datasets backend)
 try:  # pragma: no cover - optional
@@ -50,6 +50,7 @@ def build_analysis_tab_with_logic(
     *,
     section_title,
     _mk_help_handler,
+    offline_mode_sw: ft.Switch,
 ) -> ft.Control:
     """Build the Dataset Analysis tab UI and attach all related handlers.
 
@@ -568,6 +569,37 @@ def build_analysis_tab_with_logic(
                 sample_size = max(1, min(250000, sample_size))
             except Exception:
                 sample_size = 5000
+
+            # Respect Offline Mode: block Hugging Face datasets and HF Inference
+            # API backend when offline, even if UI state somehow allows it.
+            is_offline = False
+            try:
+                is_offline = bool(getattr(offline_mode_sw, "value", False))
+            except Exception:
+                is_offline = False
+            try:
+                backend_val = (analysis_backend_dd.value or "HF Inference API").strip()
+            except Exception:
+                backend_val = "HF Inference API"
+            if is_offline and (src == "Hugging Face" or backend_val == "HF Inference API"):
+                try:
+                    page.snack_bar = ft.SnackBar(
+                        ft.Text(
+                            "Offline mode is enabled; Hugging Face datasets and HF Inference API backend are disabled. "
+                            "Switch to Database + Local (Transformers) to analyze.",
+                        ),
+                    )
+                    page.open(page.snack_bar)
+                except Exception:
+                    pass
+                try:
+                    analyze_btn.disabled = False
+                    analysis_busy_ring.visible = False
+                    await safe_update(page)
+                except Exception:
+                    pass
+                analysis_state["running"] = False
+                return
 
             # Load examples as list[{input, output}]
             examples: List[Dict[str, Any]] = []
@@ -1521,15 +1553,27 @@ def build_analysis_tab_with_logic(
     div_extra = ft.Divider(visible=False)
     div_samples = ft.Divider(visible=False)
 
+    offline_banner = build_offline_banner(
+        [
+            "Hugging Face dataset source is disabled.",
+            "HF Inference API backend is disabled (Local only).",
+        ]
+    )
+
+    analysis_source_offline_reason = offline_reason_text("Offline Mode: Hugging Face datasets are disabled.")
+    analysis_backend_offline_reason = offline_reason_text("Offline Mode: HF Inference API is disabled.")
+
     analysis_tab = build_analysis_tab(
         section_title=section_title,
         ICONS=ICONS,
         BORDER_BASE=BORDER_BASE,
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
+        offline_banner=offline_banner,
         analyze_btn=analyze_btn,
         analysis_busy_ring=analysis_busy_ring,
         analysis_source_dd=analysis_source_dd,
+        analysis_source_offline_reason=analysis_source_offline_reason,
         analysis_db_session_dd=analysis_db_session_dd,
         analysis_db_refresh_btn=analysis_db_refresh_btn,
         analysis_hf_repo=analysis_hf_repo,
@@ -1539,6 +1583,7 @@ def build_analysis_tab_with_logic(
         select_all_modules_cb=select_all_modules_cb,
         _build_modules_table=_build_modules_table,
         analysis_backend_dd=analysis_backend_dd,
+        analysis_backend_offline_reason=analysis_backend_offline_reason,
         analysis_hf_token_tf=analysis_hf_token_tf,
         analysis_sample_size_tf=analysis_sample_size_tf,
         analysis_overview_note=analysis_overview_note,
@@ -1554,15 +1599,118 @@ def build_analysis_tab_with_logic(
         samples_block=samples_block,
     )
 
+    # Hook: respond to Offline Mode changes (disable Hugging Face sources and
+    # HF Inference backend when offline)
+    def apply_offline_mode_to_analysis(_=None):
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+
+        try:
+            offline_banner.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            analysis_source_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            analysis_backend_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        # Dataset source dropdown: keep Hugging Face visible but disabled
+        try:
+            src_opts = list(getattr(analysis_source_dd, "options", []) or [])
+            for opt in src_opts:
+                try:
+                    label = str(getattr(opt, "key", getattr(opt, "text", "")) or "").strip()
+                except Exception:
+                    label = ""
+                try:
+                    if label == "Hugging Face":
+                        opt.disabled = is_offline
+                    else:
+                        opt.disabled = False
+                except Exception:
+                    pass
+            try:
+                analysis_source_dd.options = src_opts
+            except Exception:
+                pass
+
+            # If currently pointing at Hugging Face while offline, reset to Database
+            cur_src = (analysis_source_dd.value or "Database").strip()
+            if is_offline and cur_src == "Hugging Face":
+                analysis_source_dd.value = "Database"
+        except Exception:
+            pass
+
+        # Backend dropdown: keep HF Inference API visible but disabled
+        try:
+            be_opts = list(getattr(analysis_backend_dd, "options", []) or [])
+            for opt in be_opts:
+                try:
+                    label = str(getattr(opt, "key", getattr(opt, "text", "")) or "").strip()
+                except Exception:
+                    label = ""
+                try:
+                    if label == "HF Inference API":
+                        opt.disabled = is_offline
+                    else:
+                        opt.disabled = False
+                except Exception:
+                    pass
+            try:
+                analysis_backend_dd.options = be_opts
+            except Exception:
+                pass
+
+            cur_back = (analysis_backend_dd.value or "HF Inference API").strip()
+            if is_offline and cur_back == "HF Inference API":
+                analysis_backend_dd.value = "Local (Transformers)"
+        except Exception:
+            pass
+
+        # Refresh dependent UI
+        try:
+            _update_analysis_source()
+        except Exception:
+            pass
+        try:
+            _update_analysis_backend()
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    # Register hook with the shared Offline Mode switch
+    try:
+        hooks = getattr(offline_mode_sw, "data", None)
+        if hooks is None:
+            hooks = {}
+        hooks["analysis_tab_offline"] = lambda e=None: apply_offline_mode_to_analysis(e)
+        offline_mode_sw.data = hooks
+    except Exception:
+        pass
+
     # Initialize analysis-specific visibility and selection state
     try:
-        _update_analysis_source()
+        apply_offline_mode_to_analysis()
     except Exception:
-        pass
-    try:
-        _update_analysis_backend()
-    except Exception:
-        pass
+        try:
+            _update_analysis_source()
+        except Exception:
+            pass
+        try:
+            _update_analysis_backend()
+        except Exception:
+            pass
     try:
         _sync_select_all_modules()
     except Exception:

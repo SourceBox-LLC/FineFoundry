@@ -17,7 +17,7 @@ import flet as ft
 from helpers.common import safe_update
 from helpers.logging_config import get_logger
 from helpers.theme import BORDER_BASE, COLORS, ICONS, REFRESH_ICON
-from helpers.ui import WITH_OPACITY, make_empty_placeholder
+from helpers.ui import WITH_OPACITY, make_empty_placeholder, build_offline_banner, offline_reason_text
 from helpers.merge import (
     run_merge as run_merge_helper,
     preview_merged as preview_merged_helper,
@@ -57,6 +57,7 @@ def build_merge_tab_with_logic(
     *,
     section_title,
     _mk_help_handler,
+    offline_mode_sw: ft.Switch,
 ) -> ft.Control:
     """Build the Merge Datasets tab UI and attach all related handlers.
 
@@ -78,6 +79,43 @@ def build_merge_tab_with_logic(
     # Dynamic dataset rows
     rows_host = ft.Column(spacing=8)
 
+    rows_container = ft.Container(
+        content=ft.Column(
+            [
+                rows_host,
+            ],
+            spacing=10,
+        ),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+        visible=False,
+    )
+
+    offline_click_state: Dict[str, Any] = {"shown": False}
+
+    def _show_offline_snack_once(msg: str) -> None:
+        try:
+            if bool(offline_click_state.get("shown")):
+                return
+            offline_click_state["shown"] = True
+        except Exception:
+            return
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text(msg))
+            page.open(page.snack_bar)
+            page.update()
+        except Exception:
+            pass
+
+    def update_rows_container_visibility() -> None:
+        try:
+            rows_container.visible = len(getattr(rows_host, "controls", []) or []) > 0
+            page.update()
+        except Exception:
+            pass
+
     def make_dataset_row() -> ft.Row:
         source_dd = ft.Dropdown(
             label="Source",
@@ -87,6 +125,29 @@ def build_merge_tab_with_logic(
             ],
             value="Database",
             width=160,
+        )
+
+        row_offline_reason = offline_reason_text("Offline Mode: Hugging Face datasets are disabled.")
+
+        def on_source_offline_click(_=None):
+            try:
+                if not bool(getattr(offline_mode_sw, "value", False)):
+                    return
+            except Exception:
+                return
+            _show_offline_snack_once("Offline Mode: Hugging Face datasets are disabled.")
+
+        source_cluster = ft.Container(
+            content=ft.Column(
+                [
+                    source_dd,
+                    ft.Container(
+                        content=row_offline_reason,
+                        on_click=on_source_offline_click,
+                    ),
+                ],
+                spacing=0,
+            ),
         )
         # Database session selector
         db_session_dd = ft.Dropdown(
@@ -136,7 +197,7 @@ def build_merge_tab_with_logic(
         remove_btn = ft.IconButton(ICONS.DELETE)
         row = ft.Row(
             [
-                source_dd,
+                source_cluster,
                 db_session_dd,
                 ds_id,
                 split,
@@ -152,6 +213,7 @@ def build_merge_tab_with_logic(
         # Keep references for later retrieval
         row.data = {
             "source": source_dd,
+            "offline_reason": row_offline_reason,
             "db_session": db_session_dd,
             "ds": ds_id,
             "split": split,
@@ -206,7 +268,7 @@ def build_merge_tab_with_logic(
         def remove_row(_):
             try:
                 rows_host.controls.remove(row)
-                page.update()
+                update_rows_container_visibility()
             except Exception:
                 pass
 
@@ -215,7 +277,13 @@ def build_merge_tab_with_logic(
 
     def add_row(_=None):
         rows_host.controls.append(make_dataset_row())
-        page.update()
+        update_rows_container_visibility()
+        # If Offline Mode is currently enabled, immediately re-apply the
+        # offline gating so newly added rows have Hugging Face greyed out.
+        try:
+            apply_offline_mode_to_merge()
+        except Exception:
+            pass
 
     add_row_btn = ft.TextButton(
         "Add Dataset",
@@ -225,7 +293,7 @@ def build_merge_tab_with_logic(
     clear_btn = ft.TextButton(
         "Clear",
         icon=ICONS.BACKSPACE,
-        on_click=lambda e: (rows_host.controls.clear(), page.update()),
+        on_click=lambda e: (rows_host.controls.clear(), update_rows_container_visibility()),
     )
 
     # Output settings - Database is primary, export options for external use
@@ -308,7 +376,33 @@ def build_merge_tab_with_logic(
         page.update()
 
     async def on_merge():
-        """Delegate merge operation to helpers.merge.run_merge."""
+        """Delegate merge operation to helpers.merge.run_merge.
+
+        When Offline Mode is enabled, prevent merging from Hugging Face
+        sources to avoid remote downloads.
+        """
+
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+        if is_offline:
+            # If any row is currently set to Hugging Face, block the action.
+            try:
+                for row in rows_host.controls or []:
+                    try:
+                        sd = (getattr(row, "data", {}) or {}).get("source")
+                        if sd is not None and (sd.value or "Database") == "Hugging Face":
+                            page.snack_bar = ft.SnackBar(
+                                ft.Text("Offline mode is enabled; merging Hugging Face datasets is disabled."),
+                            )
+                            page.open(page.snack_bar)
+                            await safe_update(page)
+                            return
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
         return await run_merge_helper(
             page=page,
@@ -353,7 +447,32 @@ def build_merge_tab_with_logic(
         page.update()
 
     async def on_preview_merged():
-        """Delegate merged dataset preview to helpers.merge.preview_merged."""
+        """Delegate merged dataset preview to helpers.merge.preview_merged.
+
+        When Offline Mode is enabled, prevent previewing Hugging Face-backed
+        merges that would require remote dataset fetches.
+        """
+
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+        if is_offline:
+            try:
+                for row in rows_host.controls or []:
+                    try:
+                        sd = (getattr(row, "data", {}) or {}).get("source")
+                        if sd is not None and (sd.value or "Database") == "Hugging Face":
+                            page.snack_bar = ft.SnackBar(
+                                ft.Text("Offline mode is enabled; previewing Hugging Face datasets is disabled."),
+                            )
+                            page.open(page.snack_bar)
+                            await safe_update(page)
+                            return
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
         return await preview_merged_helper(
             page=page,
@@ -530,14 +649,22 @@ def build_merge_tab_with_logic(
         spacing=10,
     )
 
+    offline_banner = build_offline_banner(
+        [
+            "Hugging Face datasets are disabled.",
+            "Only Database sources can be selected.",
+        ]
+    )
+
     merge_tab = build_merge_tab(
         section_title=section_title,
         ICONS=ICONS,
         BORDER_BASE=BORDER_BASE,
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
+        offline_banner=offline_banner,
         merge_op=merge_op,
-        rows_host=rows_host,
+        rows_container=rows_container,
         add_row_btn=add_row_btn,
         clear_btn=clear_btn,
         merge_output_format=merge_output_format,
@@ -553,5 +680,99 @@ def build_merge_tab_with_logic(
         status_section_ref=merge_status_section_ref,
     )
     update_merge_placeholders()
+
+    # Hook: respond to Offline Mode changes (disable Hugging Face sources when offline)
+    def apply_offline_mode_to_merge(_=None):
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+
+        try:
+            offline_banner.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            for row in rows_host.controls or []:
+                data = getattr(row, "data", {}) or {}
+                src_dd: ft.Dropdown = data.get("source")  # type: ignore[assignment]
+                if src_dd is None:
+                    continue
+
+                try:
+                    rr = data.get("offline_reason")
+                    if rr is not None:
+                        rr.visible = is_offline
+                except Exception:
+                    pass
+
+                opts = list(getattr(src_dd, "options", []) or [])
+                for opt in opts:
+                    try:
+                        label = str(getattr(opt, "key", getattr(opt, "text", "")) or "").strip()
+                    except Exception:
+                        label = ""
+                    try:
+                        if label == "Hugging Face":
+                            opt.disabled = is_offline
+                        else:
+                            opt.disabled = False
+                    except Exception:
+                        pass
+                try:
+                    src_dd.options = opts
+                except Exception:
+                    pass
+
+                # If currently pointing at Hugging Face while offline, reset to Database
+                try:
+                    if is_offline and (src_dd.value or "Database") == "Hugging Face":
+                        src_dd.value = "Database"
+                        # Re-apply visibility rules for controls
+                        is_db = True
+                        is_hf = False
+                        db_dd = data.get("db_session")
+                        ds_id = data.get("ds")
+                        split = data.get("split")
+                        config = data.get("config")
+                        in_col = data.get("in")
+                        out_col = data.get("out")
+                        json_path = data.get("json")
+                        if db_dd is not None:
+                            db_dd.visible = is_db
+                        if ds_id is not None:
+                            ds_id.visible = is_hf
+                        if split is not None:
+                            split.visible = is_hf
+                        if config is not None:
+                            config.visible = is_hf
+                        if in_col is not None:
+                            in_col.visible = is_hf
+                        if out_col is not None:
+                            out_col.visible = is_hf
+                        if json_path is not None:
+                            json_path.visible = False
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    try:
+        hooks = getattr(offline_mode_sw, "data", None)
+        if hooks is None:
+            hooks = {}
+        hooks["merge_tab_offline"] = lambda e=None: apply_offline_mode_to_merge(e)
+        offline_mode_sw.data = hooks
+    except Exception:
+        pass
+
+    # Apply current offline state on first load
+    apply_offline_mode_to_merge()
 
     return merge_tab

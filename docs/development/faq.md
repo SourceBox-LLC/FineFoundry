@@ -73,7 +73,7 @@ Coverage is handled with `coverage.py` and integrated with `pytest`:
 In CI:
 
 - Each `test` job run executes the suite under coverage and enforces a minimum threshold via:
-  - `coverage report -m --fail-under=20`
+  - `coverage report -m --fail-under=30`
 - XML reports (`coverage.xml`) are produced per Python version for artifacts or external tools.
 
 Details live under **CI Coverage and Quality Gates** in:

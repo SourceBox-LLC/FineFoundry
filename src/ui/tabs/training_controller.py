@@ -22,7 +22,7 @@ import flet as ft
 from helpers.common import safe_update
 from helpers.logging_config import get_logger
 from helpers.theme import ACCENT_COLOR, BORDER_BASE, COLORS, ICONS, REFRESH_ICON
-from helpers.ui import WITH_OPACITY, make_empty_placeholder
+from helpers.ui import WITH_OPACITY, make_empty_placeholder, build_offline_banner, offline_reason_text
 from helpers.local_inference import generate_text as local_infer_generate_text_helper
 from helpers.training import (
     build_hp_from_controls as build_hp_from_controls_helper,
@@ -115,6 +115,7 @@ def build_training_tab_with_logic(
     proxy_enable_cb: ft.Control,
     use_env_cb: ft.Control,
     proxy_url_tf: ft.TextField,
+    offline_mode_sw: ft.Switch,
 ) -> Tuple[ft.Control, Dict[str, Any]]:
     """Build the Training tab UI and attach all related handlers.
 
@@ -407,6 +408,11 @@ def build_training_tab_with_logic(
         value=False,
         tooltip="Rank-stabilized LoRA. Better for high ranks (64+).",
     )
+    lora_hint_caption = ft.Text(
+        "LoRA rank/alpha/dropout controls are available in Expert mode.",
+        size=11,
+        color=WITH_OPACITY(0.7, BORDER_BASE),
+    )
     out_dir_tf = ft.TextField(label="Output dir", value="/data/outputs/runpod_run", width=260)
 
     # New HP toggles/fields
@@ -508,9 +514,52 @@ def build_training_tab_with_logic(
     auto_resume_row = ft.Row(
         [auto_resume_cb, auto_resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER
     )
-    push_row = ft.Row([push_cb, push_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    hf_repo_row = ft.Row([hf_repo_id_tf, hf_repo_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    push_row = ft.Column(
+        [
+            ft.Row([push_cb, push_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Text(
+                "HF repo field appears once enabled.",
+                size=11,
+                color=WITH_OPACITY(0.7, BORDER_BASE),
+            ),
+        ],
+        spacing=2,
+    )
+    hf_repo_row = ft.Row(
+        [hf_repo_id_tf, hf_repo_info],
+        spacing=6,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        visible=False,
+    )
     resume_from_row = ft.Row([resume_from_tf, resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    def _update_hf_repo_visibility(_=None):
+        """Show HF repo id only when 'Push to HF Hub' is active."""
+        try:
+            is_enabled = bool(getattr(push_cb, "value", False)) and not bool(
+                getattr(push_cb, "disabled", False)
+            )
+        except Exception:
+            is_enabled = False
+        try:
+            hf_repo_row.visible = is_enabled
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    try:
+        push_cb.on_change = _update_hf_repo_visibility
+    except Exception:
+        pass
+
+    # Initialize HF repo visibility based on current push state
+    try:
+        _update_hf_repo_visibility()
+    except Exception:
+        pass
 
     # Advanced parameters (Expert mode)
     warmup_steps_tf = ft.TextField(label="Warmup steps", value="10", width=140)
@@ -577,6 +626,59 @@ def build_training_tab_with_logic(
         "No training logs yet",
         getattr(ICONS, "SCIENCE", ICONS.PLAY_CIRCLE),
     )
+
+    # High-level Training status banner (Runpod lifecycle)
+    train_status_label = ft.Text(
+        "Status: Idle",
+        size=12,
+        color=WITH_OPACITY(0.8, BORDER_BASE),
+    )
+    train_status_chip = ft.Container(
+        content=train_status_label,
+        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+        border_radius=16,
+        bgcolor=getattr(COLORS, "BLUE_50", getattr(COLORS, "BLUE", "#e3f2fd")),
+    )
+    train_status_row = ft.Row(
+        [train_status_chip],
+        alignment=ft.MainAxisAlignment.START,
+    )
+
+    def _set_runpod_status(status: str) -> None:
+        """Update high-level Runpod training status banner and store in train_state."""
+        try:
+            key = (status or "").strip().lower() or "idle"
+        except Exception:
+            key = "idle"
+        text_map = {
+            "idle": "Status: Idle",
+            "starting": "Status: Starting Runpod training…",
+            "running": "Status: Running on Runpod",
+            "completed": "Status: Completed",
+            "failed": "Status: Failed",
+            "cancelled": "Status: Cancelled",
+        }
+        color_map = {
+            "idle": getattr(COLORS, "BLUE_50", getattr(COLORS, "BLUE", "#e3f2fd")),
+            "starting": getattr(COLORS, "AMBER_100", getattr(COLORS, "AMBER", "#fff8e1")),
+            "running": getattr(COLORS, "LIGHT_GREEN_100", getattr(COLORS, "GREEN", "#c8e6c9")),
+            "completed": getattr(COLORS, "GREEN_100", getattr(COLORS, "GREEN", "#c8e6c9")),
+            "failed": getattr(COLORS, "RED_100", getattr(COLORS, "RED", "#ffcdd2")),
+            "cancelled": getattr(COLORS, "GREY_200", getattr(COLORS, "GREY", "#eeeeee")),
+        }
+        try:
+            train_status_label.value = text_map.get(key, text_map["idle"])
+            train_status_chip.bgcolor = color_map.get(key, color_map["idle"])
+        except Exception:
+            pass
+        try:
+            train_state["runpod_status"] = key
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
 
     def _update_progress_from_logs(new_lines: List[str]) -> None:
         """Parse progress from recent log lines and update the progress bar and label.
@@ -681,6 +783,21 @@ def build_training_tab_with_logic(
         # Advanced block
         try:
             advanced_params_section.visible = not is_beginner
+        except Exception:
+            pass
+        # Checkpoints & resume: hide explicit resume path for beginners
+        try:
+            resume_from_row.visible = not is_beginner
+        except Exception:
+            pass
+        # LoRA details: keep the main toggle visible, hide rank/alpha/dropout/RS-LoRA in Beginner mode
+        try:
+            use_lora_cb.visible = True
+            lora_r_dd.visible = not is_beginner
+            lora_alpha_tf.visible = not is_beginner
+            lora_dropout_tf.visible = not is_beginner
+            use_rslora_cb.visible = not is_beginner
+            lora_hint_caption.visible = is_beginner
         except Exception:
             pass
         # Beginner target control visibility
@@ -793,6 +910,12 @@ def build_training_tab_with_logic(
                             max_steps_tf.value = max_steps_tf.value or "50"
             except Exception:
                 pass
+
+        # Apply visibility and default changes immediately
+        try:
+            page.update()
+        except Exception:
+            pass
 
     # Wire up skill-level and dataset source handlers
     skill_level.on_change = _update_skill_controls
@@ -985,6 +1108,27 @@ def build_training_tab_with_logic(
             pass
 
     async def on_start_training():
+        # Respect Offline Mode: block Runpod training when offline
+        try:
+            if bool(getattr(offline_mode_sw, "value", False)):
+                try:
+                    page.snack_bar = ft.SnackBar(
+                        ft.Text("Offline mode is enabled; Runpod training is disabled. Switch target to 'local' or disable Offline mode."),
+                    )
+                    page.open(page.snack_bar)
+                    await safe_update(page)
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+
+        # Mark status as starting before handing off to Runpod helper
+        try:
+            _set_runpod_status("starting")
+        except Exception:
+            pass
+
         return await run_pod_training_helper(
             page=page,
             rp_pod_module=rp_pod,
@@ -1020,6 +1164,7 @@ def build_training_tab_with_logic(
             update_progress_from_logs=_update_progress_from_logs,
             build_hp_fn=_build_hp,
             on_pod_created=_on_pod_created,
+            set_status_fn=_set_runpod_status,
         )
 
     async def on_restart_container():
@@ -1035,12 +1180,35 @@ def build_training_tab_with_logic(
         )
 
     def on_open_runpod(_):
+        if bool(getattr(offline_mode_sw, "value", False)):
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Offline mode is enabled; opening Runpod dashboard is disabled."))
+                page.open(page.snack_bar)
+            except Exception:
+                pass
+            return
         return open_runpod_helper(page, train_state, train_timeline)
 
     def on_open_web_terminal(_):
+        if bool(getattr(offline_mode_sw, "value", False)):
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Offline mode is enabled; remote web terminals are disabled."))
+                page.open(page.snack_bar)
+            except Exception:
+                pass
+            return
         return open_web_terminal_helper(page, train_state, train_timeline)
 
     async def on_copy_ssh_command(_):
+        if bool(getattr(offline_mode_sw, "value", False)):
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("Offline mode is enabled; remote SSH commands are disabled."))
+                page.open(page.snack_bar)
+                await safe_update(page)
+            except Exception:
+                pass
+            return
+
         return await copy_ssh_command_helper(
             page=page,
             rp_pod_module=rp_pod,
@@ -1093,20 +1261,28 @@ def build_training_tab_with_logic(
                 ft.Row(
                     [
                         ft.Icon(ICONS.CANCEL, color=COLORS.RED),
-                        ft.Text("Cancel requested a will stop ASAP"),
+                        ft.Text("Cancel requested — training will stop ASAP"),
                     ]
                 )
             )
             stop_train_btn.disabled = True
             update_train_placeholders()
+            try:
+                _set_runpod_status("cancelled")
+            except Exception:
+                pass
             page.update()
         except Exception:
             pass
 
     def on_refresh_training(_):
+        """Clear Runpod training logs and reset progress placeholders."""
         try:
             train_timeline.controls.clear()
-            train_state["log_seen"] = set()
+            try:
+                train_state["log_seen"] = set()
+            except Exception:
+                pass
             update_train_placeholders()
             page.update()
         except Exception:
@@ -1125,6 +1301,10 @@ def build_training_tab_with_logic(
             "Choose where training runs. 'Runpod - Pod' uses the Runpod workflow; "
             "'local' runs via Docker on this machine."
         ),
+    )
+
+    train_target_offline_reason = offline_reason_text(
+        "Offline Mode: cloud training is disabled (Local Docker only)."
     )
 
     # Configuration mode controls (basic UI; wiring migrated later)
@@ -1325,6 +1505,21 @@ def build_training_tab_with_logic(
     rp_infra_busy = ft.ProgressRing(visible=False)
 
     async def on_ensure_infra():
+        # Respect Offline Mode: Runpod infra API is a cloud operation
+        try:
+            if bool(getattr(offline_mode_sw, "value", False)):
+                try:
+                    page.snack_bar = ft.SnackBar(
+                        ft.Text("Offline mode is enabled; ensuring Runpod infrastructure is disabled."),
+                    )
+                    page.snack_bar.open = True
+                    await safe_update(page)
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+
         return await ensure_infrastructure_helper(
             page=page,
             rp_infra_module=rp_infra,
@@ -1473,10 +1668,29 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
 
-    # Wire refresh button (dispatch based on training target)
+    # Wire refresh button (dispatch based on training target, but block cloud when offline)
     def on_click_expert_gpu_refresh(e):
         try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+
+        try:
             tgt = (train_target_dd.value or "Runpod - Pod").lower()
+        except Exception:
+            tgt = "runpod - pod"
+
+        if is_offline and tgt.startswith("runpod - pod"):
+            try:
+                page.snack_bar = ft.SnackBar(
+                    ft.Text("Offline mode is enabled; refreshing Runpod GPU catalog is disabled."),
+                )
+                page.open(page.snack_bar)
+            except Exception:
+                pass
+            return
+
+        try:
             if tgt.startswith("runpod - pod"):
                 page.run_task(refresh_expert_gpus)
             else:
@@ -1532,6 +1746,8 @@ def build_training_tab_with_logic(
         rp_temp_key_tf=rp_temp_key_tf,
         rp_infra_actions=rp_infra_actions,
     )
+
+    rp_ds_divider = ft.Divider()
 
     start_train_btn = ft.ElevatedButton(
         "Start Training",
@@ -1711,6 +1927,7 @@ def build_training_tab_with_logic(
         on_teardown_all_cb=lambda e: page.run_task(on_teardown_all),
     )
 
+    train_source_offline_reason = offline_reason_text("Offline Mode: Hugging Face datasets are disabled.")
     dataset_section = build_dataset_section(
         section_title=section_title,
         ICONS=ICONS,
@@ -1718,6 +1935,7 @@ def build_training_tab_with_logic(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         train_source=train_source,
+        offline_reason=train_source_offline_reason,
         train_hf_repo=train_hf_repo,
         train_hf_split=train_hf_split,
         train_hf_config=train_hf_config,
@@ -1752,6 +1970,7 @@ def build_training_tab_with_logic(
         lora_alpha_tf=lora_alpha_tf,
         lora_dropout_tf=lora_dropout_tf,
         use_rslora_cb=use_rslora_cb,
+        lora_hint_caption=lora_hint_caption,
         out_dir_tf=out_dir_tf,
         packing_row=packing_row,
         auto_resume_row=auto_resume_row,
@@ -2025,6 +2244,16 @@ def build_training_tab_with_logic(
         width=1000,
         dense=True,
     )
+    local_infer_expected_tf = ft.TextField(
+        label="Expected answer (from dataset)",
+        multiline=True,
+        min_lines=3,
+        max_lines=6,
+        width=1000,
+        dense=True,
+        read_only=True,
+        visible=False,
+    )
     local_infer_preset_dd = ft.Dropdown(
         label="Preset",
         options=[
@@ -2124,6 +2353,7 @@ def build_training_tab_with_logic(
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 local_infer_prompt_tf,
+                local_infer_expected_tf,
                 ft.Row(
                     [
                         ft.Column([local_infer_temp_label, local_infer_temp_slider], spacing=2),
@@ -2213,16 +2443,39 @@ def build_training_tab_with_logic(
             if not session_id:
                 local_infer_sample_prompts_dd.options = []
                 local_infer_sample_prompts_dd.value = None
+                try:
+                    local_infer_expected_tf.value = ""
+                    local_infer_expected_tf.visible = False
+                except Exception:
+                    pass
                 page.update()
                 return
 
-            from db.scraped_data import get_random_prompts_for_session
+            # Fetch full (prompt, expected answer) pairs so we can show ground truth
+            from db.core import get_connection, init_db
 
-            prompts = get_random_prompts_for_session(int(session_id), count=5)
-            if prompts:
+            init_db()
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT input_text, output_text
+                FROM scraped_pairs
+                WHERE session_id = ?
+                ORDER BY RANDOM()
+                LIMIT ?
+            """,
+                (int(session_id), 5),
+            )
+            rows = cursor.fetchall()
+            pairs = [(row["input_text"], row["output_text"]) for row in rows]
+
+            expected_by_prompt: Dict[str, str] = {}
+            if pairs:
                 # Truncate long prompts for display
                 options = []
-                for i, prompt in enumerate(prompts):
+                for i, (prompt, expected) in enumerate(pairs):
+                    expected_by_prompt[prompt] = expected or ""
                     display_text = prompt[:80] + "..." if len(prompt) > 80 else prompt
                     display_text = display_text.replace("\n", " ")
                     options.append(ft.dropdown.Option(key=prompt, text=f"{i + 1}. {display_text}"))
@@ -2231,6 +2484,23 @@ def build_training_tab_with_logic(
             else:
                 local_infer_sample_prompts_dd.options = []
                 local_infer_sample_prompts_dd.value = None
+
+            # Store mapping for selection -> expected answer
+            try:
+                li = train_state.get("local_infer")
+                if not isinstance(li, dict):
+                    li = {}
+                    train_state["local_infer"] = li
+                li["expected_by_prompt"] = expected_by_prompt
+            except Exception:
+                pass
+
+            # Clear expected answer until a sample is selected
+            try:
+                local_infer_expected_tf.value = ""
+                local_infer_expected_tf.visible = False
+            except Exception:
+                pass
             page.update()
         except Exception:
             pass
@@ -2241,6 +2511,37 @@ def build_training_tab_with_logic(
             selected = local_infer_sample_prompts_dd.value
             if selected:
                 local_infer_prompt_tf.value = selected
+                expected = ""
+                try:
+                    expected = (
+                        train_state.get("local_infer", {}).get("expected_by_prompt", {}).get(selected) or ""
+                    )
+                except Exception:
+                    expected = ""
+                try:
+                    local_infer_expected_tf.value = expected
+                    local_infer_expected_tf.visible = bool(expected)
+                except Exception:
+                    pass
+            else:
+                try:
+                    local_infer_expected_tf.value = ""
+                    local_infer_expected_tf.visible = False
+                except Exception:
+                    pass
+            page.update()
+        except Exception:
+            pass
+
+    def _on_local_infer_prompt_changed(e=None):
+        """If the user types a custom prompt, clear the sample selection + expected answer."""
+        try:
+            current = (local_infer_prompt_tf.value or "").strip()
+            selected = (local_infer_sample_prompts_dd.value or "").strip()
+            if selected and current != selected:
+                local_infer_sample_prompts_dd.value = None
+                local_infer_expected_tf.value = ""
+                local_infer_expected_tf.visible = False
                 page.update()
         except Exception:
             pass
@@ -2249,6 +2550,7 @@ def build_training_tab_with_logic(
     try:
         local_infer_sample_prompts_dd.on_change = _on_sample_prompt_selected
         local_infer_refresh_samples_btn.on_click = _refresh_sample_prompts
+        local_infer_prompt_tf.on_change = _on_local_infer_prompt_changed
     except Exception:
         pass
 
@@ -2619,6 +2921,7 @@ def build_training_tab_with_logic(
         train_prog_label=train_prog_label,
         train_timeline=train_timeline,
         train_timeline_placeholder=train_timeline_placeholder,
+        train_status_row=train_status_row,
         mk_help_handler=_mk_help_handler,
     )
 
@@ -2626,6 +2929,7 @@ def build_training_tab_with_logic(
     pod_content_container = build_pod_content_container(
         config_section=config_section,
         rp_infra_panel=rp_infra_panel,
+        rp_ds_divider=rp_ds_divider,
         ds_tp_group_container=ds_tp_group_container,
         pod_logs_section=pod_logs_section,
         teardown_section=teardown_section,
@@ -3572,6 +3876,10 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
             try:
+                rp_ds_divider.visible = is_pod
+            except Exception:
+                pass
+            try:
                 pod_logs_section.visible = is_pod
             except Exception:
                 pass
@@ -3722,14 +4030,159 @@ def build_training_tab_with_logic(
     except Exception:
         pass
 
-    training_tab = build_training_tab(
+    # Build Training tab layout
+    offline_banner = build_offline_banner(
+        [
+            "Hugging Face datasets and Hub push are disabled.",
+            "Runpod cloud training is disabled (Local Docker only).",
+        ]
+    )
+    train_tab = build_training_tab(
         section_title=section_title,
         ICONS=ICONS,
         BORDER_BASE=BORDER_BASE,
         WITH_OPACITY=WITH_OPACITY,
+        offline_banner=offline_banner,
         train_target_dd=train_target_dd,
+        train_target_offline_reason=train_target_offline_reason,
         pod_content_container=pod_content_container,
         local_specs_container=local_specs_container,
     )
 
-    return training_tab, train_state
+    # Hook: respond to Offline Mode changes (disable Runpod cloud actions and
+    # non-local dataset sources when offline)
+    def apply_offline_mode_to_training(_=None):
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+
+        try:
+            offline_banner.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            train_target_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            train_source_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        # When offline, force local target selection and update layout
+        try:
+            if is_offline:
+                train_target_dd.value = "local"
+            _update_training_target()
+        except Exception:
+            pass
+
+        # When offline, keep Hugging Face dataset source visible but disabled
+        try:
+            opts = list(getattr(train_source, "options", []) or [])
+            for opt in opts:
+                try:
+                    label = str(getattr(opt, "key", getattr(opt, "text", "")) or "").strip()
+                except Exception:
+                    label = ""
+                try:
+                    if label == "Hugging Face":
+                        opt.disabled = is_offline
+                    else:
+                        opt.disabled = False
+                except Exception:
+                    pass
+            try:
+                train_source.options = opts
+            except Exception:
+                pass
+
+            # If currently pointing at Hugging Face while offline, reset to Database
+            cur_src = (train_source.value or "Database").strip()
+            if is_offline and cur_src == "Hugging Face":
+                train_source.value = "Database"
+                try:
+                    _update_train_source()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # When offline, keep Runpod target visible but disabled so only local
+        # training can be selected.
+        try:
+            tgt_opts = list(getattr(train_target_dd, "options", []) or [])
+            for opt in tgt_opts:
+                try:
+                    label = str(getattr(opt, "key", getattr(opt, "text", "")) or "").strip()
+                except Exception:
+                    label = ""
+                try:
+                    if label.lower().startswith("runpod - pod"):
+                        opt.disabled = is_offline
+                    else:
+                        opt.disabled = False
+                except Exception:
+                    pass
+            try:
+                train_target_dd.options = tgt_opts
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        # Disable Runpod infra + Runpod control buttons when offline
+        try:
+            ensure_infra_btn.disabled = is_offline or (rp_infra is None)
+        except Exception:
+            pass
+        for ctl in [open_runpod_btn, open_web_terminal_btn, restart_container_btn, copy_ssh_btn]:
+            try:
+                ctl.disabled = is_offline
+            except Exception:
+                pass
+
+        # Disable "Push to HF Hub" toggle when offline (applies to both Runpod and local runs)
+        try:
+            push_cb.disabled = is_offline
+            if is_offline:
+                push_cb.value = False
+        except Exception:
+            pass
+
+        # Disable passing HF token into local Docker container when offline
+        try:
+            local_pass_hf_token_cb.disabled = is_offline
+            if is_offline:
+                local_pass_hf_token_cb.value = False
+        except Exception:
+            pass
+
+        # Keep HF repo id row visibility in sync with push toggle / offline
+        try:
+            _update_hf_repo_visibility()
+        except Exception:
+            pass
+
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    # Register hook with the shared Offline Mode switch
+    try:
+        hooks = getattr(offline_mode_sw, "data", None)
+        if hooks is None:
+            hooks = {}
+        hooks["training_tab_offline"] = lambda e=None: apply_offline_mode_to_training(e)
+        offline_mode_sw.data = hooks
+    except Exception:
+        pass
+
+    # Apply current offline state on first load
+    apply_offline_mode_to_training()
+
+    return train_tab, train_state

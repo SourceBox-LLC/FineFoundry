@@ -24,6 +24,8 @@ def build_scrape_tab(
     BORDER_BASE,
     WITH_OPACITY,
     _mk_help_handler,
+    offline_banner: ft.Container,
+    source_offline_reason: ft.Text,
     source_dd,
     board_actions,
     boards_wrap,
@@ -51,6 +53,7 @@ def build_scrape_tab(
     threads_label,
     pairs_label,
     log_area,
+    log_actions,
     preview_area,
     handle_preview_click,
     handle_raw_preview_click,
@@ -67,6 +70,7 @@ def build_scrape_tab(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         source_dd=source_dd,
+        offline_reason=source_offline_reason,
     )
 
     boards_section = build_boards_section(
@@ -120,6 +124,7 @@ def build_scrape_tab(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         log_area=log_area,
+        log_actions=log_actions,
     )
 
     preview_section = build_preview_section(
@@ -161,6 +166,7 @@ def build_scrape_tab(
                 ft.Container(
                     content=ft.Column(
                         [
+                            offline_banner,
                             source_section,
                             boards_section,
                             params_section,

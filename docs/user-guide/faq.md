@@ -161,7 +161,7 @@ Coverage is handled with `coverage.py`:
   - `uv run coverage run --source=src -m pytest --ignore=proxy_test.py`
   - `uv run coverage report -m`
 - In CI, the `test` job runs under coverage and enforces an initial minimum threshold via:
-  - `coverage report -m --fail-under=20`
+  - `coverage report -m --fail-under=30`
 
 Details are under **CI Coverage and Quality Gates** in:
 

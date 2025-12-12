@@ -374,6 +374,16 @@ def build_inference_tab_with_logic(
         width=1000,
         dense=True,
     )
+    infer_expected_tf = ft.TextField(
+        label="Expected answer (from dataset)",
+        multiline=True,
+        min_lines=3,
+        max_lines=8,
+        width=1000,
+        dense=True,
+        read_only=True,
+        visible=False,
+    )
     # Dataset selector for sample prompts (any saved dataset)
     infer_dataset_dd = ft.Dropdown(
         label="Dataset for sample prompts",
@@ -563,15 +573,38 @@ def build_inference_tab_with_logic(
             if not session_id:
                 infer_sample_prompts_dd.options = []
                 infer_sample_prompts_dd.value = None
+                try:
+                    infer_expected_tf.value = ""
+                    infer_expected_tf.visible = False
+                except Exception:
+                    pass
                 page.update()
                 return
 
-            from db.scraped_data import get_random_prompts_for_session
+            # Fetch full (prompt, expected answer) pairs so we can show ground truth
+            from db.core import get_connection, init_db
 
-            prompts = get_random_prompts_for_session(int(session_id), count=5)
-            if prompts:
+            init_db()
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT input_text, output_text
+                FROM scraped_pairs
+                WHERE session_id = ?
+                ORDER BY RANDOM()
+                LIMIT ?
+            """,
+                (int(session_id), 5),
+            )
+            rows = cursor.fetchall()
+            pairs = [(row["input_text"], row["output_text"]) for row in rows]
+
+            expected_by_prompt: Dict[str, str] = {}
+            if pairs:
                 options = []
-                for i, prompt in enumerate(prompts):
+                for i, (prompt, expected) in enumerate(pairs):
+                    expected_by_prompt[prompt] = expected or ""
                     display_text = prompt[:80] + "..." if len(prompt) > 80 else prompt
                     display_text = display_text.replace("\n", " ")
                     options.append(ft.dropdown.Option(key=prompt, text=f"{i + 1}. {display_text}"))
@@ -580,6 +613,23 @@ def build_inference_tab_with_logic(
             else:
                 infer_sample_prompts_dd.options = []
                 infer_sample_prompts_dd.value = None
+
+            # Store mapping for selection -> expected answer
+            try:
+                inf = train_state.get("inference")
+                if not isinstance(inf, dict):
+                    inf = {}
+                    train_state["inference"] = inf
+                inf["expected_by_prompt"] = expected_by_prompt
+            except Exception:
+                pass
+
+            # Clear expected answer until a sample is selected
+            try:
+                infer_expected_tf.value = ""
+                infer_expected_tf.visible = False
+            except Exception:
+                pass
             page.update()
         except Exception:
             pass
@@ -590,13 +640,47 @@ def build_inference_tab_with_logic(
             selected = infer_sample_prompts_dd.value
             if selected:
                 infer_prompt_tf.value = selected
-                page.update()
+                expected = ""
+                try:
+                    expected = (train_state.get("inference", {}).get("expected_by_prompt", {}).get(selected) or "")
+                except Exception:
+                    expected = ""
+                try:
+                    infer_expected_tf.value = expected
+                    infer_expected_tf.visible = bool(expected)
+                except Exception:
+                    pass
+            else:
+                try:
+                    infer_expected_tf.value = ""
+                    infer_expected_tf.visible = False
+                except Exception:
+                    pass
+            page.update()
         except Exception:
             pass
 
     def _on_infer_dataset_changed(e=None):
         """When dataset changes, refresh sample prompts."""
+        try:
+            infer_expected_tf.value = ""
+            infer_expected_tf.visible = False
+        except Exception:
+            pass
         _refresh_infer_sample_prompts()
+
+    def _on_infer_prompt_changed(e=None):
+        """If the user types a custom prompt, clear sample selection + expected answer."""
+        try:
+            current = (infer_prompt_tf.value or "").strip()
+            selected = (infer_sample_prompts_dd.value or "").strip()
+            if selected and current != selected:
+                infer_sample_prompts_dd.value = None
+                infer_expected_tf.value = ""
+                infer_expected_tf.visible = False
+                page.update()
+        except Exception:
+            pass
 
     # Wire up dataset and sample prompts handlers
     try:
@@ -604,6 +688,7 @@ def build_inference_tab_with_logic(
         infer_dataset_refresh_btn.on_click = _refresh_infer_datasets
         infer_sample_prompts_dd.on_change = _on_infer_sample_prompt_selected
         infer_sample_refresh_btn.on_click = _refresh_infer_sample_prompts
+        infer_prompt_tf.on_change = _on_infer_prompt_changed
     except Exception:
         pass
 
@@ -1288,6 +1373,7 @@ def build_inference_tab_with_logic(
         infer_rep_penalty_slider=infer_rep_penalty_slider,
         infer_rep_penalty_label=infer_rep_penalty_label,
         infer_prompt_tf=infer_prompt_tf,
+        infer_expected_tf=infer_expected_tf,
         infer_dataset_dd=infer_dataset_dd,
         infer_dataset_refresh_btn=infer_dataset_refresh_btn,
         infer_sample_prompts_dd=infer_sample_prompts_dd,

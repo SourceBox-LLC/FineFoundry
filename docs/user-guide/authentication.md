@@ -27,6 +27,8 @@ FineFoundry can discover your token in three ways, in this order:
 
 You can use whichever method fits your workflow; you do **not** need all three.
 
+**Offline Mode note**: When Offline Mode is enabled, Hugging Face dataset access and Hub push actions are disabled throughout the app, even if you have a valid token configured.
+
 ### Option A: Paste a token in the Settings tab (recommended for most users)
 
 1. Open the **Settings** tab.
@@ -98,6 +100,8 @@ ______________________________________________________________________
 ## Runpod authentication
 
 If you use Runpod for remote training, FineFoundry needs a **Runpod API key**.
+
+**Offline Mode note**: When Offline Mode is enabled, Runpod infrastructure helpers and Runpod training are disabled.
 
 Create or view your key from the Runpod console (you may be redirected between domains):
 

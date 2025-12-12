@@ -1,4 +1,4 @@
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 import flet as ft
 
 from .theme import COLORS, ICONS, ACCENT_COLOR, BORDER_BASE
@@ -34,6 +34,43 @@ def pill(text: str, color: str, icon: Optional[str] = None) -> ft.Container:
         bgcolor=color,
         padding=ft.padding.symmetric(6, 6),
         border_radius=999,
+    )
+
+
+def build_offline_banner(lines: List[str]) -> ft.Container:
+    icon_name = getattr(
+        ICONS,
+        "CLOUD_OFF",
+        getattr(ICONS, "WIFI_OFF", getattr(ICONS, "CLOUD_OFF_OUTLINED", getattr(ICONS, "INFO", None))),
+    )
+    body = [ft.Text("Offline Mode is ON", weight=ft.FontWeight.W_600, size=13)]
+    for line in lines:
+        body.append(ft.Text(f"- {line}", size=12, color=WITH_OPACITY(0.9, BORDER_BASE)))
+    return ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(icon_name, color=getattr(COLORS, "AMBER", ACCENT_COLOR), size=18),
+                ft.Column(body, spacing=2),
+            ],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        ),
+        width=1000,
+        bgcolor=WITH_OPACITY(0.10, getattr(COLORS, "AMBER", ACCENT_COLOR)),
+        border=ft.border.all(1, WITH_OPACITY(0.18, getattr(COLORS, "AMBER", ACCENT_COLOR))),
+        border_radius=8,
+        padding=10,
+        margin=ft.margin.only(bottom=8),
+        visible=False,
+    )
+
+
+def offline_reason_text(text: str) -> ft.Text:
+    return ft.Text(
+        text,
+        size=12,
+        color=WITH_OPACITY(0.7, BORDER_BASE),
+        visible=False,
     )
 
 

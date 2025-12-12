@@ -13,6 +13,7 @@ def build_source_section(
     WITH_OPACITY,
     _mk_help_handler,
     source_dd,
+    offline_reason: ft.Text,
 ) -> ft.Container:
     return ft.Container(
         content=ft.Column(
@@ -29,6 +30,7 @@ def build_source_section(
                     content=ft.Column(
                         [
                             ft.Row([source_dd], wrap=True),
+                            offline_reason,
                         ],
                         spacing=0,
                     ),

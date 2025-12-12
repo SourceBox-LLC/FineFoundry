@@ -18,7 +18,7 @@ import flet as ft
 
 from helpers.common import safe_update
 from helpers.theme import BORDER_BASE, COLORS, ICONS, REFRESH_ICON
-from helpers.ui import WITH_OPACITY, make_empty_placeholder, pill
+from helpers.ui import WITH_OPACITY, make_empty_placeholder, pill, build_offline_banner, offline_reason_text
 from helpers.build import (
     run_build as run_build_helper,
     run_push_async as run_push_async_helper,
@@ -67,6 +67,7 @@ def build_build_tab_with_logic(
     _hf_cfg: Dict[str, Any],
     ollama_enable_cb: ft.Control,
     ollama_models_dd: ft.Dropdown,
+    offline_mode_sw: ft.Switch,
 ) -> ft.Control:
     """Build the Build/Publish tab UI and attach all related handlers.
 
@@ -74,11 +75,11 @@ def build_build_tab_with_logic(
     keeps the behavior localized to this module.
     """
 
-    # Source selector for dataset preview/processing
+    # Source selector for dataset preview/processing (Database only; merged
+    # dataset mode has been removed in favor of database-backed workflow)
     source_mode = ft.Dropdown(
         options=[
             ft.dropdown.Option("Database"),
-            ft.dropdown.Option("Merged dataset"),
         ],
         value="Database",
         width=180,
@@ -221,24 +222,22 @@ def build_build_tab_with_logic(
     val_slider.on_change = on_split_change
     test_slider.on_change = on_split_change
 
-    # Toggle UI fields based on source selection (Database vs Merged dataset)
+    # Toggle UI fields (Database is the only mode; merged dataset support
+    # has been removed)
     def on_source_change(_):
-        mode = (source_mode.value or "Database").strip()
-        is_merged = mode == "Merged dataset"
         try:
-            # Show database controls only in Database mode
-            db_session_dd.visible = not is_merged
-            db_refresh_btn.visible = not is_merged
+            # Always show database controls
+            db_session_dd.visible = True
+            db_refresh_btn.visible = True
             data_file.visible = False  # Always hidden - JSON removed as user option
-            merged_dir.visible = is_merged
-            # Enable processing params for Database mode; disable in merged mode
+            merged_dir.visible = False
+            # Enable processing params in Database mode
             for ctl in [seed, shuffle, min_len_b, val_slider, test_slider]:
                 try:
-                    ctl.disabled = is_merged
+                    ctl.disabled = False
                 except Exception:
                     pass
-            if not is_merged:
-                _refresh_db_sessions()
+            _refresh_db_sessions()
         except Exception:
             pass
         page.update()
@@ -264,6 +263,39 @@ def build_build_tab_with_logic(
     timeline = ft.ListView(expand=1, auto_scroll=True, spacing=6)
     timeline_placeholder = make_empty_placeholder("No status yet", ICONS.TASK)
     status_section_ref: Dict[str, Any] = {}
+
+    # Offline banner (tab-level constraints)
+    offline_banner = build_offline_banner(
+        [
+            "Build/publish to Hugging Face Hub is disabled.",
+            "Local-only actions (e.g., Ollama) remain available.",
+        ]
+    )
+
+    push_offline_reason = offline_reason_text("Offline Mode: Hugging Face Hub actions are disabled.")
+    offline_click_state: Dict[str, Any] = {"shown": False}
+
+    def _show_offline_snack_once(msg: str) -> None:
+        try:
+            if bool(offline_click_state.get("shown")):
+                return
+            offline_click_state["shown"] = True
+        except Exception:
+            return
+        try:
+            page.snack_bar = ft.SnackBar(ft.Text(msg))
+            page.open(page.snack_bar)
+            page.update()
+        except Exception:
+            pass
+
+    def on_push_offline_click(_=None):
+        try:
+            if not bool(getattr(offline_mode_sw, "value", False)):
+                return
+        except Exception:
+            return
+        _show_offline_snack_once("Offline Mode: Hugging Face Hub actions are disabled.")
 
     cancel_build: Dict[str, Any] = {"cancelled": False}
     dd_ref: Dict[str, Any] = {"dd": None}
@@ -673,6 +705,19 @@ def build_build_tab_with_logic(
         update_status_placeholder()
 
     async def on_build():
+        # Respect Offline Mode: block dataset build/publish workflow when
+        # offline, even if the button is somehow still clickable.
+        try:
+            if bool(getattr(offline_mode_sw, "value", False)):
+                page.snack_bar = ft.SnackBar(
+                    ft.Text("Offline mode is enabled; dataset build/publish is disabled."),
+                )
+                page.open(page.snack_bar)
+                await safe_update(page)
+                return
+        except Exception:
+            pass
+
         # Delegate to helper to keep controller slim
         hf_cfg_token = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
         return await run_build_helper(
@@ -705,6 +750,18 @@ def build_build_tab_with_logic(
         )
 
     async def on_push_async():
+        # Respect Offline Mode: block remote Hub push when offline
+        try:
+            if bool(getattr(offline_mode_sw, "value", False)):
+                page.snack_bar = ft.SnackBar(
+                    ft.Text("Offline mode is enabled; pushing to Hugging Face Hub is disabled."),
+                )
+                page.open(page.snack_bar)
+                await safe_update(page)
+                return
+        except Exception:
+            pass
+
         # Delegate to helper to keep controller slim
         hf_cfg_token = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
         return await run_push_async_helper(
@@ -773,6 +830,9 @@ def build_build_tab_with_logic(
         BORDER_BASE=BORDER_BASE,
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
+        offline_banner=offline_banner,
+        push_offline_reason=push_offline_reason,
+        push_offline_click_handler=on_push_offline_click,
         source_mode=source_mode,
         data_source_dd=data_source_dd,
         db_session_dd=db_session_dd,
@@ -805,6 +865,89 @@ def build_build_tab_with_logic(
         timeline_placeholder=timeline_placeholder,
         status_section_ref=status_section_ref,
     )
+
+    # Hook: respond to Offline Mode changes (disable Build/Publish while
+    # offline, but keep Ollama-based generation available)
+    def apply_offline_mode_to_build(_=None):
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+
+        try:
+            offline_banner.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            push_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        # Dataset source & parameters
+        for ctl in [
+            source_mode,
+            data_source_dd,
+            db_session_dd,
+            db_refresh_btn,
+            merged_dir,
+            seed,
+            shuffle,
+            val_slider,
+            test_slider,
+            min_len_b,
+            save_dir,
+        ]:
+            try:
+                ctl.disabled = is_offline
+            except Exception:
+                pass
+
+        # Push controls
+        for ctl in [push_toggle, repo_id, private, token_val_ui]:
+            try:
+                ctl.disabled = is_offline
+            except Exception:
+                pass
+
+        # Build / push / refresh / cancel buttons row
+        try:
+            for ctl in getattr(build_actions, "controls", []) or []:
+                try:
+                    if isinstance(ctl, (ft.ElevatedButton, ft.OutlinedButton, ft.TextButton)):
+                        ctl.disabled = is_offline
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Model card helpers (HF/DB driven). Keep Ollama generator enabled.
+        for ctl in [use_custom_card, card_preview_switch, load_template_btn, gen_from_ds_btn, clear_card_btn]:
+            try:
+                ctl.disabled = is_offline
+            except Exception:
+                pass
+
+        # Do not touch gen_with_ollama_btn, ollama_enable_cb, ollama_models_dd,
+        # or card_editor so Ollama-based editing still works offline.
+
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    # Register with the shared Offline Mode switch
+    try:
+        hooks = getattr(offline_mode_sw, "data", None)
+        if hooks is None:
+            hooks = {}
+        hooks["build_tab_offline"] = lambda e=None: apply_offline_mode_to_build(e)
+        offline_mode_sw.data = hooks
+    except Exception:
+        pass
+
+    # Apply current offline state on first load
+    apply_offline_mode_to_build()
     update_status_placeholder()
 
     return build_tab

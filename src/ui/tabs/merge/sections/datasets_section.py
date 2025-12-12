@@ -14,7 +14,7 @@ def build_datasets_section(
     _mk_help_handler,
     add_row_btn: ft.TextButton,
     clear_btn: ft.TextButton,
-    rows_host: ft.Column,
+    rows_container: ft.Container,
 ) -> ft.Container:
     return ft.Container(
         content=ft.Column(
@@ -26,18 +26,8 @@ def build_datasets_section(
                     on_help_click=_mk_help_handler("Add datasets from HF or local JSON and map columns."),
                 ),
                 ft.Row([add_row_btn, clear_btn], spacing=8),
-                ft.Container(
-                    content=ft.Column(
-                        [
-                            rows_host,
-                        ],
-                        spacing=10,
-                    ),
-                    width=1000,
-                    border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                    border_radius=8,
-                    padding=10,
-                ),
+                rows_container,
+                ft.Divider(),
             ],
             spacing=12,
         ),

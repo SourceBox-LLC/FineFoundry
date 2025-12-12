@@ -4,7 +4,7 @@ The Build & Publish tab converts your scraped data into a structured Hugging Fac
 
 Use this tab to:
 
-- Load data from a database session or Hugging Face dataset
+- Load data from a database scrape session
 - Create train/validation/test splits with reproducible settings
 - Save a `datasets.DatasetDict` to disk
 - Push datasets to the Hugging Face Hub with a basic README card
@@ -17,7 +17,7 @@ ______________________________________________________________________
 
 Typical workflow:
 
-1. Select a **Database Session** from your scrape history, or a **Hugging Face** dataset.
+1. Select a **Scrape session** from your database history.
 1. Configure **splits**, **min length**, and shuffling.
 1. Click **Build Dataset** to create a `DatasetDict` on disk.
 1. Optionally enable **Push to Hub**, fill in repo details and token.
@@ -29,9 +29,9 @@ ______________________________________________________________________
 
 ### 1. Data Source
 
-- **Database Session** or **Hugging Face**
-  - Select from your scrape history or load from Hugging Face Hub.
-  - Data must have `input` and `output` fields.
+- **Database (Scrape session)**
+  - Select a scrape session from your database history.
+  - The dataset is built from the stored `input`/`output` pairs.
 
 ### 2. Split & Filtering Parameters
 
@@ -96,6 +96,14 @@ ______________________________________________________________________
 - Use a consistent **Seed** across experiments so training runs are comparable.
 - Double-check **Repo ID** and permissions before pushing to avoid cluttering your account.
 - Use the **Dataset Analysis** tab after building to understand distribution, duplicates, sentiment, etc.
+
+## Offline Mode
+
+When **Offline Mode** is enabled:
+
+- Hugging Face Hub actions are disabled.
+- Push-related controls are disabled, and the UI shows an inline explanation:
+  - "Offline Mode: Hugging Face Hub actions are disabled."
 
 ______________________________________________________________________
 

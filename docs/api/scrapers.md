@@ -4,7 +4,7 @@ High-level reference for FineFoundry's data collection interfaces.
 
 This page provides an overview of the scraper and generator modules and links to more detailed per-source pages:
 
-## Web Scrapers
+## Network Scrapers
 
 - [4chan Scraper](fourchan-scraper.md) — `src/scrapers/fourchan_scraper.py`
 - [Reddit Scraper](reddit-scraper.md) — `src/scrapers/reddit_scraper.py`
@@ -58,11 +58,12 @@ await run_synthetic_generation(
     curate=False,
     curate_threshold=7.5,
     multimodal=False,
-    output_path="synthetic_data.json",
     dataset_format="ChatML",
     model="unsloth/Llama-3.2-3B-Instruct",
 )
 ```
+
+Synthetic generation results are saved to the SQLite database (`finefoundry.db`).
 
 ### Requirements
 

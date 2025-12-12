@@ -12,7 +12,7 @@ The Scrape tab lets you collect conversational training data from multiple sourc
 Use this tab to:
 
 - Select a data source and configure parameters
-- Choose pairing strategies (for web scrapers) or generation types (for synthetic)
+- Choose pairing strategies (for network sources) or generation types (for synthetic)
 - Monitor progress and logs in real time
 - Preview the resulting dataset
 
@@ -89,7 +89,7 @@ ______________________________________________________________________
 ### 3. Common Parameters
 
 - **Dataset Format** — Standard (input/output) or ChatML (messages array)
-- **Delay (s)** — Polite delay between HTTP requests (for web scrapers)
+- **Delay (s)** — Polite delay between HTTP requests (for network sources)
 - **Min Length** — Minimum character count per side for a pair to be kept
 
 All scraped data is automatically saved to the database as a new session.
@@ -98,7 +98,7 @@ All scraped data is automatically saved to the database as a new session.
 
 - **Status line** — High-level state (idle, scraping, completed, error)
 - **Progress bar / counters** — Approximate thread/pair progress
-- **Logs panel** — Streaming log messages from the scraper or generator
+- **Logs panel** — Streaming log messages from the selected data source
 
 ### 5. Output & Preview
 
@@ -165,6 +165,19 @@ ______________________________________________________________________
 - **Synthetic generation** — Use high-quality source documents for better results.
 - **Model choice** — Larger models produce better synthetic data but require more VRAM.
 - **After generation** — Use **Build / Publish** and **Dataset Analysis** to prepare your data before training.
+
+______________________________________________________________________
+
+## Offline Mode
+
+When **Offline Mode** is enabled:
+
+- The Source dropdown remains visible, but **all non-synthetic sources** are disabled.
+- The current source is forced to **Synthetic**.
+- If you try to start a scrape while Offline Mode is enabled and the source is not Synthetic, the app blocks the run and shows a snackbar:
+  - "Offline mode is enabled. Only the Synthetic data source can be used."
+
+The UI also shows an Offline banner at the top of the tab and an inline helper text under the Source dropdown explaining the restriction.
 
 ______________________________________________________________________
 

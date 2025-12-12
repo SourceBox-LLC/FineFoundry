@@ -7,6 +7,8 @@ No behavior changes.
 
 from __future__ import annotations
 
+from typing import Optional, Callable
+
 import flet as ft
 
 from ui.tabs.build.sections.dataset_params_section import build_dataset_params_section
@@ -22,6 +24,9 @@ def build_build_tab(
     BORDER_BASE,
     WITH_OPACITY,
     _mk_help_handler,
+    offline_banner: ft.Container,
+    push_offline_reason: ft.Text,
+    push_offline_click_handler: Optional[Callable[..., None]] = None,
     # Dataset params
     source_mode,
     data_source_dd,
@@ -95,6 +100,19 @@ def build_build_tab(
         build_actions=build_actions,
     )
 
+    push_section = ft.Container(
+        content=ft.Column(
+            [
+                push_section,
+                ft.Container(
+                    content=push_offline_reason,
+                    on_click=push_offline_click_handler,
+                ),
+            ],
+            spacing=0,
+        ),
+    )
+
     model_card_section = build_model_card_section(
         section_title=section_title,
         ICONS=ICONS,
@@ -137,6 +155,7 @@ def build_build_tab(
                         ft.Container(
                             content=ft.Column(
                                 [
+                                    offline_banner,
                                     dataset_params,
                                     model_card_section,
                                     push_section,

@@ -17,7 +17,9 @@ def build_training_tab(
     ICONS,
     BORDER_BASE,
     WITH_OPACITY,
+    offline_banner: ft.Container,
     train_target_dd: ft.Dropdown,
+    train_target_offline_reason: ft.Text,
     pod_content_container: ft.Container,
     local_specs_container: ft.Container,
 ) -> ft.Container:
@@ -26,11 +28,15 @@ def build_training_tab(
     Note: All logic and dynamic visibility handlers remain in main.py. This function
     only arranges already-constructed containers and controls.
     """
-    target_selector = build_target_selector_section(train_target_dd=train_target_dd)
+    target_selector = build_target_selector_section(
+        train_target_dd=train_target_dd,
+        offline_reason=train_target_offline_reason,
+    )
 
     return ft.Container(
         content=ft.Column(
             [
+                ft.Row([offline_banner], alignment=ft.MainAxisAlignment.CENTER),
                 ft.Row([target_selector], alignment=ft.MainAxisAlignment.CENTER),
                 pod_content_container,
                 local_specs_container,

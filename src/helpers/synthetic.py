@@ -6,14 +6,17 @@ Adapted from unsloth-synth-test - uses the exact same approach that works.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from textwrap import dedent
 from typing import Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 import flet as ft
+from synthetic_data_kit.core.create import process_file as sdk_process_file
 
 from helpers.common import safe_update
 from helpers.scrape_db import save_scrape_to_db, save_chatml_to_db
@@ -21,6 +24,70 @@ from helpers.ui import two_col_header, two_col_row, compute_two_col_flex
 
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".htm", ".txt"}
+
+CONFIG_TEMPLATE = dedent(
+    """# Synthetic Data Kit Configuration
+    output_folder: {output_folder}
+
+    paths:
+      input:
+        pdf: "{pdf_input}"
+        html: "{html_input}"
+        youtube: "{youtube_input}"
+        docx: "{docx_input}"
+        ppt: "{ppt_input}"
+        txt: "{txt_input}"
+      output:
+        parsed: "{parsed_output}"
+        generated: "{generated_output}"
+        cleaned: "{cleaned_output}"
+        final: "{final_output}"
+
+    llm:
+      provider: "vllm"
+
+    vllm:
+      api_base: "http://localhost:8000/v1"
+      base_url: "http://localhost:8000/v1"
+      port: 8000
+      model: "{model}"
+      max_retries: 3
+      retry_delay: 1.0
+
+    ingest:
+      default_format: "txt"
+      youtube_captions: "auto"
+
+    generation:
+      temperature: 0.7
+      top_p: 0.95
+      chunk_size: 1022
+      overlap: 64
+      max_tokens: {max_tokens}
+      num_pairs: {num_pairs}
+
+    prompts:
+      summary: |
+        Summarize this document in 3-5 sentences, focusing on the main topic and key concepts.
+      qa_generation: |
+        Create {{num_pairs}} question-answer pairs from this text for LLM training.
+
+        Rules:
+        1. Questions must be about important facts in the text
+        2. Answers must be directly supported by the text
+        3. Return JSON format only (an array of objects with "question" and "answer")
+
+        Text:
+        {{text}}
+      qa_rating: |
+        Rate each of these question-answer pairs for quality.
+
+        Return ONLY a JSON array where each element has keys: question, answer, rating (1-10).
+
+        Pairs:
+        {{pairs}}
+    """
+)
 
 TYPE_SUFFIXES = {
     "qa": "_qa_pairs",
@@ -38,17 +105,38 @@ def is_url(path: str) -> bool:
         return False
 
 
-def create_config_file(output_folder: str, config_dir: Optional[Path] = None) -> Path:
-    """Create synthetic-data-kit config file in the specified directory."""
+def create_config_file(
+    output_folder: str,
+    model: str = "unsloth/Llama-3.2-3B-Instruct",
+    max_tokens: int = 512,
+    config_dir: Optional[Path] = None,
+) -> Path:
+    """Create synthetic-data-kit config file mirroring the reference template."""
+
+    workspace = Path(output_folder)
+
+    config_content = CONFIG_TEMPLATE.format(
+        output_folder=output_folder,
+        pdf_input=str(workspace / "pdf"),
+        html_input=str(workspace / "html"),
+        youtube_input=str(workspace / "youtube"),
+        docx_input=str(workspace / "docx"),
+        ppt_input=str(workspace / "ppt"),
+        txt_input=str(workspace / "txt"),
+        parsed_output=str(workspace / "output"),
+        generated_output=str(workspace / "generated"),
+        cleaned_output=str(workspace / "cleaned"),
+        final_output=str(workspace / "final"),
+        num_pairs=25,
+        model=model,
+        max_tokens=max_tokens,
+    )
+
     if config_dir:
         config_path = config_dir / "synthetic_data_kit_config.yaml"
     else:
         config_path = Path("synthetic_data_kit_config.yaml")
-    config_content = f"""# Synthetic Data Kit Configuration
-output_folder: {output_folder}
-vllm:
-  base_url: "http://localhost:8000/v1"
-"""
+
     config_path.write_text(config_content)
     return config_path
 
@@ -57,8 +145,15 @@ def create_temp_workspace() -> Path:
     """Create a temporary workspace directory for synthetic data generation."""
     temp_dir = Path(tempfile.mkdtemp(prefix="finefoundry_synth_"))
     # Create subdirectories
+    (temp_dir / "pdf").mkdir()
+    (temp_dir / "html").mkdir()
+    (temp_dir / "youtube").mkdir()
+    (temp_dir / "docx").mkdir()
+    (temp_dir / "ppt").mkdir()
+    (temp_dir / "txt").mkdir()
     (temp_dir / "output").mkdir()
     (temp_dir / "generated").mkdir()
+    (temp_dir / "cleaned").mkdir()
     (temp_dir / "curated").mkdir()
     (temp_dir / "final").mkdir()
     return temp_dir
@@ -81,22 +176,38 @@ async def ingest_source_async(
         cmd.append("--multimodal")
 
     # Run subprocess in thread to not block event loop
-    result = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
+    result = await asyncio.to_thread(
+        subprocess.run,
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(workspace),
+    )
 
     if result.returncode != 0:
         if log_fn:
-            stderr = result.stderr.strip()
-            # Provide helpful error messages
-            if "not found" in stderr.lower() or "No such file" in stderr:
-                await log_fn(f"  ❌ File not found: {source_path}")
-            elif "permission" in stderr.lower():
-                await log_fn(f"  ❌ Permission denied: {source_path}")
-            elif "unsupported" in stderr.lower() or "format" in stderr.lower():
-                await log_fn(f"  ❌ Unsupported file format: {source_type}")
-            elif "connection" in stderr.lower() or "timeout" in stderr.lower():
-                await log_fn("  ❌ Network error fetching URL. Check connection.")
+            stderr = (result.stderr or "").strip()
+            stdout = (result.stdout or "").strip()
+            # Provide helpful, classified error messages
+            if stderr:
+                if "not found" in stderr.lower() or "no such file" in stderr.lower():
+                    await log_fn(f"  ❌ File not found: {source_path}")
+                elif "permission" in stderr.lower():
+                    await log_fn(f"  ❌ Permission denied: {source_path}")
+                elif "unsupported" in stderr.lower() or "format" in stderr.lower():
+                    await log_fn(f"  ❌ Unsupported file format: {source_type}")
+                elif "connection" in stderr.lower() or "timeout" in stderr.lower():
+                    await log_fn("  ❌ Network error fetching URL. Check connection.")
+                else:
+                    await log_fn(f"  ❌ Ingestion failed: {stderr[:200]}")
             else:
-                await log_fn(f"  ❌ Ingestion failed: {stderr[:150]}")
+                await log_fn("  ❌ Ingestion failed with no error message from synthetic-data-kit.")
+
+            # Include a small snippet of stdout/stderr to aid debugging
+            if stdout:
+                await log_fn(f"  ℹ️ ingest stdout: {stdout[:200]}")
+            if stderr:
+                await log_fn(f"  ℹ️ ingest stderr (raw): {stderr[:200]}")
         return None
 
     output_dir = workspace / "output"
@@ -108,10 +219,45 @@ async def ingest_source_async(
         base_name = Path(source_path).stem.replace(" ", "_").replace("-", "_")
 
     patterns = [f"*{base_name}*", "*.txt", "*.lance"]
-    for pattern in patterns:
-        files = list(output_dir.glob(pattern))
-        if files:
-            return files[0]
+
+    # Primary search: legacy location used by the original CLI (workspace/output)
+    search_dirs = [output_dir, workspace]
+    for search_dir in search_dirs:
+        for pattern in patterns:
+            try:
+                files = list(search_dir.glob(pattern))
+            except Exception:
+                files = []
+            if files:
+                return files[0]
+
+    # Fallback: recursive search under workspace, in case the tool nests outputs
+    try:
+        for pattern in patterns:
+            files = list(workspace.rglob(pattern))
+            if files:
+                return files[0]
+    except Exception:
+        pass
+
+    # Ingestion reported success but we couldn't find any output file under the workspace
+    if log_fn:
+        try:
+            # Snapshot a few entries from both workspace and workspace/output for debugging
+            existing_root = sorted(p.name for p in workspace.glob("*"))
+            existing_output = sorted(p.name for p in output_dir.glob("*"))
+            await log_fn(
+                "  ❌ Ingestion completed but no output file was found in the synthetic workspace. "
+                "This usually means synthetic-data-kit changed its output location or produced an unexpected format."
+            )
+            if existing_root:
+                sample_root = ", ".join(existing_root[:10])
+                await log_fn(f"  ℹ️ Files in workspace root: {sample_root}")
+            if existing_output:
+                sample_output = ", ".join(existing_output[:10])
+                await log_fn(f"  ℹ️ Files in workspace/output: {sample_output}")
+        except Exception:
+            pass
 
     return None
 
@@ -122,51 +268,65 @@ async def generate_content_async(
     workspace: Path,
     gen_type: str = "qa",
     num_pairs: int = 25,
+    model: str = "unsloth/Llama-3.2-3B-Instruct",
     log_fn: Optional[Callable] = None,
 ) -> Optional[Path]:
     """Generate content from a chunk file (async)."""
     if log_fn:
         await log_fn(f"  🔄 Generating {gen_type} from: {Path(chunk_file).name}")
 
-    cmd = [
-        "synthetic-data-kit",
-        "-c",
-        str(config_path),
-        "create",
-        chunk_file,
-        "--type",
-        gen_type,
-    ]
+    # Use the official Python API instead of the CLI so we can
+    # reliably pass our per-workspace config and vLLM provider.
+    try:
+        def _run() -> str:
+            return sdk_process_file(
+                file_path=chunk_file,
+                output_dir=str(workspace / "generated"),
+                config_path=config_path,
+                api_base=None,
+                model=model,
+                content_type=gen_type,
+                num_pairs=num_pairs,
+                verbose=False,
+                provider="vllm",
+            )
 
-    if gen_type == "qa":
-        cmd.extend(["--num-pairs", str(num_pairs)])
-
-    # Run subprocess in thread to not block event loop
-    result = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
+        output_path_str = await asyncio.to_thread(_run)
+    except Exception as e:
         if log_fn:
-            stderr = result.stderr.strip()
-            # Provide helpful error messages
-            if "out of memory" in stderr.lower() or "OOM" in stderr:
-                await log_fn("    ❌ Out of memory. Try fewer pairs or smaller chunks.")
-            elif "timeout" in stderr.lower():
-                await log_fn("    ❌ Generation timed out. Try reducing num_pairs.")
-            elif "empty" in stderr.lower() or "no content" in stderr.lower():
-                await log_fn("    ⚠️ Chunk has no usable content, skipping.")
-            else:
-                await log_fn(f"    ❌ Generation error: {stderr[:150]}")
+            await log_fn(f"    ❌ Generation error: {str(e)[:200]}")
         return None
 
-    chunk_name = Path(chunk_file).stem
-    suffix = TYPE_SUFFIXES.get(gen_type, "_generated")
-    generated_path = workspace / "generated" / f"{chunk_name}{suffix}.json"
+    if not output_path_str:
+        if log_fn:
+            await log_fn("    ❌ Generation returned no output path.")
+        return None
 
+    generated_path = Path(output_path_str)
     if generated_path.exists():
         return generated_path
 
+    # Fallback: look for any matching JSON in workspace/generated
+    chunk_name = Path(chunk_file).stem
     for f in (workspace / "generated").glob(f"{chunk_name}*.json"):
         return f
+
+    if log_fn:
+        try:
+            existing_root = sorted(p.name for p in workspace.glob("*"))
+            existing_generated = sorted(p.name for p in (workspace / "generated").glob("*"))
+            await log_fn(
+                "    ❌ Generation completed but no output file was found in the synthetic workspace. "
+                "This usually means synthetic-data-kit changed its output location or produced an unexpected format."
+            )
+            if existing_root:
+                sample_root = ", ".join(existing_root[:10])
+                await log_fn(f"    ℹ️ Files in workspace root: {sample_root}")
+            if existing_generated:
+                sample_gen = ", ".join(existing_generated[:10])
+                await log_fn(f"    ℹ️ Files in workspace/generated: {sample_gen}")
+        except Exception:
+            pass
 
     return None
 
@@ -192,7 +352,13 @@ async def curate_content_async(
         str(threshold),
     ]
 
-    result = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
+    result = await asyncio.to_thread(
+        subprocess.run,
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(workspace),
+    )
 
     if result.returncode != 0:
         if log_fn:
@@ -223,7 +389,13 @@ async def convert_to_ft_format_async(
         "ft",
     ]
 
-    await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
+    await asyncio.to_thread(
+        subprocess.run,
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(workspace),
+    )
 
     ft_path = workspace / "final" / f"{json_file.stem}_ft.json"
     if ft_path.exists():
@@ -350,13 +522,15 @@ async def run_synthetic_generation(
     await log(f"   Workspace: {workspace}")
 
     # Create config file pointing to temp workspace
-    config_path = create_config_file(str(workspace), config_dir=workspace)
+    config_path = create_config_file(str(workspace), model=model, max_tokens=512, config_dir=workspace)
 
     # Initialize generator (run in thread to not block UI)
     try:
         from unsloth.dataprep import SyntheticDataKit
 
         def load_model():
+            prev_cwd = os.getcwd()
+            os.chdir(str(workspace))
             gen = SyntheticDataKit.from_pretrained(
                 model_name=model,
                 max_seq_length=2048,
@@ -368,6 +542,7 @@ async def run_synthetic_generation(
                 overlap=64,
                 max_generation_tokens=512,
             )
+            os.chdir(prev_cwd)
             return gen
 
         generator = await asyncio.to_thread(load_model)
@@ -454,7 +629,15 @@ async def run_synthetic_generation(
                 await log(f"\n  [{i + 1}/{len(chunks_to_process)}] Generating {gen_type}...")
 
                 # Generate content (async)
-                gen_file = await generate_content_async(chunk_file, config_path, workspace, gen_type, num_pairs, log)
+                gen_file = await generate_content_async(
+                    chunk_file,
+                    config_path,
+                    workspace,
+                    gen_type,
+                    num_pairs,
+                    model=model,
+                    log_fn=log,
+                )
                 if not gen_file:
                     await log("    ❌ Generation failed for this chunk")
                     continue
@@ -577,6 +760,13 @@ async def run_synthetic_generation(
         await log("\n🧹 Cleaning up...")
         try:
             generator.cleanup()
+        except Exception:
+            pass
+        # Remove any stray root-level synthetic-data-kit config written by upstream tools
+        try:
+            for p in (Path("synthetic_data_kit_config.yml"), Path("synthetic_data_kit_config.yaml")):
+                if p.exists() and p.is_file():
+                    p.unlink(missing_ok=True)
         except Exception:
             pass
         # Clean up temp workspace

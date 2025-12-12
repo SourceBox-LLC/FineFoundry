@@ -89,6 +89,8 @@ The **System Check** panel lives at the bottom of the Settings tab and provides 
     - `coverage report -m`
   - All output is streamed live into a log view so you can see exactly what passed or failed.
 
+  This System Check is focused on **pytest and coverage**. Linting and type checking are handled separately (for example, in CI).
+
 - **Live log viewer**
 
   - Initially hidden and shown automatically when diagnostics start.

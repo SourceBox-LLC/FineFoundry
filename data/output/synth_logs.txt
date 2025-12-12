@@ -1,0 +1,22 @@
+Boards: b, pol, x
+Dataset format: ChatML
+🚀 Starting synthetic data generation
+   Model: unsloth/Llama-3.2-3B-Instruct
+   Type: qa
+   Sources: 1
+⏳ Loading model and starting vLLM server...
+   (This may take 30-60 seconds on first run)
+   Workspace: /tmp/finefoundry_synth_vcd6cc0z
+✅ Model loaded: unsloth/Llama-3.2-3B-Instruct
+
+========================================
+📁 Processing: DeepSeek-V3.2_Pushing the Frontier of Open.pdf
+========================================
+📄 Ingesting (.PDF): DeepSeek-V3.2_Pushing the Frontier of Open.pdf
+  ❌ Ingestion completed but no output file was found in the synthetic workspace. This usually means synthetic-data-kit changed its output location or produced an unexpected format.
+  ℹ️ Files in workspace root: cleaned, curated, docx, final, generated, html, output, pdf, ppt, synthetic_data_kit_config.yaml
+  ⚠️ Failed to ingest, skipping...
+
+❌ No content was generated!
+
+🧹 Cleaning up...

@@ -494,12 +494,20 @@ async def run_pod_training(
     update_progress_from_logs: Callable[[List[str]], None],
     build_hp_fn: Callable[[], dict],
     on_pod_created: Optional[Callable[[dict], Awaitable[None]]] = None,
+    set_status_fn: Optional[Callable[[str], None]] = None,
 ) -> None:
     if train_state.get("running"):
         return
 
     cancel_train["cancelled"] = False
     train_state["running"] = True
+
+    # Initial Training status
+    if set_status_fn is not None:
+        try:
+            set_status_fn("starting")
+        except Exception:
+            pass
 
     infra = train_state.get("infra") or {}
     tpl_id = ((infra.get("template") or {}).get("id") or "").strip()
@@ -514,6 +522,11 @@ async def run_pod_training(
             )
         )
         train_state["running"] = False
+        if set_status_fn is not None:
+            try:
+                set_status_fn("failed")
+            except Exception:
+                pass
         update_train_placeholders()
         await safe_update(page)
         return
@@ -645,6 +658,11 @@ async def run_pod_training(
                     )
                 )
                 train_state["running"] = False
+                if set_status_fn is not None:
+                    try:
+                        set_status_fn("failed")
+                    except Exception:
+                        pass
                 update_train_placeholders()
                 await safe_update(page)
                 return
@@ -786,6 +804,11 @@ async def run_pod_training(
                 )
             )
             train_state["running"] = False
+            if set_status_fn is not None:
+                try:
+                    set_status_fn("failed")
+                except Exception:
+                    pass
             update_train_placeholders()
             await safe_update(page)
             return
@@ -899,6 +922,11 @@ async def run_pod_training(
             ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Pod create failed: {e}")])
         )
         train_state["running"] = False
+        if set_status_fn is not None:
+            try:
+                set_status_fn("failed")
+            except Exception:
+                pass
         await safe_update(page)
         return
 
@@ -921,6 +949,12 @@ async def run_pod_training(
                     train_timeline.controls.append(
                         ft.Row([ft.Icon(ft.Icons.ERROR, color=COLORS.RED), ft.Text(f"Failed to terminate pod: {ex}")])
                     )
+                # Treat this as a cancelled training run
+                if set_status_fn is not None:
+                    try:
+                        set_status_fn("cancelled")
+                    except Exception:
+                        pass
                 break
             pod = await asyncio.to_thread(rp_pod_module.get_pod, api_key, train_state.get("pod_id"))
             state = (rp_pod_module.state_of(pod) or "").upper()
@@ -941,6 +975,16 @@ async def run_pod_training(
                     train_state["progress"] = 1.0
                 except Exception:
                     pass
+                # Map terminal pod state to completed/failed
+                if set_status_fn is not None:
+                    try:
+                        s = (state or "").upper()
+                        if ("COMPLETED" in s) or ("SUCCEEDED" in s) or (s == "COMPLETED"):
+                            set_status_fn("completed")
+                        else:
+                            set_status_fn("failed")
+                    except Exception:
+                        pass
                 try:
                     await safe_update(page)
                 except Exception:

@@ -23,8 +23,9 @@ def build_merge_tab(
     BORDER_BASE,
     WITH_OPACITY,
     _mk_help_handler,
+    offline_banner: ft.Container,
     merge_op: ft.Dropdown,
-    rows_host: ft.Column,
+    rows_container: ft.Container,
     add_row_btn: ft.TextButton,
     clear_btn: ft.TextButton,
     merge_output_format: ft.Dropdown,
@@ -57,7 +58,7 @@ def build_merge_tab(
         _mk_help_handler=_mk_help_handler,
         add_row_btn=add_row_btn,
         clear_btn=clear_btn,
-        rows_host=rows_host,
+        rows_container=rows_container,
     )
 
     output_section = build_output_section(
@@ -113,6 +114,7 @@ def build_merge_tab(
                         ft.Container(
                             content=ft.Column(
                                 [
+                                    offline_banner,
                                     op_section,
                                     datasets_section,
                                     output_section,

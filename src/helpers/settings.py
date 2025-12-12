@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 from db import init_db
 from db.settings import (
+    get_setting,
     set_setting,
     get_all_settings,
     get_hf_token,
@@ -124,3 +125,17 @@ def save_proxy_config(cfg: Dict[str, Any]) -> None:
     """Save proxy configuration."""
     init_db()
     set_proxy_config(cfg)
+
+
+def load_offline_mode() -> bool:
+    init_db()
+    value = get_setting("app.offline_mode", True)
+    try:
+        return bool(value)
+    except Exception:
+        return True
+
+
+def save_offline_mode(enabled: bool) -> None:
+    init_db()
+    set_setting("app.offline_mode", bool(enabled))

@@ -19,6 +19,7 @@ def build_pod_logs_section(
     train_prog_label: ft.Text,
     train_timeline: ft.ListView,
     train_timeline_placeholder: ft.Text,
+    train_status_row: ft.Control,
     mk_help_handler,
 ) -> ft.Container:
     return ft.Container(
@@ -30,6 +31,7 @@ def build_pod_logs_section(
                     "Pod status updates and training logs.",
                     on_help_click=mk_help_handler("Pod status updates and training logs."),
                 ),
+                train_status_row,
                 ft.Row([train_progress, train_prog_label], spacing=12),
                 ft.Container(
                     ft.Stack([train_timeline, train_timeline_placeholder], expand=True),

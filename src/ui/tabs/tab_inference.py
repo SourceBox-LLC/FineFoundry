@@ -30,6 +30,7 @@ def build_inference_tab(
     infer_rep_penalty_slider: ft.Slider,
     infer_rep_penalty_label: ft.Text,
     infer_prompt_tf: ft.TextField,
+    infer_expected_tf: ft.TextField,
     infer_dataset_dd: ft.Dropdown,
     infer_dataset_refresh_btn: ft.IconButton,
     infer_sample_prompts_dd: ft.Dropdown,
@@ -107,6 +108,7 @@ def build_inference_tab(
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 infer_prompt_tf,
+                infer_expected_tf,
                 ft.Row(
                     [
                         ft.Column([infer_temp_label, infer_temp_slider], spacing=2),

@@ -39,7 +39,7 @@ ______________________________________________________________________
 pip install uv
 
 # Or use pip directly
-pip install -r requirements.txt
+pip install -e .
 python src/main.py
 ```
 
@@ -54,7 +54,7 @@ python src/main.py
 uv sync
 
 # With pip
-pip install -r requirements.txt --upgrade
+pip install -e . --upgrade
 ```
 
 ### SSL/Certificate Errors
@@ -258,26 +258,27 @@ If you still hit OOM, also reduce sequence length and/or disable evaluation duri
 
 For local Docker training, the Training tab's Beginner preset **Auto Set (local)** automatically picks conservative batch size, grad accumulation, and max steps based on your detected GPU VRAM. Use this preset for first runs on consumer GPUs if you're unsure what values to choose.
 
-### Inference tab: "Adapter directory doesn't look like a valid LoRA adapter"
+### Inference tab: "Adapter validated" errors / invalid adapter
 
-**Problem**: The Inference tab refuses to validate an adapter directory and shows a red error like:
+**Problem**: The Inference tab refuses to validate the selected training run's adapter and shows a red error like:
 
-- *"Adapter directory is missing or invalid"*, or
-- *"Adapter directory doesn't look like a valid LoRA adapter"*.
+- *"Invalid adapter directory. Please select a completed training run."*, or
+- *"Adapter directory doesn't look like a valid LoRA adapter."*.
 
 **Causes**:
 
-- The path points to the **parent run folder** instead of the adapter subfolder.
-- The directory is empty or missing key adapter files.
+- The selected training run is not **completed**.
+- The training run completed but did not produce a valid adapter directory.
+- The adapter directory exists but is missing key adapter files.
 
 **Solution**:
 
-1. Make sure you're selecting the **adapter subdirectory** from a completed fine-tuning run (often named `adapter/`).
-1. Verify the folder contains at least one of:
+1. Select a **completed** training run in the Inference tab.
+1. If the latest run failed, re-run training and confirm it completes successfully.
+1. Verify the adapter directory created by the run contains at least one of:
    - `adapter_config.json`
    - LoRA weight files such as `*.safetensors` or `*.bin`
-1. If you're unsure, click **Use latest local training** in the Inference tab to automatically populate the adapter path and base model from your most recent local run.
-1. After fixing the path, wait for the Inference tab to re-run validation (spinner + snackbar) before trying to generate.
+1. After changing the selected run, wait for validation (spinner + snackbar) before trying to generate.
 
 ### Training pod won't start
 

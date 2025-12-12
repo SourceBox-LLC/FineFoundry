@@ -19,6 +19,7 @@ def build_settings_tab(
     proxy_enable_cb,
     use_env_cb,
     proxy_url_tf,
+    offline_mode_sw,
     hf_token_tf,
     hf_status,
     hf_test_btn,
@@ -31,13 +32,21 @@ def build_settings_tab(
     runpod_remove_btn,
     ollama_enable_cb,
     ollama_base_url_tf,
-    ollama_default_model_tf,
     ollama_models_dd,
     ollama_test_btn,
     ollama_refresh_btn,
     ollama_save_btn,
+    ollama_reset_btn,
     ollama_status,
     REFRESH_ICON,
+    db_info_text,
+    db_summary_text,
+    db_refresh_btn,
+    db_clear_logs_btn,
+    db_clear_scraped_btn,
+    db_clear_configs_btn,
+    db_clear_runs_btn,
+    db_factory_reset_btn,
     system_check_status,
     system_check_btn,
     system_check_log_container,
@@ -49,6 +58,71 @@ def build_settings_tab(
     All controls and helpers are provided by the caller (main.py) so
     cross-tab references remain intact and logic is unchanged.
     """
+    # Explanation block shown when Offline Mode is enabled, summarizing what
+    # the app does while offline.
+    offline_mode_details = ft.Column(
+        [
+            ft.Text(
+                "When enabled, Offline mode:",
+                size=11,
+                color=WITH_OPACITY(0.75, BORDER_BASE),
+            ),
+            ft.Text(
+                "• Uses synthetic-only data sources (no remote scrapers).",
+                size=11,
+                color=WITH_OPACITY(0.65, BORDER_BASE),
+            ),
+            ft.Text(
+                "• Disables Hugging Face datasets, Hub pushes, and HF Inference API.",
+                size=11,
+                color=WITH_OPACITY(0.65, BORDER_BASE),
+            ),
+            ft.Text(
+                "• Disables Runpod infrastructure helpers and Runpod training.",
+                size=11,
+                color=WITH_OPACITY(0.65, BORDER_BASE),
+            ),
+            ft.Text(
+                "• Restricts Merge and Analysis to local/database data only.",
+                size=11,
+                color=WITH_OPACITY(0.65, BORDER_BASE),
+            ),
+            ft.Text(
+                "• Leaves all Ollama features fully functional.",
+                size=11,
+                color=WITH_OPACITY(0.65, BORDER_BASE),
+            ),
+        ],
+        spacing=2,
+        visible=bool(getattr(offline_mode_sw, "value", False)),
+    )
+
+    def _apply_offline_mode_to_settings(_=None):
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+        try:
+            offline_mode_details.visible = is_offline
+        except Exception:
+            pass
+
+    # Register this block with the shared Offline Mode hooks so it updates
+    # whenever the global switch changes.
+    try:
+        hooks = getattr(offline_mode_sw, "data", None)
+        if hooks is None:
+            hooks = {}
+        hooks["settings_tab_offline_details"] = lambda e=None: _apply_offline_mode_to_settings(e)
+        offline_mode_sw.data = hooks
+    except Exception:
+        pass
+
+    try:
+        _apply_offline_mode_to_settings()
+    except Exception:
+        pass
+
     return ft.Container(
         content=ft.Column(
             [
@@ -79,6 +153,8 @@ def build_settings_tab(
                                         size=11,
                                         color=WITH_OPACITY(0.6, BORDER_BASE),
                                     ),
+                                    ft.Row([offline_mode_sw], wrap=True),
+                                    offline_mode_details,
                                     ft.Divider(),
                                     # HF
                                     section_title(
@@ -133,12 +209,36 @@ def build_settings_tab(
                                         color=WITH_OPACITY(0.7, BORDER_BASE),
                                     ),
                                     ft.Row([ollama_enable_cb], wrap=True),
-                                    ft.Row([ollama_base_url_tf, ollama_default_model_tf], wrap=True),
+                                    ft.Row([ollama_base_url_tf], wrap=True),
                                     ft.Row([ollama_models_dd], wrap=True),
                                     ft.Row(
-                                        [ollama_test_btn, ollama_refresh_btn, ollama_save_btn], spacing=10, wrap=True
+                                        [ollama_test_btn, ollama_refresh_btn, ollama_save_btn, ollama_reset_btn],
+                                        spacing=10,
+                                        wrap=True,
                                     ),
                                     ollama_status,
+                                    ft.Divider(),
+                                    section_title(
+                                        "Database & Storage",
+                                        getattr(ICONS, "STORAGE", getattr(ICONS, "FOLDER", ICONS.SETTINGS)),
+                                        "Inspect FineFoundry's SQLite database and storage footprint.",
+                                        on_help_click=_mk_help_handler(
+                                            "Inspect FineFoundry's SQLite database and storage footprint."
+                                        ),
+                                    ),
+                                    db_info_text,
+                                    db_summary_text,
+                                    ft.Row([db_refresh_btn, db_clear_logs_btn], spacing=10, wrap=True),
+                                    ft.Row(
+                                        [db_clear_scraped_btn, db_clear_configs_btn],
+                                        spacing=10,
+                                        wrap=True,
+                                    ),
+                                    ft.Row(
+                                        [db_clear_runs_btn, db_factory_reset_btn],
+                                        spacing=10,
+                                        wrap=True,
+                                    ),
                                     ft.Divider(),
                                     section_title(
                                         "System Check",

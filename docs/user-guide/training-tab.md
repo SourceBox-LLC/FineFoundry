@@ -280,6 +280,22 @@ Inference** and the [Inference Tab](inference-tab.md).
 
 ______________________________________________________________________
 
+## Offline Mode
+
+When **Offline Mode** is enabled, the Training tab enforces local-only workflows:
+
+- **Runpod cloud training is disabled**.
+  - The training target is forced to `local`.
+  - Runpod infra and control actions are disabled.
+- **Hugging Face datasets and Hub push are disabled**.
+  - Hugging Face remains visible in dropdowns but is disabled.
+  - If you were previously set to Hugging Face as a dataset source, the UI resets to **Database**.
+  - Push-to-Hub controls are disabled and the push toggle is forced off.
+
+The UI shows an Offline banner at the top of the tab and inline helper text under key controls explaining why they are disabled.
+
+______________________________________________________________________
+
 ## Troubleshooting
 
 For detailed troubleshooting, see the main guide:

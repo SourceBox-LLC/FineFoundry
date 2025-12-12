@@ -200,6 +200,14 @@ After a successful merge, the **Download Merged Dataset** button appears at the 
 - The downloaded copy uses the same filename you specified in Output
 - Works for exported JSON files
 
+## Offline Mode
+
+When **Offline Mode** is enabled:
+
+- Hugging Face datasets are disabled.
+- Only **Database** sources can be selected.
+- Each dataset row shows an inline explanation under the **Source** dropdown indicating that Hugging Face datasets are disabled.
+
 ## Troubleshooting
 
 ### "Merged dataset not found"

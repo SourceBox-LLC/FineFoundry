@@ -13,6 +13,7 @@ from typing import List
 
 import asyncio
 import json
+import time
 
 import flet as ft
 
@@ -29,6 +30,8 @@ from helpers.synthetic import (
 from helpers.theme import BORDER_BASE, COLORS, ICONS
 from helpers.ui import (
     WITH_OPACITY,
+    build_offline_banner,
+    offline_reason_text,
     compute_two_col_flex,
     make_empty_placeholder,
     make_selectable_pill,
@@ -70,6 +73,7 @@ def build_scrape_tab_with_logic(
     proxy_enable_cb: ft.Control,
     use_env_cb: ft.Control,
     proxy_url_tf: ft.TextField,
+    offline_mode_sw: ft.Switch,
 ) -> ft.Control:
     """Build the Scrape tab UI and attach all related handlers.
 
@@ -104,6 +108,11 @@ def build_scrape_tab_with_logic(
         ],
         width=180,
     )
+    try:
+        # Keep a copy of all options so Offline Mode can filter without losing them
+        source_dd.data = {"all_options": list(source_dd.options)}
+    except Exception:
+        pass
     reddit_url = ft.TextField(
         label="Reddit URL (subreddit or post)",
         value="https://www.reddit.com/r/LocalLLaMA/",
@@ -143,13 +152,47 @@ def build_scrape_tab_with_logic(
     synthetic_file_picker.on_result = on_synthetic_files_picked
     page.overlay.append(synthetic_file_picker)
 
+    def _open_synthetic_picker(_=None):
+        try:
+            synthetic_file_picker.pick_files(
+                allow_multiple=True,
+                allowed_extensions=["pdf", "docx", "pptx", "html", "txt"],
+            )
+        except Exception:
+            pass
+
     synthetic_browse_btn = ft.ElevatedButton(
         "Browse",
         icon=ICONS.FOLDER_OPEN if hasattr(ICONS, "FOLDER_OPEN") else ICONS.FOLDER,
-        on_click=lambda _: synthetic_file_picker.pick_files(
-            allow_multiple=True,
-            allowed_extensions=["pdf", "docx", "pptx", "html", "txt"],
+        on_click=_open_synthetic_picker,
+    )
+
+    synthetic_dropzone = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(
+                    getattr(ICONS, "UPLOAD_FILE", getattr(ICONS, "FILE_UPLOAD", ICONS.FOLDER)),
+                    size=18,
+                    color=WITH_OPACITY(0.8, BORDER_BASE),
+                ),
+                ft.Text(
+                    "Drop files here or click to browse",
+                    size=12,
+                    color=WITH_OPACITY(0.8, BORDER_BASE),
+                ),
+            ],
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
         ),
+        width=520,
+        height=96,
+        alignment=ft.alignment.center,
+        padding=10,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        bgcolor=WITH_OPACITY(0.03, BORDER_BASE),
+        on_click=_open_synthetic_picker,
     )
     synthetic_gen_type = ft.Dropdown(
         label="Generation Type",
@@ -303,6 +346,83 @@ def build_scrape_tab_with_logic(
     log_placeholder = make_empty_placeholder("No logs yet", ICONS.TERMINAL)
     log_area = ft.Stack([log_list, log_placeholder], expand=True)
 
+    # Offline banner (tab-level constraints)
+    offline_banner = build_offline_banner(
+        [
+            "Only the Synthetic data source can be used.",
+            "Network scrapers (4chan/Reddit/StackExchange) are disabled.",
+        ]
+    )
+
+    source_offline_reason = offline_reason_text("Offline Mode: network scrapers are disabled.")
+
+    # Export logs support (Download logs button + FilePicker)
+    scrape_save_logs_btn = ft.OutlinedButton(
+        "Download logs",
+        icon=getattr(ICONS, "DOWNLOAD", getattr(ICONS, "SAVE_ALT", ICONS.SAVE)),
+        disabled=True,
+    )
+    log_actions = ft.Row([scrape_save_logs_btn], alignment=ft.MainAxisAlignment.END)
+
+    def _collect_scrape_log_lines() -> List[str]:
+        lines: List[str] = []
+        try:
+            for ctl in getattr(log_list, "controls", []) or []:
+                try:
+                    value = getattr(ctl, "value", "")
+                except Exception:
+                    value = ""
+                if isinstance(value, str) and value.strip():
+                    lines.append(value)
+        except Exception:
+            pass
+        return lines
+
+    def _on_save_scrape_logs(e: ft.FilePickerResultEvent):
+        try:
+            path = getattr(e, "path", None)
+            if not path:
+                return
+            lines = _collect_scrape_log_lines()
+            if not lines:
+                try:
+                    page.snack_bar = ft.SnackBar(ft.Text("No logs to export."))
+                    page.open(page.snack_bar)
+                    page.update()
+                except Exception:
+                    pass
+                return
+            txt = "\n".join(lines)
+            if not txt.endswith("\n"):
+                txt += "\n"
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(txt)
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Saved logs to: {path}"))
+                page.open(page.snack_bar)
+                page.update()
+            except Exception:
+                pass
+        except Exception as ex:
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Failed to save logs: {ex}"))
+                page.open(page.snack_bar)
+                page.update()
+            except Exception:
+                pass
+
+    scrape_logs_picker = ft.FilePicker(on_result=_on_save_scrape_logs)
+    try:
+        page.overlay.append(scrape_logs_picker)
+    except Exception:
+        pass
+
+    scrape_save_logs_btn.on_click = lambda e: scrape_logs_picker.save_file(
+        dialog_title="Save scrape logs",
+        file_name=f"scrape-{int(time.time())}.log",
+        allowed_extensions=["txt", "log"],
+    )
+
     # Preview host: flex-based two-column grid (ListView of Rows)
     preview_host = ft.ListView(expand=1, auto_scroll=False)
     preview_placeholder = make_empty_placeholder(
@@ -435,6 +555,80 @@ def build_scrape_tab_with_logic(
 
     source_dd.on_change = lambda e: (update_source_controls(), update_board_validation())
 
+    def apply_offline_mode_to_sources(_=None) -> None:
+        """Adjust available sources based on Offline Mode.
+
+        When offline is enabled, keep all sources visible but disable
+        non-synthetic options so they are clearly greyed out. When disabled,
+        restore all options as selectable.
+        """
+
+        try:
+            hooks = getattr(source_dd, "data", {}) or {}
+        except Exception:
+            hooks = {}
+        all_opts = list(hooks.get("all_options") or []) or list(source_dd.options or [])
+
+        is_offline = bool(getattr(offline_mode_sw, "value", False))
+
+        try:
+            offline_banner.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            source_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            # Rebuild options with appropriate disabled flags so UI can show
+            # remote sources but prevent selecting them while offline.
+            new_opts = []
+            for opt in all_opts:
+                try:
+                    key = getattr(opt, "key", None)
+                    text = getattr(opt, "text", None)
+                    label = str(key or text or "").strip().lower()
+                except Exception:
+                    label = ""
+                try:
+                    if is_offline and label and label != "synthetic":
+                        opt.disabled = True
+                    else:
+                        # Ensure options are re-enabled when coming back online
+                        opt.disabled = False
+                except Exception:
+                    pass
+                new_opts.append(opt)
+
+            source_dd.options = new_opts
+
+            # In Offline Mode, force the current value to synthetic if needed
+            cur = (source_dd.value or "").strip().lower()
+            if is_offline and cur != "synthetic":
+                source_dd.value = "synthetic"
+            elif not is_offline:
+                # When coming back online, keep current value if it exists
+                # among options; otherwise default to synthetic.
+                current = (source_dd.value or "").strip()
+                valid_keys = {
+                    str(getattr(o, "key", getattr(o, "text", "")) or "").strip() for o in source_dd.options or []
+                }
+                if not current or current not in valid_keys:
+                    source_dd.value = "synthetic"
+        except Exception:
+            pass
+
+        try:
+            update_source_controls()
+            update_board_validation()
+        except Exception:
+            try:
+                page.update()
+            except Exception:
+                pass
+
     def update_scrape_placeholders() -> None:
         try:
             has_logs = len(getattr(log_list, "controls", []) or []) > 0
@@ -459,6 +653,10 @@ def build_scrape_tab_with_logic(
             except Exception:
                 pass
             try:
+                scrape_save_logs_btn.disabled = not has_logs
+            except Exception:
+                pass
+            try:
                 ctl = preview_section_ref.get("control")
                 if ctl is not None:
                     # Preview visible only after run completes and we have something to show
@@ -471,6 +669,22 @@ def build_scrape_tab_with_logic(
 
     async def on_start_scrape():
         cancel_state["cancelled"] = False
+
+        # Safety: in Offline Mode, only allow the synthetic generator
+        if bool(getattr(offline_mode_sw, "value", False)) and (source_dd.value or "").strip().lower() != "synthetic":
+            try:
+                page.snack_bar = ft.SnackBar(
+                    ft.Text("Offline mode is enabled. Only the Synthetic data source can be used."),
+                )
+                page.open(page.snack_bar)
+                await safe_update(page)
+            except Exception:
+                pass
+            try:
+                apply_offline_mode_to_sources()
+            except Exception:
+                pass
+            return
 
         # Show immediate snackbar for synthetic (before any processing)
         if source_dd.value == "synthetic":
@@ -993,7 +1207,14 @@ def build_scrape_tab_with_logic(
     se_params_row = ft.Row([se_site], wrap=True, visible=False)
     synthetic_params_row = ft.Column(
         [
+            ft.Text(
+                "Generate synthetic Q&A pairs, chain-of-thought traces, or summaries from the files/URLs you select using your chosen model. The first run may take longer while the model loads, especially for larger models.",
+                size=12,
+                color=WITH_OPACITY(0.8, BORDER_BASE),
+            ),
             ft.Row([synthetic_files, synthetic_browse_btn], wrap=True),
+            synthetic_dropzone,
+            ft.Container(height=8),
             ft.Row(
                 [
                     synthetic_gen_type,
@@ -1032,6 +1253,8 @@ def build_scrape_tab_with_logic(
         BORDER_BASE=BORDER_BASE,
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
+        offline_banner=offline_banner,
+        source_offline_reason=source_offline_reason,
         source_dd=source_dd,
         board_actions=board_actions,
         boards_wrap=boards_wrap,
@@ -1059,6 +1282,7 @@ def build_scrape_tab_with_logic(
         threads_label=threads_label,
         pairs_label=pairs_label,
         log_area=log_area,
+        log_actions=log_actions,
         preview_area=preview_area,
         handle_preview_click=handle_preview_click,
         handle_raw_preview_click=handle_raw_preview_click,
@@ -1068,9 +1292,25 @@ def build_scrape_tab_with_logic(
         preview_section_ref=preview_section_ref,
     )
 
+    # Expose offline-mode hook so Settings can toggle available sources
+    try:
+        hooks = getattr(offline_mode_sw, "data", None)
+        if hooks is None:
+            hooks = {}
+        hooks["apply_offline_mode_to_sources"] = lambda e=None: apply_offline_mode_to_sources(e)
+        offline_mode_sw.data = hooks
+    except Exception:
+        pass
+
     # Ensure initial visibility matches idle state (no logs or preview yet)
     update_scrape_placeholders()
-    # Ensure source-specific controls match the default source selection
-    update_source_controls()
+    # Ensure source-specific controls and sources list match the current mode
+    try:
+        apply_offline_mode_to_sources()
+    except Exception:
+        try:
+            update_source_controls()
+        except Exception:
+            pass
 
     return scrape_tab

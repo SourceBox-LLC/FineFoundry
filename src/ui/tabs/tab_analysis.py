@@ -23,11 +23,13 @@ def build_analysis_tab(
     BORDER_BASE,
     WITH_OPACITY,
     _mk_help_handler,
+    offline_banner: ft.Container,
     # Header actions
     analyze_btn: ft.ElevatedButton,
     analysis_busy_ring: ft.ProgressRing,
     # Dataset chooser controls
     analysis_source_dd: ft.Dropdown,
+    analysis_source_offline_reason: ft.Text,
     analysis_db_session_dd: ft.Dropdown,
     analysis_db_refresh_btn: ft.IconButton,
     analysis_hf_repo: ft.TextField,
@@ -39,6 +41,7 @@ def build_analysis_tab(
     _build_modules_table,
     # Runtime settings
     analysis_backend_dd: ft.Dropdown,
+    analysis_backend_offline_reason: ft.Text,
     analysis_hf_token_tf: ft.TextField,
     analysis_sample_size_tf: ft.TextField,
     # Results blocks & dividers
@@ -69,6 +72,7 @@ def build_analysis_tab(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         analysis_source_dd=analysis_source_dd,
+        offline_reason=analysis_source_offline_reason,
         analysis_db_session_dd=analysis_db_session_dd,
         analysis_db_refresh_btn=analysis_db_refresh_btn,
         analysis_hf_repo=analysis_hf_repo,
@@ -94,6 +98,7 @@ def build_analysis_tab(
         WITH_OPACITY=WITH_OPACITY,
         _mk_help_handler=_mk_help_handler,
         analysis_backend_dd=analysis_backend_dd,
+        offline_reason=analysis_backend_offline_reason,
         analysis_hf_token_tf=analysis_hf_token_tf,
         analysis_sample_size_tf=analysis_sample_size_tf,
     )
@@ -118,6 +123,7 @@ def build_analysis_tab(
                 ft.Container(
                     content=ft.Column(
                         [
+                            offline_banner,
                             header,
                             dataset_chooser,
                             modules_section,

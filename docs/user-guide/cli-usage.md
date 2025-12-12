@@ -44,7 +44,16 @@ You should have a JSON file with a list of input/output pairs, for example:
 ]
 ```
 
-The default flow in FineFoundry saves scraped data to `scraped_training_data.json` in this format.
+FineFoundry's GUI is database-first: Scrape results are saved to the SQLite database (`finefoundry.db`).
+If you want a JSON file for `src/save_dataset.py`, export a scrape session to JSON.
+
+Example (run from the project root):
+
+```bash
+uv run python -c "import sys; sys.path.append('src'); from db.scraped_data import list_scrape_sessions; print(list_scrape_sessions(limit=10))"
+
+uv run python -c "import sys; sys.path.append('src'); from db.scraped_data import export_session_to_json; export_session_to_json(SESSION_ID, 'scraped_training_data.json')"
+```
 
 ### 2. Configure `src/save_dataset.py`
 
@@ -187,6 +196,7 @@ This will:
 - Ingest and chunk the document.
 - Generate Q&A pairs from each chunk.
 - Save the combined dataset to `qa_pairs.json`.
+- Save results to the FineFoundry database by default (use `--no-db` to disable).
 
 ### Multiple sources
 
@@ -231,7 +241,8 @@ python src/synthetic_cli.py \
 - `--threshold` – Curation quality threshold 1-10 (default: 7.5).
 - `--format`, `-f` – Output format: `chatml` or `standard` (default: `chatml`).
 - `--output-type` – Output type: `json`, `hf` (HuggingFace datasets), or `parquet` (default: `json`).
-- `--multimodal` – Enable multimodal processing for images.
+- `--multimodal` – Enable multimodal ingestion where supported by `synthetic-data-kit`.
+  - Note: the CLI `--source` inputs must still be a supported document type (PDF/DOCX/PPTX/HTML/TXT) or a URL.
 - `--dedupe` – Remove duplicate pairs based on input text.
 - `--resume` – Resume from previous run (load existing output and append). Saves progress after each chunk.
 - `--stats` – Show dataset statistics (token counts, length distribution) after generation.

@@ -13,6 +13,7 @@ def build_runtime_section(
     WITH_OPACITY,
     _mk_help_handler,
     analysis_backend_dd: ft.Dropdown,
+    offline_reason: ft.Text,
     analysis_hf_token_tf: ft.TextField,
     analysis_sample_size_tf: ft.TextField,
 ) -> ft.Container:
@@ -28,14 +29,20 @@ def build_runtime_section(
                     ),
                 ),
                 ft.Container(
-                    content=ft.Row(
+                    content=ft.Column(
                         [
-                            analysis_backend_dd,
-                            analysis_hf_token_tf,
-                            analysis_sample_size_tf,
+                            ft.Row(
+                                [
+                                    analysis_backend_dd,
+                                    analysis_hf_token_tf,
+                                    analysis_sample_size_tf,
+                                ],
+                                wrap=True,
+                                spacing=10,
+                            ),
+                            offline_reason,
                         ],
-                        wrap=True,
-                        spacing=10,
+                        spacing=0,
                     ),
                     width=1000,
                     border=ft.border.all(1, WITH_OPACITY(0.06, BORDER_BASE)),

@@ -113,7 +113,7 @@ If your system uses `py` to select Python, you can run `py -3.10 -m venv venv` i
 With the virtual environment active, install the required packages:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### 4. Launch the GUI
@@ -137,7 +137,7 @@ ______________________________________________________________________
 After running the app (via `uv run src/main.py` or `python src/main.py`):
 
 - A **desktop window** should appear with tabs such as **Scrape**, **Build / Publish**, **Training**, **Inference**, **Merge Datasets**, **Dataset Analysis**, and **Settings**.
-- You should not see import errors in the terminal. If you do, re-run dependency installation (`uv sync` or `pip install -r requirements.txt --upgrade`).
+- You should not see import errors in the terminal. If you do, re-run dependency installation (`uv sync` or `pip install -e . --upgrade`).
 
 To quickly exercise the app after installation:
 

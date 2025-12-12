@@ -70,6 +70,7 @@ def _build_training_tab(monkeypatch) -> Tuple[DummyPage, ft.Control, Dict[str, A
         page,
         section_title=section_title,
         _mk_help_handler=_mk_help_handler,
+        offline_mode_sw=ft.Switch(value=False),
         _hf_cfg={},
         _runpod_cfg={},
         hf_token_tf=ft.TextField(),

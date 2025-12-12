@@ -354,7 +354,7 @@ FineFoundry uses simple state management:
   - `cancel_state` - Cancellation flags
   - `merge_cancel` - Merge cancellation
 - **Configuration**: Stored in UI controls, read when needed
-- **Settings**: Persisted in `.env` or OS-specific config
+- **Settings**: Persisted in the SQLite database (`finefoundry.db`)
 
 No complex state management framework needed due to:
 
@@ -434,10 +434,10 @@ See [Testing Guide](testing.md) for details on test types, commands, and coverag
 
 ## Configuration Files
 
-- `requirements.txt` - Python dependencies
+- `pyproject.toml` - Project configuration and dependencies
 - `uv.lock` - UV package lock file
-- `.env` (not in repo) - Local environment variables
-- Settings stored in OS-specific locations via Flet
+- `.env` (not in repo) - Optional local environment variables (for example, `HF_TOKEN`)
+- Settings persisted in the SQLite database (`finefoundry.db`)
 
 ## Build Artifacts
 

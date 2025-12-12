@@ -59,7 +59,7 @@ def _mk_help_handler(_msg: str):
 
 
 @pytest.mark.integration
-def test_build_scrape_tab_smoke():
+def test_build_scrape_tab_smoke(offline_mode_sw):
     page = DummyPage()
     proxy_enable_cb = ft.Checkbox()
     use_env_cb = ft.Checkbox()
@@ -69,16 +69,19 @@ def test_build_scrape_tab_smoke():
         page,
         section_title=section_title,
         _mk_help_handler=_mk_help_handler,
+        offline_mode_sw=offline_mode_sw,
         proxy_enable_cb=proxy_enable_cb,
         use_env_cb=use_env_cb,
         proxy_url_tf=proxy_url_tf,
     )
 
     assert isinstance(tab, ft.Control)
+    assert isinstance(getattr(offline_mode_sw, "data", None), dict)
+    assert "apply_offline_mode_to_sources" in offline_mode_sw.data
 
 
 @pytest.mark.integration
-def test_build_build_tab_smoke():
+def test_build_build_tab_smoke(offline_mode_sw):
     page = DummyPage()
     ollama_enable_cb = ft.Checkbox()
     ollama_models_dd = ft.Dropdown()
@@ -87,42 +90,51 @@ def test_build_build_tab_smoke():
         page,
         section_title=section_title,
         _mk_help_handler=_mk_help_handler,
+        offline_mode_sw=offline_mode_sw,
         _hf_cfg={},
         ollama_enable_cb=ollama_enable_cb,
         ollama_models_dd=ollama_models_dd,
     )
 
     assert isinstance(tab, ft.Control)
+    assert isinstance(getattr(offline_mode_sw, "data", None), dict)
+    assert "build_tab_offline" in offline_mode_sw.data
 
 
 @pytest.mark.integration
-def test_build_merge_tab_smoke():
+def test_build_merge_tab_smoke(offline_mode_sw):
     page = DummyPage()
 
     tab = build_merge_tab_with_logic(
         page,
         section_title=section_title,
         _mk_help_handler=_mk_help_handler,
+        offline_mode_sw=offline_mode_sw,
     )
 
     assert isinstance(tab, ft.Control)
+    assert isinstance(getattr(offline_mode_sw, "data", None), dict)
+    assert "merge_tab_offline" in offline_mode_sw.data
 
 
 @pytest.mark.integration
-def test_build_analysis_tab_smoke():
+def test_build_analysis_tab_smoke(offline_mode_sw):
     page = DummyPage()
 
     tab = build_analysis_tab_with_logic(
         page,
         section_title=section_title,
         _mk_help_handler=_mk_help_handler,
+        offline_mode_sw=offline_mode_sw,
     )
 
     assert isinstance(tab, ft.Control)
+    assert isinstance(getattr(offline_mode_sw, "data", None), dict)
+    assert "analysis_tab_offline" in offline_mode_sw.data
 
 
 @pytest.mark.integration
-def test_build_training_and_inference_tabs_smoke():
+def test_build_training_and_inference_tabs_smoke(offline_mode_sw):
     page = DummyPage()
 
     hf_token_tf = ft.TextField()
@@ -134,6 +146,7 @@ def test_build_training_and_inference_tabs_smoke():
         page,
         section_title=section_title,
         _mk_help_handler=_mk_help_handler,
+        offline_mode_sw=offline_mode_sw,
         _hf_cfg={},
         _runpod_cfg={},
         hf_token_tf=hf_token_tf,
@@ -145,6 +158,8 @@ def test_build_training_and_inference_tabs_smoke():
     assert isinstance(training_tab, ft.Control)
     assert isinstance(train_state, dict)
     assert "running" in train_state
+    assert isinstance(getattr(offline_mode_sw, "data", None), dict)
+    assert "training_tab_offline" in offline_mode_sw.data
 
     # Inference tab uses the shared train_state (e.g., for latest local run info).
     inference_tab = build_inference_tab_with_logic(

@@ -13,7 +13,7 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
     <img alt="Flet 0.28.3" src="https://img.shields.io/badge/Flet-0.28.3-03A9F4?style=for-the-badge&logo=flutter&logoColor=white" />
   </a>
   <a href="https://huggingface.co/docs/datasets">
-    <img alt="datasets 4.0.0" src="https://img.shields.io/badge/datasets-4.0.0-FF6F00?style=for-the-badge&logo=huggingface&logoColor=white" />
+    <img alt="datasets 4.1.1+" src="https://img.shields.io/badge/datasets-4.1.1%2B-FF6F00?style=for-the-badge&logo=huggingface&logoColor=white" />
   </a>
   <img alt="OS" src="https://img.shields.io/badge/OS-Windows%20|%20macOS%20|%20Linux-2E3440?style=for-the-badge&logo=windows&logoColor=white" />
   <a href="#license">
@@ -127,7 +127,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -e .
 
 # Run the desktop app
 python src/main.py
@@ -201,7 +201,7 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ![Build / Publish tab](img/ff_buld_publish.png)
 
-- Select a **Database Session** from your scrape history, or point to a **Hugging Face** dataset.
+- Select a **Database Session** from your scrape history.
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.
 - Set split fractions with sliders (`Validation`, `Test`).
 - Click **Build Dataset** to create `datasets.DatasetDict` and save to `Save dir`.
@@ -312,8 +312,8 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ![Inference tab](img/ff_inferance.png)
 
-- Pick a **base model** and **adapter directory**, or import from your **latest local training** run.
-- The adapter directory is **validated immediately** when selected; invalid folders show a red status message and a snackbar, and the prompt controls remain locked.
+- Pick a **base model** and a **completed training run**.
+- The run's adapter directory is **validated immediately**; invalid adapters show a red status message and a snackbar, and the prompt controls remain locked.
 - Once validated, the **Prompt & responses** section unlocks, with:
   - Prompt box, **Preset** dropdown (Deterministic / Balanced / Creative), Temperature and Max new tokens sliders.
   - **Generate** button that uses the same local inference helpers as Quick Local Inference, with a small progress ring and status text while the model loads and responds.
@@ -390,6 +390,12 @@ The app tries the field value first, then `HF_TOKEN`, then the cached login.
 Note: there are no CLI flags; configure constants in the file header, then run it.
 
 1. Ensure you have a JSON file like `scraped_training_data.json` (schema above).
+
+   The GUI stores scrape results in the SQLite database (`finefoundry.db`). To create a JSON file from a scrape session, export it from the database:
+
+   ```bash
+   uv run python -c "import sys; sys.path.append('src'); from db.scraped_data import export_session_to_json; export_session_to_json(SESSION_ID, 'scraped_training_data.json')"
+   ```
 
 1. Open `src/save_dataset.py` and edit the configuration block at the top:
 
@@ -618,7 +624,7 @@ Quick fixes:
 
 ## 🧑‍💻 Development
 
-- UI built with Flet (`flet`, `flet-desktop`), pinned in `requirements.txt`.
+- UI built with Flet (`flet[all]`), pinned in `pyproject.toml`.
 - Run formatting/linting as desired. Contributions welcome via PR.
 
 ### Controller pattern
@@ -678,14 +684,14 @@ Tests live under `tests/` and are discovered by `pytest` (configured via `pyproj
   ```
 
 - In CI, tests are run under coverage for each Python version in the matrix. A summary is printed in the logs, an XML report is produced per version,
-  and a minimum coverage threshold is enforced with `coverage report -m --fail-under=20` (see `.github/workflows/ci.yml`).
+  and a minimum coverage threshold is enforced with `coverage report -m --fail-under=30` (see `.github/workflows/ci.yml`).
 
 ### CI/CD workflows
 
 - **CI (GitHub Actions)** — `.github/workflows/ci.yml`
 
   - `lint` (py311): sets up Python 3.11 with `uv sync --frozen`, then runs `ruff` against `src/` using `ruff.toml`.
-  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest` and `coverage`, runs `coverage run --source=src -m pytest --ignore=proxy_test.py`, prints `coverage report -m --fail-under=20`, and uploads `coverage.xml` as an artifact (treats "no tests collected" as success).
+  - `test` (py310/py311/py312): matrix over Python 3.10, 3.11, 3.12; each job uses `uv sync --frozen`, installs `pytest` and `coverage`, runs `coverage run --source=src -m pytest --ignore=proxy_test.py`, prints `coverage report -m --fail-under=30`, and uploads `coverage.xml` as an artifact (treats "no tests collected" as success).
   - `typecheck` (py311): runs `mypy` against `src/helpers` and `src/save_dataset.py` using the configuration in `pyproject.toml`.
   - `security` (py311): runs `pip-audit` via `uv` against the synced environment, ignoring a small, explicit set of tracked CVEs while failing on any new vulnerabilities.
   - `docs` (py311): checks documentation quality by running `mdformat` (formatting), `codespell` (spelling), and `lychee` (link checker) over `README.md` and `docs/`.

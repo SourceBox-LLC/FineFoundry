@@ -15,7 +15,7 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
   - [Scrape Tab](user-guide/scrape-tab.md) - Data collection from various sources
   - [Build & Publish Tab](user-guide/build-publish-tab.md) - Dataset creation and Hugging Face publishing
   - [Training Tab](user-guide/training-tab.md) - Model fine-tuning on Runpod or locally
-  - [Inference Tab](user-guide/inference-tab.md) - Run inference with fine-tuned adapters and chat view
+  - [Inference Tab](user-guide/inference-tab.md) - Run inference with adapters from completed training runs and chat view
   - [Merge Datasets Tab](user-guide/merge-tab.md) - Combining multiple datasets
   - [Analysis Tab](user-guide/analysis-tab.md) - Dataset quality and characteristics analysis
   - [Settings Tab](user-guide/settings-tab.md) - Configuration and authentication
@@ -91,4 +91,4 @@ See our [Contributing Guide](development/contributing.md) for details on:
 ______________________________________________________________________
 
 **Last Updated**: December 2025
-**Version**: See [CHANGELOG](../CHANGELOG.md)
+**Version**: See `pyproject.toml` for the current version.

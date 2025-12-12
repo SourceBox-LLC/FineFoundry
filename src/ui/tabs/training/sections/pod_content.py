@@ -13,6 +13,7 @@ def build_pod_content_container(
     *,
     config_section: ft.Control,
     rp_infra_panel: ft.Control,
+    rp_ds_divider: ft.Control,
     ds_tp_group_container: ft.Container,
     pod_logs_section: ft.Container,
     teardown_section: ft.Control,
@@ -26,7 +27,7 @@ def build_pod_content_container(
                         [
                             config_section,
                             rp_infra_panel,
-                            ft.Divider(),
+                            rp_ds_divider,
                             ds_tp_group_container,
                             pod_logs_section,
                             teardown_section,

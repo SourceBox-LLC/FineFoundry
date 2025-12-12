@@ -42,7 +42,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -e .
 
 # Run the application
 python src/main.py
@@ -53,9 +53,9 @@ python src/main.py
 When you first launch FineFoundry, you'll see a desktop application with several tabs:
 
 1. **Scrape** - Collect training data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents
-1. **Build / Publish** - Create datasets and publish to Hugging Face
+1. **Build / Publish** - Build train/val/test splits from a database session and optionally push to Hugging Face
 1. **Training** - Fine-tune models on Runpod or locally
-1. **Inference** - Run inference against fine-tuned adapters with prompt history and Full Chat View
+1. **Inference** - Run inference against adapters from completed training runs with prompt history and Full Chat View
 1. **Merge Datasets** - Combine multiple datasets
 1. **Dataset Analysis** - Analyze dataset quality
 1. **Settings** - Configure authentication and preferences
@@ -73,7 +73,7 @@ Let's create a simple dataset from 4chan:
    - **Max Pairs**: 500
    - **Delay**: 0.5 seconds
    - **Min Length**: 10 characters
-1. Click **Start Scrape**
+1. Click **Start**
 1. Watch the progress bar and logs
 1. When complete, click **Preview Dataset** to inspect the data
 
@@ -96,7 +96,7 @@ Your data is automatically saved to the database as a new scrape session.
 ### Step 3: Analyze Your Dataset (Optional)
 
 1. Navigate to the **Dataset Analysis** tab
-1. Select your dataset source (Database Session or Hugging Face)
+1. Select your dataset source (Database Session, or Hugging Face when online)
 1. Enable analysis modules you're interested in
 1. Click **Analyze Dataset**
 1. Review the insights to understand your data quality
@@ -108,7 +108,7 @@ Now that you have the basics:
 - **🧠 Training (Runpod or local Docker)**: Start [fine-tuning models](training-tab.md). Run the same training script on Runpod pods or your local machine and iterate quickly on new adapters.
 - **⚙️ Reusable training configs**: Use the Training tab's **Configuration** section or "Save current setup" buttons to snapshot full training setups (dataset, hyperparameters, target, and infra). Configs are stored in the database and the last one auto-loads on startup.
 - **🧪 Quick Local Inference**: After a successful local run, use the Quick Local Inference panel as a **one-click smoke test** for your latest local adapter with temperature/max token sliders and presets. When you click **Run Inference**, the app shows a short loading state (button disabled + spinner + status text) while the fine-tuned model is loaded and a response is generated.
-- **💬 Inference tab**: Use the [Inference Tab](inference-tab.md) as your **dedicated playground**: select any adapter directory, validate it immediately, and chat with your fine-tuned model using either the Prompt & responses view or the Full Chat View dialog.
+- **💬 Inference tab**: Use the [Inference Tab](inference-tab.md) as your **dedicated playground**: select a completed training run, validate its adapter automatically, and chat with your fine-tuned model using either the Prompt & responses view or the Full Chat View dialog.
 - **📖 Learn More**: Read the [complete GUI guide](gui-overview.md)
 - **🔧 CLI Usage**: Automate workflows with [CLI tools](cli-usage.md)
 - **🔀 Merge**: [Combine multiple datasets](merge-tab.md)
