@@ -1293,13 +1293,13 @@ def build_training_tab_with_logic(
         label="Training target",
         options=[
             ft.dropdown.Option("Runpod - Pod"),
-            ft.dropdown.Option("local"),
+            ft.dropdown.Option(key="local", text="Local"),
         ],
         value="Runpod - Pod",
         width=420,
         tooltip=(
             "Choose where training runs. 'Runpod - Pod' uses the Runpod workflow; "
-            "'local' runs via Docker on this machine."
+            "'Local' runs via Docker on this machine."
         ),
     )
 

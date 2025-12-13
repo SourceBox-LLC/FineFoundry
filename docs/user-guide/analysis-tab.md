@@ -8,7 +8,7 @@ Use this tab to:
 - Run a configurable set of analysis modules (stats, duplicates, sentiment, etc.)
 - Visualize distributions and proxy metrics for data quality
 
-![Dataset Analysis Tab](../../img/ff_dataset_analysis.png)
+![Dataset Analysis Tab](../../img/new/ff_data_analysis.png)
 
 ______________________________________________________________________
 

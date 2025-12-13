@@ -9,7 +9,7 @@ Use this tab to:
 - Save and reload complete training setups as reusable configurations (stored in database)
 - Sanity‑check a completed local run with **Quick Local Inference**
 
-![Training Tab](../../img/ff_training.png)
+![Training Tab](../../img/new/ff_training.png)
 
 ______________________________________________________________________
 
@@ -33,7 +33,7 @@ ______________________________________________________________________
 
 - **Training target**
   - **Runpod - Pod**: train on a remote GPU pod using Runpod.
-  - **local**: train in a local Docker container on your own GPU/CPU.
+  - **Local**: train in a local Docker container on your own GPU/CPU.
 - **Skill level**
   - **Beginner**: simplifies choices and exposes safe presets.
   - **Expert**: shows full hyperparameter and infra controls.
@@ -285,7 +285,7 @@ ______________________________________________________________________
 When **Offline Mode** is enabled, the Training tab enforces local-only workflows:
 
 - **Runpod cloud training is disabled**.
-  - The training target is forced to `local`.
+  - The training target is forced to `Local`.
   - Runpod infra and control actions are disabled.
 - **Hugging Face datasets and Hub push are disabled**.
   - Hugging Face remains visible in dropdowns but is disabled.

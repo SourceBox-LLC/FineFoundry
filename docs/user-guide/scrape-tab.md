@@ -18,7 +18,7 @@ Use this tab to:
 
 All scraped data is automatically saved to the database.
 
-![Scrape Tab](../../img/ff_scrape_tab.png)
+![Scrape Tab](../../img/new/ff_data_sources.png)
 
 ______________________________________________________________________
 

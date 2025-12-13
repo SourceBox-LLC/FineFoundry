@@ -9,7 +9,7 @@ Use this tab to:
 - Save a `datasets.DatasetDict` to disk
 - Push datasets to the Hugging Face Hub with a basic README card
 
-![Build & Publish Tab](../../img/ff_buld_publish.png)
+![Build & Publish Tab](../../img/new/ff_build_publish.png)
 
 ______________________________________________________________________
 

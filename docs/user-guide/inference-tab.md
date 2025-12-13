@@ -10,7 +10,7 @@ Use this tab to:
 - View a running list of **prompt / response pairs**
 - Pop out a focused **Full Chat View** dialog for multi‑turn chats
 
-![Inference Tab](../../img/ff_inferance.png)
+![Inference Tab](../../img/new/ff_inference.png)
 
 ______________________________________________________________________
 
@@ -128,7 +128,7 @@ ______________________________________________________________________
 
 Click **Full Chat View** to open a focused, demo-ready chat dialog built around the same adapter and base model:
 
-![Full Chat View](../../img/ff_inferance_full_chat_view.png)
+![Full Chat View](../../img/new/ff_inference_chat_view.png)
 
 The dialog includes:
 

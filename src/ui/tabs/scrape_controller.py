@@ -101,10 +101,10 @@ def build_scrape_tab_with_logic(
         label="Source",
         value="synthetic",
         options=[
-            ft.dropdown.Option("synthetic"),
-            ft.dropdown.Option("4chan"),
-            ft.dropdown.Option("reddit"),
-            ft.dropdown.Option("stackexchange"),
+            ft.dropdown.Option(key="synthetic", text="Synthetic"),
+            ft.dropdown.Option(key="4chan", text="4chan"),
+            ft.dropdown.Option(key="reddit", text="Reddit"),
+            ft.dropdown.Option(key="stackexchange", text="StackExchange"),
         ],
         width=180,
     )

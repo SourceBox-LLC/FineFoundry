@@ -157,7 +157,7 @@ For comprehensive guides, tutorials, and API documentation, visit the **[docs/](
 
 ### 🧭 Scrape tab
 
-![Scrape tab](img/ff_scrape_tab.png)
+![Scrape tab](img/new/ff_data_sources.png)
 
 Choose from multiple data sources:
 
@@ -199,7 +199,7 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ### 🏗️ Build / Publish tab
 
-![Build / Publish tab](img/ff_buld_publish.png)
+![Build / Publish tab](img/new/ff_build_publish.png)
 
 - Select a **Database Session** from your scrape history.
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.
@@ -215,7 +215,7 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ### 🧠 Training tab
 
-![Training tab](img/ff_training.png)
+![Training tab](img/new/ff_training.png)
 
 - **Training target**: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
 - **Dataset source**: select a **Database Session** from your scrape history, or a **Hugging Face** repo and split.
@@ -260,7 +260,7 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ### 🔀 Merge Datasets tab
 
-![Merge Datasets tab](img/ff_merge.png)
+![Merge Datasets tab](img/new/ff_merge_datasets.png)
 
 - Combine multiple **Database Sessions** and/or **Hugging Face** datasets into a single dataset.
 - Automatically maps input/output columns and filters empty rows.
@@ -270,7 +270,7 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ### 📊 Dataset Analysis tab
 
-![Dataset Analysis tab](img/ff_dataset_analysis.png)
+![Dataset Analysis tab](img/new/ff_data_analysis.png)
 
 - Select dataset source (Database Session or Hugging Face) and click Analyze dataset.
 - Use "Select all" to toggle all modules at once.
@@ -310,7 +310,7 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ### 💬 Inference tab
 
-![Inference tab](img/ff_inferance.png)
+![Inference tab](img/new/ff_inference.png)
 
 - Pick a **base model** and a **completed training run**.
 - The run's adapter directory is **validated immediately**; invalid adapters show a red status message and a snackbar, and the prompt controls remain locked.
