@@ -290,6 +290,7 @@ def build_training_tab_with_logic(
         options=[
             ft.dropdown.Option(text="Fastest (Runpod)", key="fastest"),
             ft.dropdown.Option(text="Cheapest (Runpod)", key="cheapest"),
+            ft.dropdown.Option(text="Simple custom", key="simple"),
         ],
         value="fastest",
         width=220,
@@ -298,6 +299,55 @@ def build_training_tab_with_logic(
             "Beginner presets. For Runpod, Fastest favors throughput and Cheapest favors lower cost. "
             "For local training, labels change to Quick local test / Longer local run."
         ),
+    )
+
+    simple_duration_dd = ft.Dropdown(
+        label="Training duration",
+        options=[
+            ft.dropdown.Option(key="very_short", text="Very short (smoke test)"),
+            ft.dropdown.Option(key="short", text="Short"),
+            ft.dropdown.Option(key="medium", text="Medium"),
+            ft.dropdown.Option(key="long", text="Long"),
+        ],
+        value="short",
+        width=240,
+        tooltip="How long to train. This maps to Max steps (safe, capped).",
+    )
+    simple_memory_dd = ft.Dropdown(
+        label="Memory / stability",
+        options=[
+            ft.dropdown.Option(key="safe", text="Safe (avoid OOM)"),
+            ft.dropdown.Option(key="normal", text="Normal"),
+            ft.dropdown.Option(key="aggressive", text="Aggressive (may OOM)"),
+        ],
+        value="safe",
+        width=220,
+        tooltip="Controls batch size and gradient accumulation based on detected GPU VRAM.",
+    )
+    simple_quality_dd = ft.Dropdown(
+        label="Speed vs quality",
+        options=[
+            ft.dropdown.Option(key="speed", text="Speed"),
+            ft.dropdown.Option(key="balanced", text="Balanced"),
+            ft.dropdown.Option(key="quality", text="Quality"),
+        ],
+        value="balanced",
+        width=200,
+        tooltip="Speed favors packing + a slightly higher learning rate; Quality is slightly more conservative.",
+    )
+    simple_summary_txt = ft.Text("", size=11, color=WITH_OPACITY(0.7, BORDER_BASE))
+
+    beginner_simple_custom_panel = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("Simple custom", size=12, weight=ft.FontWeight.W_600),
+                ft.Row([simple_duration_dd, simple_memory_dd, simple_quality_dd], wrap=True),
+                simple_summary_txt,
+            ],
+            spacing=6,
+        ),
+        padding=ft.padding.only(top=4, bottom=4),
+        visible=False,
     )
 
     # Expert-mode GPU picker (hidden by default)
@@ -805,6 +855,14 @@ def build_training_tab_with_logic(
             beginner_mode_dd.visible = is_beginner
         except Exception:
             pass
+        # Simple custom panel is only meaningful for Beginner + local target + preset=simple
+        try:
+            tgt_sc = (train_target_dd.value or "Runpod - Pod").lower()
+            is_local_sc = not tgt_sc.startswith("runpod - pod")
+            mode_sc = (beginner_mode_dd.value or "fastest").strip().lower()
+            beginner_simple_custom_panel.visible = bool(is_beginner and is_local_sc and mode_sc == "simple")
+        except Exception:
+            pass
         # Expert GPU picker visibility
         try:
             expert_gpu_dd.visible = not is_beginner
@@ -857,6 +915,92 @@ def build_training_tab_with_logic(
                         batch_tf.value = "2"
                         grad_acc_tf.value = "1"
                         max_steps_tf.value = max_steps_tf.value or "50"
+                    elif mode == "simple":
+                        # Simple custom: map a few safe knobs onto the hidden HP fields
+                        try:
+                            data = gather_local_specs_helper()
+                        except Exception:
+                            data = {}
+                        try:
+                            gpus = list(data.get("gpus") or [])
+                            max_vram = 0.0
+                            for g in gpus:
+                                try:
+                                    v = g.get("vram_gb")
+                                    if isinstance(v, (int, float)) and v is not None:
+                                        max_vram = max(max_vram, float(v))
+                                except Exception:
+                                    pass
+                        except Exception:
+                            max_vram = 0.0
+
+                        dur = (simple_duration_dd.value or "short").strip().lower()
+                        mem = (simple_memory_dd.value or "safe").strip().lower()
+                        qual = (simple_quality_dd.value or "balanced").strip().lower()
+
+                        # Duration -> max_steps
+                        steps_map = {
+                            "very_short": "50",
+                            "short": "200",
+                            "medium": "600",
+                            "long": "1200",
+                        }
+                        max_steps_tf.value = steps_map.get(dur, "200")
+
+                        # Memory/stability -> (batch, grad_acc) based on VRAM tier
+                        # Conservative defaults if unknown / CPU-only
+                        if max_vram >= 24:
+                            tiers = {
+                                "safe": ("2", "4"),
+                                "normal": ("4", "2"),
+                                "aggressive": ("4", "1"),
+                            }
+                        elif max_vram >= 16:
+                            tiers = {
+                                "safe": ("2", "4"),
+                                "normal": ("2", "2"),
+                                "aggressive": ("4", "2"),
+                            }
+                        elif max_vram >= 11.5:
+                            tiers = {
+                                "safe": ("1", "4"),
+                                "normal": ("2", "4"),
+                                "aggressive": ("2", "2"),
+                            }
+                        elif max_vram >= 8:
+                            tiers = {
+                                "safe": ("1", "4"),
+                                "normal": ("1", "2"),
+                                "aggressive": ("2", "4"),
+                            }
+                        else:
+                            tiers = {
+                                "safe": ("1", "4"),
+                                "normal": ("1", "4"),
+                                "aggressive": ("1", "2"),
+                            }
+                        bsz, ga = tiers.get(mem, tiers.get("safe"))
+                        batch_tf.value = bsz
+                        grad_acc_tf.value = ga
+
+                        # Speed vs quality: packing + bounded LR
+                        if qual == "speed":
+                            packing_cb.value = True
+                            lr_tf.value = "2e-4" if max_vram >= 8 else "1e-4"
+                        elif qual == "quality":
+                            packing_cb.value = False
+                            lr_tf.value = "1e-4"
+                        else:
+                            packing_cb.value = True
+                            lr_tf.value = "1e-4" if max_vram < 8 else "2e-4"
+
+                        try:
+                            simple_summary_txt.value = (
+                                f"Will run ~{max_steps_tf.value} steps • batch {batch_tf.value} • grad accum {grad_acc_tf.value} "
+                                f"• packing {'on' if bool(getattr(packing_cb, 'value', False)) else 'off'}"
+                            )
+                        except Exception:
+                            pass
                     else:
                         # Auto Set (local): use detected GPU VRAM to choose a config that
                         # pushes the system reasonably hard without being reckless.
@@ -876,38 +1020,49 @@ def build_training_tab_with_logic(
                                     pass
                         except Exception:
                             max_vram = 0.0
-                        # Heuristic tiers for 4-bit 7B/8B LoRA-style training
-                        if max_vram >= 24:
+                        # Aggressive heuristic tiers for 4-bit 7B/8B LoRA-style training.
+                        # Goal: fly high without crashing -> prioritize per-device batch, keep grad_acc low.
+                        # Always overwrite hidden values so switching presets is predictable.
+                        try:
+                            packing_cb.value = True
+                        except Exception:
+                            pass
+                        if max_vram >= 48:
+                            lr_tf.value = "2e-4"
+                            batch_tf.value = "8"
+                            grad_acc_tf.value = "1"
+                            max_steps_tf.value = "800"
+                        elif max_vram >= 24:
                             lr_tf.value = "2e-4"
                             batch_tf.value = "4"
-                            grad_acc_tf.value = "2"
-                            max_steps_tf.value = max_steps_tf.value or "400"
+                            grad_acc_tf.value = "1"
+                            max_steps_tf.value = "600"
                         elif max_vram >= 16:
                             lr_tf.value = "2e-4"
                             batch_tf.value = "4"
-                            grad_acc_tf.value = "2"
-                            max_steps_tf.value = max_steps_tf.value or "200"
-                        elif max_vram >= 12:
+                            grad_acc_tf.value = "1"
+                            max_steps_tf.value = "400"
+                        elif max_vram >= 11.5:
                             lr_tf.value = "2e-4"
                             batch_tf.value = "2"
-                            grad_acc_tf.value = "2"
-                            max_steps_tf.value = max_steps_tf.value or "200"
+                            grad_acc_tf.value = "1"
+                            max_steps_tf.value = "300"
                         elif max_vram >= 8:
                             lr_tf.value = "1e-4"
-                            batch_tf.value = "2"
-                            grad_acc_tf.value = "4"
-                            max_steps_tf.value = max_steps_tf.value or "200"
+                            batch_tf.value = "1"
+                            grad_acc_tf.value = "2"
+                            max_steps_tf.value = "200"
                         elif max_vram > 0:
                             lr_tf.value = "1e-4"
                             batch_tf.value = "1"
                             grad_acc_tf.value = "4"
-                            max_steps_tf.value = max_steps_tf.value or "100"
+                            max_steps_tf.value = "100"
                         else:
-                            # CPU-only or unknown GPU: stay very conservative
+                            # CPU-only or unknown GPU: keep this functional but still short.
                             lr_tf.value = "1e-4"
                             batch_tf.value = "1"
                             grad_acc_tf.value = "4"
-                            max_steps_tf.value = max_steps_tf.value or "50"
+                            max_steps_tf.value = "50"
             except Exception:
                 pass
 
@@ -920,6 +1075,9 @@ def build_training_tab_with_logic(
     # Wire up skill-level and dataset source handlers
     skill_level.on_change = _update_skill_controls
     beginner_mode_dd.on_change = _update_skill_controls
+    simple_duration_dd.on_change = _update_skill_controls
+    simple_memory_dd.on_change = _update_skill_controls
+    simple_quality_dd.on_change = _update_skill_controls
     train_source.on_change = _update_train_source
     # Initialize skill-level dependent visibility once
     try:
@@ -1955,6 +2113,7 @@ def build_training_tab_with_logic(
         _mk_help_handler=_mk_help_handler,
         skill_level=skill_level,
         beginner_mode_dd=beginner_mode_dd,
+        beginner_simple_custom_panel=beginner_simple_custom_panel,
         expert_gpu_dd=expert_gpu_dd,
         expert_gpu_busy=expert_gpu_busy,
         expert_spot_cb=expert_spot_cb,
@@ -2971,6 +3130,14 @@ def build_training_tab_with_logic(
             "beginner_mode": beginner_mode_dd.value if (skill_level.value or "") == "Beginner" else "",
             "train_target": tgt,
         }
+        try:
+            meta["beginner_simple"] = {
+                "duration": simple_duration_dd.value,
+                "memory": simple_memory_dd.value,
+                "quality": simple_quality_dd.value,
+            }
+        except Exception:
+            pass
         payload: dict = {"hp": hp, "meta": meta}
         # Include Runpod infra UI when on Runpod target
         try:
@@ -3140,11 +3307,27 @@ def build_training_tab_with_logic(
                     pass
                 try:
                     skill_level.value = "Beginner" if skill == "beginner" else "Expert"
-                    if skill == "beginner" and mode in ("fastest", "cheapest"):
+                    if skill == "beginner" and mode in ("fastest", "cheapest", "simple"):
                         # Map legacy values ("Fastest" / "Cheapest") and new
                         # key-based values ("fastest" / "cheapest") onto the
                         # stable keys used by the dropdown.
-                        beginner_mode_dd.value = "fastest" if mode == "fastest" else "cheapest"
+                        if mode == "fastest":
+                            beginner_mode_dd.value = "fastest"
+                        elif mode == "simple":
+                            beginner_mode_dd.value = "simple"
+                        else:
+                            beginner_mode_dd.value = "cheapest"
+                    try:
+                        sc = meta.get("beginner_simple") or {}
+                        if isinstance(sc, dict):
+                            if sc.get("duration"):
+                                simple_duration_dd.value = str(sc.get("duration"))
+                            if sc.get("memory"):
+                                simple_memory_dd.value = str(sc.get("memory"))
+                            if sc.get("quality"):
+                                simple_quality_dd.value = str(sc.get("quality"))
+                    except Exception:
+                        pass
                     _update_skill_controls()
                 except Exception:
                     pass

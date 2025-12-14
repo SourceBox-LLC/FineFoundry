@@ -42,9 +42,12 @@ ______________________________________________________________________
     - **Runpod - Pod**:
       - `Fastest (Runpod)` – favors throughput on stronger GPUs.
       - `Cheapest (Runpod)` – favors smaller/cheaper GPUs with more conservative params.
-    - **local**:
+    - **Local**:
       - `Quick local test` – short run with small batch for fast sanity checks.
-      - `Auto Set (local)` – uses detected GPU VRAM to pick batch size, grad accumulation, and max steps that push your GPU reasonably hard without being reckless.
+      - `Auto Set (local)` – detects your GPU VRAM and aggressively pushes throughput (higher per-device batch, lower grad accumulation, packing on) while still aiming to avoid OOM.
+      - `Simple custom` – guided controls for Training duration / Memory & stability / Speed vs quality, mapped onto safe underlying hyperparameters.
+
+![Auto Set (local) preset](../../img/new/ff_auto_set.png)
 
 ### 2. Dataset & Output
 
@@ -177,8 +180,17 @@ Designed for users who want guardrails and good defaults.
     - Gradient accumulation steps,
     - Max steps,
     - A safe learning rate for your tier.
-  - Heuristics favor avoiding OOM on common consumer GPUs (e.g., 8–12 GB cards).
-  - Good default for first runs when you're unsure what hyperparameters to pick.
+  - Heuristics aim to **fly as high as possible without crashing**:
+    - Prioritizes per-device batch size and keeps grad accumulation low.
+    - Enables packing for throughput.
+    - Scales max steps up modestly on higher VRAM tiers.
+  - Good default for first runs on a new GPU when you want a strong baseline quickly.
+- **Simple custom**
+  - Exposes 3 safe knobs:
+    - Training duration
+    - Memory / stability
+    - Speed vs quality
+  - These map onto max steps, batch size, gradient accumulation, packing, and a small bounded LR adjustment.
 
 ### Expert Mode
 

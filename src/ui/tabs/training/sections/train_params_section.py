@@ -18,6 +18,7 @@ def build_train_params_section(
     _mk_help_handler,
     skill_level: ft.Dropdown,
     beginner_mode_dd: ft.Dropdown,
+    beginner_simple_custom_panel: ft.Control,
     expert_gpu_dd: ft.Dropdown,
     expert_gpu_busy: ft.ProgressRing,
     expert_spot_cb: ft.Checkbox,
@@ -53,6 +54,7 @@ def build_train_params_section(
                     on_help_click=_mk_help_handler("Basic hyperparameters and LoRA toggle for training."),
                 ),
                 ft.Row([skill_level, beginner_mode_dd], wrap=True),
+                beginner_simple_custom_panel,
                 ft.Row([expert_gpu_dd, expert_gpu_busy, expert_spot_cb, expert_gpu_refresh_btn], wrap=True),
                 ft.Text(
                     "Core training params",
