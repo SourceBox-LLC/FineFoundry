@@ -28,6 +28,8 @@ from helpers.settings_ollama import (
     chat as ollama_chat_helper,
 )
 
+from huggingface_hub import HfApi, HfFolder, create_repo
+
 # save_dataset utilities (local, with PYTHONPATH pointing to project src)
 try:  # pragma: no cover - normal path
     import save_dataset as sd
@@ -208,6 +210,32 @@ def build_build_tab_with_logic(
         width=320,
     )
 
+    model_run_dd = ft.Dropdown(
+        label="Training run",
+        options=[],
+        width=520,
+        tooltip="Select a completed training run (adapter) to publish",
+    )
+    model_run_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh training runs",
+    )
+    model_repo_id_tf = ft.TextField(
+        label="Model repo id",
+        value="",
+        width=360,
+        hint_text="username/my-adapter-model",
+    )
+    model_private_sw = ft.Switch(label="Private", value=True)
+    model_token_tf = ft.TextField(
+        label="HF Token",
+        password=True,
+        can_reveal_password=True,
+        width=320,
+    )
+    model_publish_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
+    model_publish_state: Dict[str, Any] = {"inflight": False}
+
     # Validation chip for splits
     split_error = ft.Text("", color=COLORS.RED)
 
@@ -296,6 +324,188 @@ def build_build_tab_with_logic(
         except Exception:
             return
         _show_offline_snack_once("Offline Mode: Hugging Face Hub actions are disabled.")
+
+    def on_model_publish_offline_click(_=None):
+        try:
+            if not bool(getattr(offline_mode_sw, "value", False)):
+                return
+        except Exception:
+            return
+        _show_offline_snack_once("Offline Mode: Hugging Face Hub actions are disabled.")
+
+    def _refresh_model_runs(_=None):
+        try:
+            from db.training_runs import list_training_runs
+
+            runs = list_training_runs(limit=50)
+            options = []
+            for r in runs:
+                status = r.get("status")
+                rid = r.get("id")
+                name = r.get("name") or "(unnamed)"
+                base_model = r.get("base_model") or ""
+                adapter_path = r.get("adapter_path") or ""
+                created = (r.get("created_at") or "")[:10]
+
+                ok = status == "completed" and adapter_path and os.path.isdir(adapter_path)
+                if ok:
+                    label = f"✅ {name} - {base_model.split('/')[-1] if base_model else 'unknown'} ({created})"
+                    options.append(ft.dropdown.Option(key=str(rid), text=label))
+                else:
+                    status_icon = {"pending": "⏳", "running": "🔄", "failed": "❌"}.get(status, "")
+                    label = f"{status_icon} {name} ({status})"
+                    options.append(ft.dropdown.Option(key=str(rid), text=label, disabled=True))
+
+            model_run_dd.options = options
+            if options and not model_run_dd.value:
+                for opt in options:
+                    if not getattr(opt, "disabled", False):
+                        model_run_dd.value = opt.key
+                        break
+        except Exception as e:
+            model_run_dd.options = [ft.dropdown.Option(key="", text=f"Error: {e}")]
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    model_run_refresh_btn.on_click = _refresh_model_runs
+    try:
+        _refresh_model_runs()
+    except Exception:
+        pass
+
+    try:
+        model_token_tf.value = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
+    except Exception:
+        pass
+
+    async def on_publish_adapter():
+        try:
+            if model_publish_state.get("inflight"):
+                return
+        except Exception:
+            return
+
+        try:
+            if bool(getattr(offline_mode_sw, "value", False)):
+                page.snack_bar = ft.SnackBar(ft.Text("Offline mode is enabled; publishing to Hugging Face Hub is disabled."))
+                page.open(page.snack_bar)
+                await safe_update(page)
+                return
+        except Exception:
+            pass
+
+        run_id = (model_run_dd.value or "").strip()
+        repo = (model_repo_id_tf.value or "").strip()
+        tok = (model_token_tf.value or "").strip()
+        if not tok:
+            try:
+                tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+            except Exception:
+                tok = ""
+        if not tok:
+            try:
+                tok = os.environ.get("HF_TOKEN") or getattr(HfFolder, "get_token", lambda: "")()
+            except Exception:
+                tok = ""
+
+        if not run_id:
+            page.snack_bar = ft.SnackBar(ft.Text("Select a completed training run first."))
+            page.open(page.snack_bar)
+            await safe_update(page)
+            return
+        if not tok:
+            page.snack_bar = ft.SnackBar(ft.Text("A valid HF token is required to publish."))
+            page.open(page.snack_bar)
+            await safe_update(page)
+            return
+
+        from db.training_runs import get_training_run
+
+        run = get_training_run(int(run_id))
+        if not run:
+            page.snack_bar = ft.SnackBar(ft.Text("Training run not found."))
+            page.open(page.snack_bar)
+            await safe_update(page)
+            return
+        if run.get("status") != "completed":
+            page.snack_bar = ft.SnackBar(ft.Text("Select a completed training run."))
+            page.open(page.snack_bar)
+            await safe_update(page)
+            return
+        adapter_path = (run.get("adapter_path") or "").strip()
+        if not adapter_path or not os.path.isdir(adapter_path):
+            page.snack_bar = ft.SnackBar(ft.Text(f"Adapter folder not found: {adapter_path}"))
+            page.open(page.snack_bar)
+            await safe_update(page)
+            return
+
+        api = HfApi(token=tok)
+        if not repo:
+            try:
+                user = api.whoami()["name"]
+            except Exception:
+                user = "username"
+            safe_name = "".join(c if c.isalnum() or c in "-_" else "-" for c in (run.get("name") or "finefoundry"))
+            repo = f"{user}/{safe_name}-adapter"
+            try:
+                model_repo_id_tf.value = repo
+            except Exception:
+                pass
+
+        model_publish_state["inflight"] = True
+        model_publish_ring.visible = True
+        timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), ft.Text(f"Publishing adapter to Hub: {repo}")]))
+        update_status_placeholder()
+        await safe_update(page)
+
+        try:
+            await asyncio.to_thread(
+                create_repo,
+                repo_id=repo,
+                token=tok,
+                private=bool(getattr(model_private_sw, "value", True)),
+                repo_type="model",
+                exist_ok=True,
+            )
+            await asyncio.to_thread(
+                api.upload_folder,
+                folder_path=adapter_path,
+                repo_id=repo,
+                repo_type="model",
+            )
+            timeline.controls.append(
+                ft.Row([ft.Icon(ICONS.CHECK_CIRCLE, color=COLORS.GREEN), ft.Text("Adapter published")])
+            )
+            _url = f"https://huggingface.co/{repo}"
+            timeline.controls.append(
+                ft.Row(
+                    [
+                        ft.Icon(ICONS.OPEN_IN_NEW, color=COLORS.BLUE),
+                        ft.TextButton("Open on Hugging Face", on_click=lambda e, u=_url: page.launch_url(u)),
+                    ]
+                )
+            )
+            page.snack_bar = ft.SnackBar(ft.Text("Published adapter to Hub"))
+            page.open(page.snack_bar)
+            await safe_update(page)
+        except Exception as e:
+            timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Publish failed: {e}")]))
+            page.snack_bar = ft.SnackBar(ft.Text(f"Publish failed: {e}"))
+            page.open(page.snack_bar)
+            await safe_update(page)
+        finally:
+            try:
+                model_publish_state["inflight"] = False
+            except Exception:
+                pass
+            try:
+                model_publish_ring.visible = False
+            except Exception:
+                pass
+            update_status_placeholder()
+            await safe_update(page)
 
     cancel_build: Dict[str, Any] = {"cancelled": False}
     dd_ref: Dict[str, Any] = {"dd": None}
@@ -824,6 +1034,52 @@ def build_build_tab_with_logic(
         spacing=10,
     )
 
+    model_publish_actions = ft.Row(
+        [
+            ft.ElevatedButton(
+                "Publish adapter",
+                icon=ICONS.CLOUD_UPLOAD,
+                on_click=lambda e: _schedule_task(page, on_publish_adapter),
+            ),
+            model_publish_ring,
+        ],
+        spacing=10,
+    )
+
+    model_offline_reason = offline_reason_text("Offline Mode: Hugging Face Hub actions are disabled.")
+
+    model_publish_section = ft.Container(
+        content=ft.Column(
+            [
+                section_title(
+                    "Publish model (adapter)",
+                    getattr(ICONS, "HUB", getattr(ICONS, "PUBLIC", ICONS.CLOUD_UPLOAD)),
+                    "Publish a LoRA adapter from a completed training run.",
+                    on_help_click=_mk_help_handler(
+                        "Publish model (adapter): Upload the LoRA adapter folder from a completed training run to a Hugging Face model repository."
+                    ),
+                ),
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row([model_run_dd, model_run_refresh_btn], wrap=True),
+                            ft.Row([model_repo_id_tf, model_private_sw, model_token_tf], wrap=True),
+                            model_publish_actions,
+                        ],
+                        spacing=10,
+                    ),
+                    width=1000,
+                    border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+                    border_radius=8,
+                    padding=10,
+                ),
+                ft.Container(content=model_offline_reason, on_click=on_model_publish_offline_click),
+            ],
+            spacing=12,
+        ),
+        width=1000,
+    )
+
     build_tab = build_build_tab(
         section_title=section_title,
         ICONS=ICONS,
@@ -861,6 +1117,7 @@ def build_build_tab_with_logic(
         ollama_gen_status=ollama_gen_status,
         card_editor=card_editor,
         card_preview_container=card_preview_container,
+        model_publish_section=model_publish_section,
         timeline=timeline,
         timeline_placeholder=timeline_placeholder,
         status_section_ref=status_section_ref,
@@ -881,6 +1138,11 @@ def build_build_tab_with_logic(
 
         try:
             push_offline_reason.visible = is_offline
+        except Exception:
+            pass
+
+        try:
+            model_offline_reason.visible = is_offline
         except Exception:
             pass
 
@@ -927,6 +1189,22 @@ def build_build_tab_with_logic(
                 ctl.disabled = is_offline
             except Exception:
                 pass
+
+        # Model publish controls
+        for ctl in [model_run_dd, model_run_refresh_btn, model_repo_id_tf, model_private_sw, model_token_tf]:
+            try:
+                ctl.disabled = is_offline
+            except Exception:
+                pass
+        try:
+            for ctl in getattr(model_publish_actions, "controls", []) or []:
+                try:
+                    if isinstance(ctl, (ft.ElevatedButton, ft.OutlinedButton, ft.TextButton)):
+                        ctl.disabled = is_offline
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # Do not touch gen_with_ollama_btn, ollama_enable_cb, ollama_models_dd,
         # or card_editor so Ollama-based editing still works offline.

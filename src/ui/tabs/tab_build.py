@@ -59,6 +59,7 @@ def build_build_tab(
     ollama_gen_status,
     card_editor,
     card_preview_container,
+    model_publish_section=None,
     # Status
     timeline,
     timeline_placeholder,
@@ -158,6 +159,7 @@ def build_build_tab(
                                     offline_banner,
                                     dataset_params,
                                     model_card_section,
+                                    model_publish_section if model_publish_section is not None else ft.Container(),
                                     push_section,
                                     status_section,
                                 ],
