@@ -5,7 +5,7 @@ This guide provides a high-level tour of the FineFoundry desktop interface and l
 When you launch the app you will see several tabs across the top:
 
 1. **Scrape** – Collect raw conversational data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents.
-1. **Build / Publish** – Build train/validation/test splits from a database scrape session and optionally push to the Hugging Face Hub.
+1. **Publish** – Build train/validation/test splits from a database scrape session and optionally push to the Hugging Face Hub.
 1. **Training** – Fine-tune models on Runpod or locally via Docker.
 1. **Inference** – Run inference against adapters from completed training runs with prompt history and Full Chat View.
 1. **Merge Datasets** – Combine multiple datasets from different sources.

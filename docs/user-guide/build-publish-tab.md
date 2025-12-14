@@ -1,6 +1,6 @@
-# Build & Publish Tab
+# Publish Tab
 
-The Build & Publish tab converts your scraped data into a structured Hugging Face dataset and optionally pushes it to the Hub with a generated dataset card.
+The Publish tab converts your scraped data into a structured Hugging Face dataset and optionally pushes it to the Hub with a generated dataset card.
 
 Use this tab to:
 
@@ -9,7 +9,7 @@ Use this tab to:
 - Save a `datasets.DatasetDict` to disk
 - Push datasets to the Hugging Face Hub with a basic README card
 
-![Build & Publish Tab](../../img/new/ff_build_publish.png)
+![Publish Tab](../../img/new/ff_build_publish.png)
 
 ______________________________________________________________________
 

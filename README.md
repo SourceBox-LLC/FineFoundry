@@ -37,7 +37,7 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 - <a href="#quick-start-gui">Quick Start</a>
 - <a href="#using-the-app">Using the App</a>
   - <a href="#scrape-tab">Scrape tab</a>
-  - <a href="#build--publish-tab">Build / Publish tab</a>
+  - <a href="#build--publish-tab">Publish tab</a>
   - <a href="#training-tab">Training tab</a>
   - <a href="#merge-datasets-tab">Merge Datasets tab</a>
   - <a href="#dataset-analysis-tab">Dataset Analysis tab</a>
@@ -135,7 +135,7 @@ python src/main.py
 flet run src/main.py
 ```
 
-The app opens a desktop window. Use the tabs: Scrape, Build / Publish, Training, Inference, Merge Datasets, Dataset Analysis, and Settings.
+The app opens a desktop window. Use the tabs: Scrape, Publish, Training, Inference, Merge Datasets, Dataset Analysis, and Settings.
 
 ## 📚 Documentation
 
@@ -197,9 +197,9 @@ You can export data to JSON via the database helpers if needed for external tool
 
 <a id="build--publish-tab"></a>
 
-### 🏗️ Build / Publish tab
+### 🏗️ Publish tab
 
-![Build / Publish tab](img/new/ff_build_publish.png)
+![Publish tab](img/new/ff_build_publish.png)
 
 - Select a **Database Session** from your scrape history.
 - Configure `Seed`, `Shuffle`, `Min Length`, `Save dir`.

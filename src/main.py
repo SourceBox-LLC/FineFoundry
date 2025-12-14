@@ -1784,7 +1784,7 @@ Offline Mode is a global switch:
         offline_mode_sw=offline_mode_sw,
     )
 
-    # Compose Build / Publish tab via dedicated controller (refactored wiring)
+    # Compose Publish tab via dedicated controller (refactored wiring)
     build_tab = build_build_tab_with_logic(
         page,
         section_title=section_title,
@@ -1882,7 +1882,7 @@ Offline Mode is a global switch:
 
     # Tabs and welcome screen
     data_sources_tab = ft.Tab(text="Data Sources", icon=ICONS.SEARCH, content=scrape_tab)
-    build_publish_tab = ft.Tab(text="Build / Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab)
+    build_publish_tab = ft.Tab(text="Publish", icon=ICONS.BUILD_CIRCLE_OUTLINED, content=build_tab)
     analysis_tab_tab = ft.Tab(
         text="Dataset Analysis", icon=getattr(ICONS, "INSIGHTS", ICONS.ANALYTICS), content=analysis_tab
     )

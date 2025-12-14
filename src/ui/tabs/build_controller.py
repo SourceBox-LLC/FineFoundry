@@ -1,6 +1,6 @@
-"""Build/Publish tab controller for FineFoundry.
+"""Publish tab controller for FineFoundry.
 
-This module builds the Build/Publish tab controls and wires up all build
+This module builds the Publish tab controls and wires up all build
 and push handlers, keeping `src/main.py` slimmer. Layout composition
 still lives in `tab_build.py` and its section builders.
 """
@@ -69,7 +69,7 @@ def build_build_tab_with_logic(
     ollama_models_dd: ft.Dropdown,
     offline_mode_sw: ft.Switch,
 ) -> ft.Control:
-    """Build the Build/Publish tab UI and attach all related handlers.
+    """Build the Publish tab UI and attach all related handlers.
 
     This mirrors the previous inline Build tab setup from ``main.py``, but
     keeps the behavior localized to this module.
@@ -267,7 +267,7 @@ def build_build_tab_with_logic(
     # Offline banner (tab-level constraints)
     offline_banner = build_offline_banner(
         [
-            "Build/publish to Hugging Face Hub is disabled.",
+            "Publishing to Hugging Face Hub is disabled.",
             "Local-only actions (e.g., Ollama) remain available.",
         ]
     )
