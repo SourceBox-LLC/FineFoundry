@@ -1900,11 +1900,11 @@ Offline Mode is a global switch:
     tabs = ft.Tabs(
         tabs=[
             data_sources_tab,
-            build_publish_tab,
             analysis_tab_tab,
             merge_datasets_tab,
             training_tab_tab,
             inference_tab_tab,
+            build_publish_tab,
             settings_tab_tab,
         ],
         expand=1,

@@ -141,6 +141,61 @@ def build_build_tab(
         timeline_placeholder=timeline_placeholder,
     )
 
+    dataset_mode_container = ft.Container(
+        content=ft.Column(
+            [
+                dataset_params,
+                model_card_section,
+                push_section,
+            ],
+            spacing=12,
+        ),
+        visible=True,
+    )
+
+    models_mode_container = ft.Container(
+        content=ft.Column(
+            [
+                model_publish_section if model_publish_section is not None else ft.Container(),
+            ],
+            spacing=12,
+        ),
+        visible=False,
+    )
+
+    publish_mode_tabs = ft.Tabs(
+        selected_index=0,
+        animation_duration=150,
+        tabs=[
+            ft.Tab(text="Datasets"),
+            ft.Tab(text="Models"),
+        ],
+    )
+
+    def _on_publish_mode_change(e=None):
+        try:
+            idx = int(getattr(publish_mode_tabs, "selected_index", 0) or 0)
+        except Exception:
+            idx = 0
+        try:
+            dataset_mode_container.visible = idx == 0
+        except Exception:
+            pass
+        try:
+            models_mode_container.visible = idx == 1
+        except Exception:
+            pass
+        try:
+            dataset_mode_container.update()
+            models_mode_container.update()
+        except Exception:
+            pass
+
+    try:
+        publish_mode_tabs.on_change = _on_publish_mode_change
+    except Exception:
+        pass
+
     # Expose status section container to caller (e.g., to control visibility)
     try:
         if status_section_ref is not None:
@@ -157,10 +212,9 @@ def build_build_tab(
                             content=ft.Column(
                                 [
                                     offline_banner,
-                                    dataset_params,
-                                    model_card_section,
-                                    model_publish_section if model_publish_section is not None else ft.Container(),
-                                    push_section,
+                                    publish_mode_tabs,
+                                    dataset_mode_container,
+                                    models_mode_container,
                                     status_section,
                                 ],
                                 spacing=12,
