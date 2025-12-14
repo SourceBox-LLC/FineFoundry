@@ -1,13 +1,13 @@
 # Publish Tab
 
-The Publish tab converts your scraped data into a structured Hugging Face dataset and optionally pushes it to the Hub with a generated dataset card.
+The Publish tab is your hub for publishing artifacts.
 
-Use this tab to:
+In Phase 1, it supports:
 
-- Load data from a database scrape session
-- Create train/validation/test splits with reproducible settings
-- Save a `datasets.DatasetDict` to disk
-- Push datasets to the Hugging Face Hub with a basic README card
+- Publishing datasets to the Hugging Face Hub
+- Publishing LoRA adapters (from completed training runs) to the Hugging Face Hub
+
+In Phase 2 (planned), it will add full model publishing (merged weights) and more platform targets.
 
 ![Publish Tab](../../img/new/ff_build_publish.png)
 
@@ -22,6 +22,12 @@ Typical workflow:
 1. Click **Build Dataset** to create a `DatasetDict` on disk.
 1. Optionally enable **Push to Hub**, fill in repo details and token.
 1. Click **Push + Upload README** to publish the dataset.
+
+If you also have completed training runs, you can publish an adapter:
+
+1. Select a **completed training run**.
+1. Set the **Model repo ID**, privacy, and token.
+1. Click **Publish adapter**.
 
 ______________________________________________________________________
 
@@ -60,6 +66,18 @@ ______________________________________________________________________
 - **HF Token** – Optional if you already authenticated via CLI or `HF_TOKEN` env var.
 - **Push + Upload README** button
   - Uploads the dataset and a generated dataset card (`README.md` in the repo).
+
+### 6. Publish model (adapter)
+
+- **Training run** dropdown
+  - Selects from completed runs.
+  - The adapter folder is uploaded from the run's saved adapter output.
+- **Model repo ID** – e.g., `username/my-adapter`.
+- **Private** – Whether to create a private model repo.
+- **HF Token** – Optional if you already authenticated via CLI or `HF_TOKEN` env var.
+- **Publish adapter** button
+  - Uploads the adapter folder (LoRA) to the Hugging Face model repository.
+  - This is adapter-only publishing (Phase 1).
 
 ______________________________________________________________________
 
@@ -104,6 +122,23 @@ When **Offline Mode** is enabled:
 - Hugging Face Hub actions are disabled.
 - Push-related controls are disabled, and the UI shows an inline explanation:
   - "Offline Mode: Hugging Face Hub actions are disabled."
+
+This applies to:
+
+- Dataset pushing ("Push to Hub")
+- Model adapter publishing ("Publish adapter")
+
+FineFoundry keeps these sections visible so you can see what is available, but blocks the network action.
+
+## Adapter vs full model publishing
+
+- **Adapter (Phase 1)**
+  - Publishes the LoRA adapter weights produced by training.
+  - This is lightweight and the recommended default for sharing fine-tunes.
+  - Consumers load it with the base model.
+- **Full model (Phase 2, planned)**
+  - Publishes a merged set of model weights.
+  - Larger upload and more storage cost, but simpler for consumers.
 
 ______________________________________________________________________
 

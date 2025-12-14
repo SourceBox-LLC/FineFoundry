@@ -1106,7 +1106,7 @@ def build_training_tab_with_logic(
 
     def _build_hp() -> dict:
         """Build train.py flags via helper (delegated)."""
-        return build_hp_from_controls_helper(
+        hp = build_hp_from_controls_helper(
             train_source=train_source,
             train_hf_repo=train_hf_repo,
             train_hf_split=train_hf_split,
@@ -1145,6 +1145,19 @@ def build_training_tab_with_logic(
             fp16_cb=fp16_cb,
             bf16_cb=bf16_cb,
         )
+
+        try:
+            is_offline = bool(getattr(offline_mode_sw, "value", False))
+        except Exception:
+            is_offline = False
+        if is_offline and isinstance(hp, dict):
+            try:
+                hp.pop("hf_dataset_id", None)
+                hp.pop("hf_dataset_split", None)
+                hp.pop("hf_dataset_config", None)
+            except Exception:
+                pass
+        return hp
 
     async def _on_pod_created(data: dict):
         try:

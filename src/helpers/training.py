@@ -55,7 +55,7 @@ def build_hp_from_controls(
     bf16_cb: ft.Checkbox,
 ) -> dict:
     """Build train.py flags from UI controls. Mirrors previous _build_hp in main.py."""
-    src = train_source.value or "Hugging Face"
+    src = train_source.value or "Database"
     repo = (train_hf_repo.value or "").strip()
     split = (train_hf_split.value or "train").strip()
     cfg = (train_hf_config.value or "").strip()
@@ -190,6 +190,7 @@ def build_hp_from_controls(
         "json_path",
         "hf_dataset_id",
         "hf_dataset_split",
+        "hf_dataset_config",
         "db_session_id",
         "base_model",
         "epochs",
