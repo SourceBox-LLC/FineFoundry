@@ -583,6 +583,20 @@ def build_training_tab_with_logic(
     )
     resume_from_row = ft.Row([resume_from_tf, resume_info], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
+    try:
+        push_cb.disabled = True
+        push_cb.value = False
+    except Exception:
+        pass
+    try:
+        push_row.visible = False
+    except Exception:
+        pass
+    try:
+        hf_repo_row.visible = False
+    except Exception:
+        pass
+
     def _update_hf_repo_visibility(_=None):
         """Show HF repo id only when 'Push to HF Hub' is active."""
         try:
@@ -3290,8 +3304,6 @@ def build_training_tab_with_logic(
             # toggles
             packing_cb.value = bool(hp.get("packing", packing_cb.value))
             auto_resume_cb.value = bool(hp.get("auto_resume", auto_resume_cb.value))
-            push_cb.value = bool(hp.get("push", push_cb.value))
-            hf_repo_id_tf.value = hp.get("hf_repo_id", hf_repo_id_tf.value or "")
             resume_from_tf.value = hp.get("resume_from", resume_from_tf.value or "")
         except Exception:
             pass
@@ -3846,8 +3858,6 @@ def build_training_tab_with_logic(
         prof["out_dir"] = out_dir_tf.value
         prof["packing"] = bool(getattr(packing_cb, "value", False))
         prof["auto_resume"] = bool(getattr(auto_resume_cb, "value", False))
-        prof["push"] = bool(getattr(push_cb, "value", False))
-        prof["hf_repo_id"] = hf_repo_id_tf.value
         prof["resume_from"] = resume_from_tf.value
         prof["warmup_steps"] = warmup_steps_tf.value
         prof["weight_decay"] = weight_decay_tf.value
@@ -3968,11 +3978,6 @@ def build_training_tab_with_logic(
             packing_cb.value = bool(prof.get("packing"))
         if "auto_resume" in prof:
             auto_resume_cb.value = bool(prof.get("auto_resume"))
-        if "push" in prof:
-            push_cb.value = bool(prof.get("push"))
-        v = prof.get("hf_repo_id")
-        if v is not None:
-            hf_repo_id_tf.value = v
         v = prof.get("resume_from")
         if v is not None:
             resume_from_tf.value = v
@@ -4328,25 +4333,11 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
 
-        # Disable "Push to HF Hub" toggle when offline (applies to both Runpod and local runs)
-        try:
-            push_cb.disabled = is_offline
-            if is_offline:
-                push_cb.value = False
-        except Exception:
-            pass
-
         # Disable passing HF token into local Docker container when offline
         try:
             local_pass_hf_token_cb.disabled = is_offline
             if is_offline:
                 local_pass_hf_token_cb.value = False
-        except Exception:
-            pass
-
-        # Keep HF repo id row visibility in sync with push toggle / offline
-        try:
-            _update_hf_repo_visibility()
         except Exception:
             pass
 

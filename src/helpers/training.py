@@ -99,11 +99,6 @@ def build_hp_from_controls(
         hp["packing"] = True
     if bool(getattr(auto_resume_cb, "value", False)):
         hp["auto_resume"] = True
-    if bool(getattr(push_cb, "value", False)):
-        hp["push"] = True
-    _hf_repo_id = (hf_repo_id_tf.value or "").strip()
-    if _hf_repo_id:
-        hp["hf_repo_id"] = _hf_repo_id
     _resume_from = (resume_from_tf.value or "").strip()
     if _resume_from:
         hp["resume_from"] = _resume_from
@@ -215,9 +210,6 @@ def build_hp_from_controls(
         "output_dir",
         "resume_from",
         "auto_resume",
-        "push",
-        "hf_repo_id",
-        "hf_private",
     }
     hp = {k: v for k, v in hp.items() if k in _allowed}
     return hp
