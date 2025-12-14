@@ -52,12 +52,12 @@ python src/main.py
 
 When you first launch FineFoundry, you'll see a desktop application with several tabs:
 
-1. **Scrape** - Collect training data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents
-1. **Build / Publish** - Build train/val/test splits from a database session and optionally push to Hugging Face
+1. **Data Sources** - Collect training data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents
+1. **Dataset Analysis** - Analyze dataset quality
+1. **Merge Datasets** - Combine multiple datasets
 1. **Training** - Fine-tune models on Runpod or locally
 1. **Inference** - Run inference against adapters from completed training runs with prompt history and Full Chat View
-1. **Merge Datasets** - Combine multiple datasets
-1. **Dataset Analysis** - Analyze dataset quality
+1. **Publish** - Publish datasets and LoRA adapters (Phase 1) to Hugging Face Hub
 1. **Settings** - Configure authentication and preferences
 
 ## Your First Dataset
@@ -66,7 +66,7 @@ Let's create a simple dataset from 4chan:
 
 ### Step 1: Scrape Data
 
-1. Navigate to the **Scrape** tab
+1. Navigate to the **Data Sources** tab
 1. Select a few boards (e.g., `pol`, `b`, `x`)
 1. Configure parameters:
    - **Max Threads**: 50 (for a quick test)
@@ -79,9 +79,9 @@ Let's create a simple dataset from 4chan:
 
 Your data is automatically saved to the database as a new scrape session.
 
-### Step 2: Build & Publish (Optional)
+### Step 2: Publish (Optional)
 
-1. Navigate to the **Build / Publish** tab
+1. Navigate to the **Publish** tab
 1. Select your scrape session from the **Database Session** dropdown
 1. Configure splits:
    - Adjust validation/test split percentages with sliders

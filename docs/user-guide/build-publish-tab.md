@@ -67,6 +67,15 @@ ______________________________________________________________________
 - **Push + Upload README** button
   - Uploads the dataset and a generated dataset card (`README.md` in the repo).
 
+#### Dataset card (README.md)
+
+If you enable the dataset card editor:
+
+- Use **Load simple template** to start from a clean scaffold.
+- Use **Generate with Ollama** to draft an intelligent card from your selected database session.
+
+When you generate with Ollama, the UI shows a small loading spinner and snackbars for start/success/failure.
+
 ### 6. Publish model (adapter)
 
 - **Training run** dropdown
@@ -78,6 +87,15 @@ ______________________________________________________________________
 - **Publish adapter** button
   - Uploads the adapter folder (LoRA) to the Hugging Face model repository.
   - This is adapter-only publishing (Phase 1).
+
+#### Model card (README.md)
+
+If you enable the model card editor:
+
+- Use **Load simple template** to start from a clean scaffold.
+- Use **Generate with Ollama** to draft an intelligent card using the selected training run metadata.
+
+When you generate with Ollama, the UI shows a small loading spinner and snackbars for start/success/failure.
 
 ______________________________________________________________________
 
@@ -144,7 +162,7 @@ ______________________________________________________________________
 
 ## Related Topics
 
-- [Scrape Tab](scrape-tab.md) – create the initial dataset.
+- [Data Sources Tab](scrape-tab.md) – create the initial dataset.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple datasets before building.
 - [Analysis Tab](analysis-tab.md) – analyze the built dataset.
 - [Training Tab](training-tab.md) – fine-tune models on your dataset.
@@ -152,4 +170,4 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**Next**: [Training Tab](training-tab.md) | **Previous**: [Scrape Tab](scrape-tab.md) | [Back to Documentation Index](../README.md)
+**Next**: [Training Tab](training-tab.md) | **Previous**: [Data Sources Tab](scrape-tab.md) | [Back to Documentation Index](../README.md)

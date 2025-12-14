@@ -18,15 +18,15 @@ FineFoundry now uses a SQLite database (`finefoundry.db`) as the primary system 
 
 **What changed:** Many workflows that used to default to JSON files now save to the database by default.
 
-### 2. Scrape tab: "data sources" UX
+### 2. Data Sources tab: "data sources" UX
 
-The Scrape tab is organized around a **Source** selector (4chan / Reddit / Stack Exchange / Synthetic).
+The Data Sources tab is organized around a **Source** selector (4chan / Reddit / Stack Exchange / Synthetic).
 
 **What changed:** Documentation and UI now consistently refer to a "data source" rather than selecting a "scraper".
 
-### 3. Build & Publish: build from database sessions
+### 3. Publish: build from database sessions
 
-The Build & Publish tab builds datasets from **database scrape sessions**.
+The Publish tab builds datasets from **database scrape sessions**.
 
 **What changed:** The GUI no longer presents a workflow where you build a dataset directly from arbitrary JSON files or Hugging Face datasets.
 
@@ -45,7 +45,7 @@ When **Offline Mode** is enabled, FineFoundry disables actions that require exte
 - Hugging Face Hub push actions are disabled.
 - Hugging Face dataset sources are disabled.
 - Runpod cloud training is disabled.
-- Scrape tab network sources are disabled (Synthetic remains available).
+- Data Sources tab network sources are disabled (Synthetic remains available).
 
 The UI keeps controls visible where helpful, but disables them and shows inline explanations.
 
@@ -72,8 +72,8 @@ ______________________________________________________________________
 ## Related topics
 
 - [Quick Start Guide](quick-start.md)
-- [Scrape Tab](scrape-tab.md)
-- [Build & Publish Tab](build-publish-tab.md)
+- [Data Sources Tab](scrape-tab.md)
+- [Publish Tab](build-publish-tab.md)
 - [Training Tab](training-tab.md)
 - [Inference Tab](inference-tab.md)
 - [CLI Usage](cli-usage.md)

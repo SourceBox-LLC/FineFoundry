@@ -64,7 +64,7 @@ ______________________________________________________________________
 
 ### Example 1: Quick sanity check
 
-1. Load your just-built dataset from the **Build & Publish** tab.
+1. Load your just-built dataset from the **Publish** tab.
 1. Enable **Basic Stats**, **Duplicates & Similarity**, and **Sentiment**.
 1. Click **Analyze dataset**.
 1. Confirm record counts and check for excessive duplicates or extreme sentiment imbalance.
@@ -109,8 +109,8 @@ ______________________________________________________________________
 
 ## Related Topics
 
-- [Scrape Tab](scrape-tab.md) – collect raw conversational data.
-- [Build & Publish Tab](build-publish-tab.md) – build train/val/test splits from a database session and optionally push to the Hub.
+- [Data Sources Tab](scrape-tab.md) – collect raw conversational data.
+- [Publish Tab](build-publish-tab.md) – build train/val/test splits from a database session and optionally push to the Hub.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple datasets.
 - [Training Tab](training-tab.md) – fine-tune models on analyzed datasets.
 

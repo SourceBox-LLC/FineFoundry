@@ -223,8 +223,8 @@ Organized by tab and section for modularity:
 
 #### Tab Builders (`src/ui/tabs/`)
 
-- `tab_scrape.py` - Composes scrape tab sections
-- `tab_build.py` - Composes build/publish sections
+- `tab_scrape.py` - Composes Data Sources tab sections
+- `tab_build.py` - Composes publish sections
 - `tab_training.py` - Composes training sections
 - `tab_inference.py` - Composes the Inference tab (global inference over fine-tuned adapters)
 - `tab_merge.py` - Composes merge sections
@@ -290,7 +290,7 @@ Benefits:
 ### Scraping Flow
 
 ```
-User (UI) → Scrape tab controller (`ui/tabs/scrape_controller.py`)
+User (UI) → Data Sources tab controller (`ui/tabs/scrape_controller.py`)
            ↓
          helpers/scrape.py wrapper
            ↓
@@ -403,7 +403,7 @@ Order: standard library → third-party → local
 1. Create `src/scrapers/newsource_scraper.py`
 1. Implement `scrape()` function
 1. Add wrapper in `src/helpers/scrape.py`
-1. Add UI in scrape tab sections
+1. Add UI in Data Sources tab sections
 1. Document in API reference
 
 ### Adding Logging

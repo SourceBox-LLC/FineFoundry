@@ -38,8 +38,7 @@ You can use whichever method fits your workflow; you do **not** need all three.
 
 This token will be used by:
 
-- The **Build & Publish** tab when `Push to Hub` is enabled.
-- The **Training** tab when training jobs are configured to push adapters/weights.
+- The **Publish** tab when pushing datasets or publishing adapters.
 
 ### Option B: Use environment variables
 
@@ -83,7 +82,7 @@ After logging in, start FineFoundry from the same user account. The app will fir
 To confirm that auth is working:
 
 1. In the **Settings** tab, click **Test** in the Hugging Face section.
-1. In the **Build & Publish** tab, enable **Push to Hub**, set a test `Repo ID` (such as `username/test-dataset`), and build a tiny dataset.
+1. In the **Publish** tab, enable **Push to Hub**, set a test `Repo ID` (such as `username/test-dataset`), and build a tiny dataset.
 1. Check your Hugging Face account to see whether the dataset repo was created or updated.
 
 If authentication fails, see **Authentication Issues** in the **[Troubleshooting Guide](troubleshooting.md#authentication-issues)**.

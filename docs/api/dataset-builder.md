@@ -23,7 +23,7 @@ ______________________________________________________________________
 
 ## When to use the API vs the GUI
 
-- Use the **GUI** (Build & Publish tab) when you want an interactive workflow.
+- Use the **GUI** (Publish tab) when you want an interactive workflow.
   - The GUI builds datasets from **database scrape sessions**.
 - Use the **CLI/API** when you want repeatable, scripted dataset builds in automation or CI.
   - The CLI entry point (`src/save_dataset.py`) builds datasets from a **JSON file**.

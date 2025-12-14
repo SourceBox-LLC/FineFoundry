@@ -20,7 +20,7 @@ Typical workflow:
 1. Configure proxy behavior if you use Tor or HTTP proxies.
 1. (Optional) Point the app at an **Ollama** instance and test connectivity.
 
-These settings are used by the Scrape, Build & Publish, Training, and tooling features throughout the app.
+These settings are used by the Data Sources, Publish, Training, Inference, and tooling features throughout the app.
 
 ______________________________________________________________________
 
@@ -37,8 +37,7 @@ ______________________________________________________________________
 
 The token is used by:
 
-- Build & Publish tab (Push to Hub)
-- Training tab (push adapters/weights)
+- Publish tab (dataset push and model adapter publishing)
 
 ### 2. Runpod Settings
 
@@ -65,7 +64,7 @@ These settings map onto the underlying helper modules so Scrape and other featur
 
 ### 4. Ollama Settings (Optional)
 
-If you use **Ollama** for dataset card drafting or other features:
+If you use **Ollama** for dataset/model card drafting or other features:
 
 - **Enable Ollama** toggle
 - **Base URL** (e.g. `http://localhost:11434`)
@@ -82,7 +81,7 @@ The **System Check** panel lives at the bottom of the Settings tab and provides 
   - Executes a diagnostics pipeline using your current Python environment.
   - Runs focused `pytest` groups for key feature areas:
     - **Data Collection** – scraping utilities and scrape-tab orchestration.
-    - **Dataset Build** – merge and build/publish pipelines.
+    - **Dataset Build** – merge and publish pipelines.
     - **Training & Inference** – training config + local training infra, and Quick Local Inference wiring.
   - Then runs the **full test suite** (`pytest tests`) and a **coverage run + report**:
     - `coverage run --source=src -m pytest`
@@ -137,7 +136,7 @@ ______________________________________________________________________
 - [Authentication](authentication.md) – Hugging Face and Runpod auth in more detail.
 - [Proxy Setup](../deployment/proxy-setup.md) – Tor and custom proxy configuration.
 - [Training Tab](training-tab.md) – uses Hugging Face and Runpod settings.
-- [Build & Publish Tab](build-publish-tab.md) – uses Hugging Face token for pushing.
+- [Publish Tab](build-publish-tab.md) – uses Hugging Face token for pushing.
 
 ______________________________________________________________________
 

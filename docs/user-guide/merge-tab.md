@@ -248,7 +248,7 @@ When **Offline Mode** is enabled:
 
 ## Related Topics
 
-- [Build & Publish Tab](build-publish-tab.md) - Create datasets from scratch
+- [Publish Tab](build-publish-tab.md) - Create datasets from scratch
 - [Analysis Tab](analysis-tab.md) - Analyze merged dataset quality
 - [Logging Guide](../development/logging.md) - Debug merge issues
 - [CLI Usage](cli-usage.md) - Automate merging with scripts

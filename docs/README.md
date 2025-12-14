@@ -13,8 +13,8 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 ### 👤 User Guides
 
 - [Using the GUI](user-guide/gui-overview.md) - High-level overview of all tabs
-  - [Scrape Tab](user-guide/scrape-tab.md) - Data collection from various sources
-  - [Build & Publish Tab](user-guide/build-publish-tab.md) - Dataset creation and Hugging Face publishing
+  - [Data Sources Tab](user-guide/scrape-tab.md) - Data collection from various sources
+  - [Publish Tab](user-guide/build-publish-tab.md) - Dataset creation and Hugging Face publishing
   - [Training Tab](user-guide/training-tab.md) - Model fine-tuning on Runpod or locally
   - [Inference Tab](user-guide/inference-tab.md) - Run inference with adapters from completed training runs and chat view
   - [Merge Datasets Tab](user-guide/merge-tab.md) - Combining multiple datasets
@@ -58,8 +58,8 @@ Welcome to the FineFoundry documentation! This directory contains comprehensive 
 ## 🔍 Quick Links
 
 - **Need help getting started?** → [Quick Start Guide](user-guide/quick-start.md)
-- **Want to scrape data or generate synthetic data?** → [Scrape Tab Guide](user-guide/scrape-tab.md) or [Scrapers API](api/scrapers.md)
-- **Building datasets?** → [Build & Publish Guide](user-guide/build-publish-tab.md)
+- **Want to scrape data or generate synthetic data?** → [Data Sources Tab Guide](user-guide/scrape-tab.md) or [Scrapers API](api/scrapers.md)
+- **Building datasets?** → [Publish Guide](user-guide/build-publish-tab.md)
 - **Training models?** → [Training Tab Guide](user-guide/training-tab.md)
 - **Contributing code?** → [Contributing Guide](development/contributing.md)
 - **Debugging issues?** → [Logging Guide](development/logging.md) and [Troubleshooting](user-guide/troubleshooting.md)

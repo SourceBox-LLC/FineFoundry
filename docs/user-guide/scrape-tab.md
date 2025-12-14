@@ -1,6 +1,7 @@
-# Scrape Tab
 
-The Scrape tab lets you collect conversational training data from multiple sources and prepare it as `input` / `output` pairs for later building, analysis, and training.
+# Data Sources Tab
+
+The Data Sources tab lets you collect conversational training data from multiple sources and prepare it as `input` / `output` pairs for later building, analysis, and training.
 
 **Supported data sources:**
 
@@ -18,7 +19,7 @@ Use this tab to:
 
 All scraped data is automatically saved to the database.
 
-![Scrape Tab](../../img/new/ff_data_sources.png)
+![Data Sources Tab](../../img/new/ff_data_sources.png)
 
 ______________________________________________________________________
 
@@ -30,7 +31,7 @@ Typical workflow:
 1. Configure source-specific parameters.
 1. Click **Start** and watch the progress / logs.
 1. When finished, preview the dataset in the two-column grid.
-1. Use the resulting database session in the **Build / Publish**, **Merge**, and **Training** tabs.
+1. Use the resulting database session in the **Publish**, **Merge**, and **Training** tabs.
 
 Data is stored in the database using the standard schema:
 
@@ -164,7 +165,7 @@ ______________________________________________________________________
 - **Min Length filter** — Reduce low-signal or spammy pairs.
 - **Synthetic generation** — Use high-quality source documents for better results.
 - **Model choice** — Larger models produce better synthetic data but require more VRAM.
-- **After generation** — Use **Build / Publish** and **Dataset Analysis** to prepare your data before training.
+- **After generation** — Use **Publish** and **Dataset Analysis** to prepare your data before training.
 
 ______________________________________________________________________
 
@@ -183,7 +184,7 @@ ______________________________________________________________________
 
 ## Related Topics
 
-- [Build & Publish Tab](build-publish-tab.md) – turn scraped data into train/val/test splits.
+- [Publish Tab](build-publish-tab.md) – turn scraped data into train/val/test splits.
 - [Merge Datasets Tab](merge-tab.md) – combine multiple scraped datasets.
 - [Analysis Tab](analysis-tab.md) – inspect dataset quality before training.
 - [Training Tab](training-tab.md) – fine-tune models on your prepared dataset.
@@ -191,4 +192,4 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**Next**: [Build & Publish Tab](build-publish-tab.md) | **Previous**: [Quick Start Guide](quick-start.md) | [Back to Documentation Index](../README.md)
+**Next**: [Publish Tab](build-publish-tab.md) | **Previous**: [Quick Start Guide](quick-start.md) | [Back to Documentation Index](../README.md)

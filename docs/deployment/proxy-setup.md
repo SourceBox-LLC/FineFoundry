@@ -2,7 +2,7 @@
 
 This page explains how to run FineFoundry behind HTTP/SOCKS proxies and Tor, and how those settings interact with the scrapers.
 
-If you only need a high‑level view of scraping behavior, see the **[Scrape Tab](../user-guide/scrape-tab.md)** guide. This page dives a bit deeper into configuration.
+If you only need a high‑level view of scraping behavior, see the **[Data Sources Tab](../user-guide/scrape-tab.md)** guide. This page dives a bit deeper into configuration.
 
 ______________________________________________________________________
 
@@ -87,5 +87,5 @@ ______________________________________________________________________
 
 For more detail on how scrapers behave and what configuration knobs exist, see:
 
-- **[Scrape Tab](../user-guide/scrape-tab.md)** – user‑level scraping configuration.
+- **[Data Sources Tab](../user-guide/scrape-tab.md)** – user‑level scraping configuration.
 - **[Proxy Configuration](../../README.md#proxy-configuration)** in the main README – programmatic examples with `PROXY_URL`/`USE_ENV_PROXIES`.

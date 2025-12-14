@@ -136,7 +136,7 @@ ______________________________________________________________________
 
 After running the app (via `uv run src/main.py` or `python src/main.py`):
 
-- A **desktop window** should appear with tabs such as **Scrape**, **Build / Publish**, **Training**, **Inference**, **Merge Datasets**, **Dataset Analysis**, and **Settings**.
+- A **desktop window** should appear with tabs such as **Data Sources**, **Dataset Analysis**, **Merge Datasets**, **Training**, **Inference**, **Publish**, and **Settings**.
 - You should not see import errors in the terminal. If you do, re-run dependency installation (`uv sync` or `pip install -e . --upgrade`).
 
 To quickly exercise the app after installation:
@@ -180,4 +180,4 @@ Once FineFoundry is installed and launching correctly:
 - Read the **[GUI Overview](gui-overview.md)** to understand the main tabs.
 - Set up tokens and API keys in **[Authentication](authentication.md)** and the **Settings** tab.
 
-From there, you can explore the detailed tab guides (Scrape, Build / Publish, Training, Inference, Merge, Analysis) and start iterating on your own datasets and models.
+From there, you can explore the detailed tab guides (Data Sources, Publish, Training, Inference, Merge, Analysis) and start iterating on your own datasets and models.

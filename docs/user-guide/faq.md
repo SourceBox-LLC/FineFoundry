@@ -50,8 +50,8 @@ Start with the high-level overview:
 
 Then drill into the tab-specific guides:
 
-- **Scrape Tab** – [`user-guide/scrape-tab.md`](scrape-tab.md)
-- **Build & Publish Tab** – [`user-guide/build-publish-tab.md`](build-publish-tab.md)
+- **Data Sources Tab** – [`user-guide/scrape-tab.md`](scrape-tab.md)
+- **Publish Tab** – [`user-guide/build-publish-tab.md`](build-publish-tab.md)
 - **Training Tab** – [`user-guide/training-tab.md`](training-tab.md)
 - **Inference Tab** – [`user-guide/inference-tab.md`](inference-tab.md)
 - **Merge Datasets Tab** – [`user-guide/merge-tab.md`](merge-tab.md)

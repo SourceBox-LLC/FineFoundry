@@ -332,4 +332,4 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**Next**: [Merge Datasets Tab](merge-tab.md) | **Previous**: [Build & Publish Tab](build-publish-tab.md) | [Back to Documentation Index](../README.md)
+**Next**: [Merge Datasets Tab](merge-tab.md) | **Previous**: [Publish Tab](build-publish-tab.md) | [Back to Documentation Index](../README.md)

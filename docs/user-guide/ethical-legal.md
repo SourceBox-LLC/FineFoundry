@@ -44,7 +44,7 @@ ______________________________________________________________________
 
 ## Related documentation
 
-- [Scrape Tab](scrape-tab.md) – how scraping is configured in the GUI.
+- [Data Sources Tab](scrape-tab.md) – how scraping is configured in the GUI.
 - [Scrapers API](../api/scrapers.md) – programmatic scraping interfaces.
 - [Troubleshooting](troubleshooting.md) – includes logging guidance to help you understand what the scrapers are doing.
 

@@ -33,7 +33,7 @@ Generate training data from your own documents using local LLMs powered by Unslo
 
 ### Basic Usage (via UI)
 
-1. Select **Synthetic** in the Scrape tab
+1. Select **Synthetic** in the Data Sources tab
 1. Add files or URLs
 1. Configure model, generation type, and parameters
 1. Click **Start**
