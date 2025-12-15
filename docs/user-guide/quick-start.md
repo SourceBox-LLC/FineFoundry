@@ -22,6 +22,10 @@ git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
 
 # Run the application (uv handles dependencies automatically)
+chmod +x run_finefoundry.sh
+./run_finefoundry.sh
+
+# Alternative (without the launcher script)
 uv run src/main.py
 ```
 

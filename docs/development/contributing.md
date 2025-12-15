@@ -34,6 +34,10 @@ or, if you prefer, follow the user **[Installation](../user-guide/installation.m
 To run the app during development:
 
 ```bash
+chmod +x run_finefoundry.sh
+./run_finefoundry.sh
+
+# Alternative (without the launcher script)
 uv run src/main.py
 ```
 

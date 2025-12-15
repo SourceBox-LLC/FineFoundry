@@ -109,6 +109,10 @@ cd FineFoundry-Core
 pip install uv
 
 # Run the app (creates an isolated env and installs deps automatically)
+chmod +x run_finefoundry.sh
+./run_finefoundry.sh
+
+# Alternative (without the launcher script)
 uv run src/main.py
 ```
 

@@ -56,6 +56,10 @@ cd FineFoundry-Core
 With `uv`, you do **not** need to create a virtual environment or install requirements manually. `uv` will create an isolated environment, resolve dependencies, and run the app in one command:
 
 ```bash
+chmod +x run_finefoundry.sh
+./run_finefoundry.sh
+
+# Alternative (without the launcher script)
 uv run src/main.py
 ```
 
