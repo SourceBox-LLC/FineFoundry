@@ -85,6 +85,73 @@ except Exception:  # pragma: no cover - defensive
 logger = get_logger(__name__)
 
 
+def _find_first_file(root_dir: str, filename: str) -> str:
+    try:
+        if not root_dir:
+            return ""
+        direct = os.path.join(root_dir, filename)
+        if os.path.isfile(direct):
+            return direct
+        for base, _dirs, files in os.walk(root_dir):
+            if filename in files:
+                return os.path.join(base, filename)
+    except Exception:
+        return ""
+    return ""
+
+
+def _load_trainer_metrics(output_dir: str) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], Dict[str, Any]]:
+    train_pts: List[Tuple[float, float]] = []
+    eval_pts: List[Tuple[float, float]] = []
+    stats: Dict[str, Any] = {}
+    try:
+        p = _find_first_file(output_dir, "trainer_state.json")
+        if not p:
+            return train_pts, eval_pts, stats
+        with open(p, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        hist = state.get("log_history") or []
+        if not isinstance(hist, list):
+            return train_pts, eval_pts, stats
+        for row in hist:
+            if not isinstance(row, dict):
+                continue
+            try:
+                step = row.get("step")
+                if step is None:
+                    continue
+                x = float(step)
+            except Exception:
+                continue
+            if "loss" in row:
+                try:
+                    y = float(row.get("loss"))
+                    if y == y:
+                        train_pts.append((x, y))
+                except Exception:
+                    pass
+            if "eval_loss" in row:
+                try:
+                    y = float(row.get("eval_loss"))
+                    if y == y:
+                        eval_pts.append((x, y))
+                except Exception:
+                    pass
+        train_pts = sorted(set(train_pts), key=lambda t: t[0])
+        eval_pts = sorted(set(eval_pts), key=lambda t: t[0])
+        if train_pts:
+            stats["final_train_loss"] = train_pts[-1][1]
+            stats["min_train_loss"] = min(y for _x, y in train_pts)
+        if eval_pts:
+            stats["best_eval_loss"] = min(y for _x, y in eval_pts)
+            stats["final_eval_loss"] = eval_pts[-1][1]
+        if train_pts or eval_pts:
+            stats["max_step"] = max([train_pts[-1][0] if train_pts else 0, eval_pts[-1][0] if eval_pts else 0])
+    except Exception:
+        pass
+    return train_pts, eval_pts, stats
+
+
 def _schedule_task(page: ft.Page, coro):
     """Robust scheduler helper for async tasks.
 
@@ -1515,6 +1582,16 @@ def build_training_tab_with_logic(
         tooltip="Edit selected config file",
         disabled=True,
     )
+
+    local_view_metrics_btn = ft.OutlinedButton(
+        "View training metrics",
+        icon=getattr(
+            ICONS,
+            "SHOW_CHART",
+            getattr(ICONS, "QUERY_STATS", getattr(ICONS, "INSIGHTS", getattr(ICONS, "INFO", None))),
+        ),
+        disabled=True,
+    )
     config_rename_btn = ft.TextButton(
         "Rename",
         icon=getattr(ICONS, "DRIVE_FILE_RENAME_OUTLINE", getattr(ICONS, "EDIT", ICONS.SETTINGS)),
@@ -2834,6 +2911,10 @@ def build_training_tab_with_logic(
     _update_local_gpu_default_from_specs()
 
     async def on_start_local_training(e=None):
+        try:
+            local_view_metrics_btn.disabled = True
+        except Exception:
+            pass
         await run_local_training_helper(
             page=page,
             train_state=train_state,
@@ -2868,6 +2949,11 @@ def build_training_tab_with_logic(
             ICONS_module=ICONS,
         )
         try:
+            try:
+                out_dir = (train_state.get("local") or {}).get("output_dir") or ""
+                local_view_metrics_btn.disabled = not (out_dir and os.path.isdir(out_dir))
+            except Exception:
+                pass
             info = train_state.get("local_infer") or {}
             adapter_path = (info.get("adapter_path") or "").strip()
             base_model_name = (info.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
@@ -2888,6 +2974,187 @@ def build_training_tab_with_logic(
             await safe_update(page)
         except Exception:
             pass
+
+    async def on_view_local_metrics(e=None):
+        out_dir = ""
+        try:
+            out_dir = (train_state.get("local") or {}).get("output_dir") or ""
+        except Exception:
+            out_dir = ""
+        if not out_dir or (not os.path.isdir(out_dir)):
+            try:
+                page.snack_bar = ft.SnackBar(ft.Text("No local training output directory found."))
+                page.snack_bar.open = True
+            except Exception:
+                pass
+            await safe_update(page)
+            return
+
+        train_pts, eval_pts, stats = _load_trainer_metrics(out_dir)
+        if not train_pts and not eval_pts:
+            content_ctl: ft.Control = ft.Text(
+                "No training metrics found. Expected trainer_state.json in the output directory.",
+                selectable=True,
+            )
+        else:
+            all_pts = train_pts + eval_pts
+            xs = [x for x, _y in all_pts]
+            ys = [y for _x, y in all_pts]
+            min_x = min(xs) if xs else 0
+            max_x = max(xs) if xs else 1
+            min_y = min(ys) if ys else 0
+            max_y = max(ys) if ys else 1
+            if min_x == max_x:
+                max_x = min_x + 1
+            if min_y == max_y:
+                max_y = min_y + 1
+
+            try:
+                x_interval = float(max(1.0, (max_x - min_x) / 4))
+            except Exception:
+                x_interval = 1.0
+            try:
+                y_interval = float(max(1e-9, (max_y - min_y) / 4))
+            except Exception:
+                y_interval = 1.0
+
+            series: List[ft.LineChartData] = []
+            if train_pts:
+                series.append(
+                    ft.LineChartData(
+                        data_points=[ft.LineChartDataPoint(x=x, y=y) for x, y in train_pts],
+                        color=WITH_OPACITY(0.9, getattr(COLORS, "BLUE", ACCENT_COLOR)),
+                        stroke_width=2,
+                        stroke_cap_round=True,
+                        point=ft.ChartCirclePoint(
+                            color=WITH_OPACITY(0.9, getattr(COLORS, "BLUE", ACCENT_COLOR)),
+                            radius=2,
+                        ),
+                        curved=False,
+                    )
+                )
+            if eval_pts:
+                series.append(
+                    ft.LineChartData(
+                        data_points=[ft.LineChartDataPoint(x=x, y=y) for x, y in eval_pts],
+                        color=WITH_OPACITY(0.9, getattr(COLORS, "ORANGE", getattr(COLORS, "AMBER", ACCENT_COLOR))),
+                        stroke_width=2,
+                        stroke_cap_round=True,
+                        point=ft.ChartCirclePoint(
+                            color=WITH_OPACITY(0.9, getattr(COLORS, "ORANGE", getattr(COLORS, "AMBER", ACCENT_COLOR))),
+                            radius=2,
+                        ),
+                        curved=False,
+                    )
+                )
+
+            summary_rows: List[ft.Control] = []
+            try:
+                if "final_train_loss" in stats:
+                    summary_rows.append(ft.Text(f"Final train loss: {stats['final_train_loss']:.4f}"))
+                if "min_train_loss" in stats:
+                    summary_rows.append(ft.Text(f"Min train loss: {stats['min_train_loss']:.4f}"))
+                if "best_eval_loss" in stats:
+                    summary_rows.append(ft.Text(f"Best eval loss: {stats['best_eval_loss']:.4f}"))
+                if "final_eval_loss" in stats:
+                    summary_rows.append(ft.Text(f"Final eval loss: {stats['final_eval_loss']:.4f}"))
+                if "max_step" in stats:
+                    summary_rows.append(ft.Text(f"Max step: {int(stats['max_step'])}"))
+            except Exception:
+                pass
+
+            chart = ft.LineChart(
+                data_series=series,
+                min_x=min_x,
+                max_x=max_x,
+                min_y=min_y,
+                max_y=max_y,
+                left_axis=ft.ChartAxis(show_labels=True, labels_interval=y_interval, labels_size=34),
+                bottom_axis=ft.ChartAxis(show_labels=True, labels_interval=x_interval, labels_size=28),
+                horizontal_grid_lines=ft.ChartGridLines(interval=y_interval),
+                vertical_grid_lines=ft.ChartGridLines(interval=x_interval),
+                height=320,
+                width=900,
+            )
+
+            content_ctl = ft.Column(
+                [
+                    ft.Text(f"Output dir: {out_dir}", size=12, selectable=True),
+                    *summary_rows,
+                    ft.Divider(),
+                    chart,
+                    ft.Row(
+                        [
+                            ft.Container(
+                                ft.Row(
+                                    [
+                                        ft.Container(width=10, height=2, bgcolor=WITH_OPACITY(0.9, getattr(COLORS, "BLUE", ACCENT_COLOR))),
+                                        ft.Text("Train loss", size=12),
+                                    ],
+                                    spacing=6,
+                                ),
+                                padding=4,
+                            ),
+                            ft.Container(
+                                ft.Row(
+                                    [
+                                        ft.Container(
+                                            width=10,
+                                            height=2,
+                                            bgcolor=WITH_OPACITY(0.9, getattr(COLORS, "ORANGE", getattr(COLORS, "AMBER", ACCENT_COLOR))),
+                                        ),
+                                        ft.Text("Eval loss", size=12),
+                                    ],
+                                    spacing=6,
+                                ),
+                                padding=4,
+                            ),
+                        ],
+                        spacing=14,
+                        wrap=True,
+                    ),
+                ],
+                tight=True,
+                spacing=8,
+            )
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row(
+                [
+                    ft.Icon(
+                        getattr(
+                            ICONS,
+                            "SHOW_CHART",
+                            getattr(ICONS, "QUERY_STATS", getattr(ICONS, "INSIGHTS", getattr(ICONS, "INFO", None))),
+                        ),
+                        color=ACCENT_COLOR,
+                    ),
+                    ft.Text("Training metrics"),
+                ],
+                alignment=ft.MainAxisAlignment.START,
+            ),
+            content=ft.Container(content=content_ctl, width=940),
+            actions=[
+                ft.TextButton(
+                    "Close",
+                    on_click=lambda e: (setattr(dlg, "open", False), page.update()),
+                )
+            ],
+        )
+        try:
+            if hasattr(page, "open") and callable(getattr(page, "open")):
+                page.open(dlg)
+            else:
+                page.dialog = dlg
+                dlg.open = True
+        except Exception:
+            try:
+                page.dialog = dlg
+                dlg.open = True
+            except Exception:
+                pass
+        await safe_update(page)
 
     async def on_stop_local_training(e=None):
         return await stop_local_training_helper(
@@ -3002,6 +3269,7 @@ def build_training_tab_with_logic(
         disabled=True,
         on_click=lambda e: page.run_task(on_stop_local_training),
     )
+    local_view_metrics_btn.on_click = lambda e: page.run_task(on_view_local_metrics)
     local_infer_btn.on_click = lambda e: page.run_task(on_local_infer_generate)
     local_infer_clear_btn.on_click = on_local_infer_clear
 
@@ -3091,6 +3359,7 @@ def build_training_tab_with_logic(
         local_train_timeline_placeholder=local_train_timeline_placeholder,
         local_start_btn=local_start_btn,
         local_stop_btn=local_stop_btn,
+        local_view_metrics_btn=local_view_metrics_btn,
         local_train_status=local_train_status,
         local_infer_group_container=local_infer_group_container,
         local_save_config_btn=local_save_config_btn,

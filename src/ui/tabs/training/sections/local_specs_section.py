@@ -51,6 +51,7 @@ def build_local_specs_container(
     local_train_timeline_placeholder: ft.Text,
     local_start_btn: ft.ElevatedButton,
     local_stop_btn: ft.OutlinedButton,
+    local_view_metrics_btn: ft.OutlinedButton,
     local_train_status: ft.Text,
     local_infer_group_container: ft.Container,
     local_save_config_btn: ft.OutlinedButton,
@@ -157,7 +158,12 @@ def build_local_specs_container(
                                             padding=10,
                                         ),
                                         ft.Row(
-                                            [local_start_btn, local_stop_btn, local_save_config_btn],
+                                            [
+                                                local_start_btn,
+                                                local_stop_btn,
+                                                local_view_metrics_btn,
+                                                local_save_config_btn,
+                                            ],
                                             spacing=10,
                                             wrap=True,
                                         ),

@@ -375,6 +375,12 @@ async def run_local_training(
         return
 
     try:
+        train_state.setdefault("local", {})
+        train_state["local"]["training_run_id"] = training_run_id
+    except Exception:
+        pass
+
+    try:
         from db.training_runs import get_run_storage_paths, update_training_run
 
         paths = get_run_storage_paths(int(training_run_id))
@@ -663,6 +669,11 @@ async def run_local_training(
                     else:
                         abs_out_dir = os.path.join(host_dir, out_dir.lstrip("/"))
                 if abs_out_dir:
+                    try:
+                        train_state.setdefault("local", {})
+                        train_state["local"]["output_dir"] = abs_out_dir
+                    except Exception:
+                        pass
                     adapter_path = os.path.join(abs_out_dir, "adapter")
                     try:
                         train_state.setdefault("local_infer", {})
