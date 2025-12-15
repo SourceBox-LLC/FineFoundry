@@ -40,10 +40,13 @@ class TestLoadSettings:
     def test_load_settings_nested_structure(self):
         """Test load_settings creates nested structure from dot notation."""
         with patch("helpers.settings.init_db"):
-            with patch("helpers.settings.get_all_settings", return_value={
-                "huggingface.token": "hf_token",
-                "runpod.api_key": "rp_key",
-            }):
+            with patch(
+                "helpers.settings.get_all_settings",
+                return_value={
+                    "huggingface.token": "hf_token",
+                    "runpod.api_key": "rp_key",
+                },
+            ):
                 result = load_settings()
                 assert result["huggingface"]["token"] == "hf_token"
                 assert result["runpod"]["api_key"] == "rp_key"
@@ -51,9 +54,12 @@ class TestLoadSettings:
     def test_load_settings_flat_keys(self):
         """Test load_settings handles flat keys."""
         with patch("helpers.settings.init_db"):
-            with patch("helpers.settings.get_all_settings", return_value={
-                "simple_key": "value",
-            }):
+            with patch(
+                "helpers.settings.get_all_settings",
+                return_value={
+                    "simple_key": "value",
+                },
+            ):
                 result = load_settings()
                 assert result["simple_key"] == "value"
 
@@ -65,10 +71,12 @@ class TestSaveSettings:
         """Test save_settings with nested dictionary."""
         with patch("helpers.settings.init_db"):
             with patch("helpers.settings.set_setting") as mock_set:
-                save_settings({
-                    "huggingface": {"token": "test_token"},
-                    "runpod": {"api_key": "test_key"},
-                })
+                save_settings(
+                    {
+                        "huggingface": {"token": "test_token"},
+                        "runpod": {"api_key": "test_key"},
+                    }
+                )
                 mock_set.assert_any_call("huggingface.token", "test_token")
                 mock_set.assert_any_call("runpod.api_key", "test_key")
 

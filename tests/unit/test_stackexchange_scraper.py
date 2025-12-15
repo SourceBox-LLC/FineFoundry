@@ -123,12 +123,14 @@ class TestApplySessionConfig:
         """Test that session is created."""
         apply_session_config()
         import scrapers.stackexchange_scraper as se
+
         assert se.SESSION is not None
 
     def test_sets_user_agent(self):
         """Test that user agent is set."""
         apply_session_config()
         import scrapers.stackexchange_scraper as se
+
         assert se.SESSION.headers.get("User-Agent") == se.USER_AGENT
 
     def test_can_call_multiple_times(self):
@@ -136,6 +138,7 @@ class TestApplySessionConfig:
         apply_session_config()
         apply_session_config()
         import scrapers.stackexchange_scraper as se
+
         assert se.SESSION is not None
 
 

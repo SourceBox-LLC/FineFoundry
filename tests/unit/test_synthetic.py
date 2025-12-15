@@ -95,11 +95,11 @@ class TestCreateConfigFile:
     def test_config_dir_parameter(self, tmp_path):
         # Test creating config in a specific directory
         config_path = create_config_file(output_folder="test_output", config_dir=tmp_path)
-        
+
         assert config_path.exists()
         assert config_path.parent == tmp_path
         assert config_path.name == "synthetic_data_kit_config.yaml"
-        
+
         content = config_path.read_text()
         assert "output_folder: test_output" in content
 

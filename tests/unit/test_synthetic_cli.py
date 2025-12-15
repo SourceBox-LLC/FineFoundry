@@ -546,10 +546,11 @@ class TestLoadExistingData:
     def test_load_json_file(self, tmp_path):
         """Test loading existing JSON file."""
         import json
+
         data = [{"input": "test", "output": "data"}]
         json_file = tmp_path / "existing.json"
         json_file.write_text(json.dumps(data))
-        
+
         result = load_existing_data(str(json_file), "json")
         assert result == data
 
@@ -562,7 +563,7 @@ class TestLoadExistingData:
         """Test loading invalid JSON returns empty list."""
         json_file = tmp_path / "invalid.json"
         json_file.write_text("not valid json")
-        
+
         result = load_existing_data(str(json_file), "json")
         assert result == []
 
@@ -578,11 +579,12 @@ class TestSaveOutput:
     def test_save_json(self, tmp_path):
         """Test saving to JSON format."""
         import json
+
         data = [{"input": "test", "output": "data"}]
         output_path = str(tmp_path / "output.json")
-        
+
         result = save_output(data, output_path, "json", "standard", quiet=True)
-        
+
         assert result is True
         assert Path(output_path).exists()
         with open(output_path) as f:
@@ -593,9 +595,9 @@ class TestSaveOutput:
         """Test save_output creates the file."""
         data = [{"messages": [{"role": "user", "content": "Hi"}]}]
         output_path = str(tmp_path / "new_output.json")
-        
+
         save_output(data, output_path, "json", "chatml", quiet=True)
-        
+
         assert Path(output_path).exists()
 
 
@@ -697,7 +699,7 @@ class TestComputeDatasetStats:
             {"input": "How are you?", "output": "I'm fine, thanks!"},
         ]
         result = compute_dataset_stats(data, "standard")
-        
+
         assert result["count"] == 2
         assert result["total_chars"] > 0
         assert "avg_input_len" in result
@@ -707,13 +709,10 @@ class TestComputeDatasetStats:
     def test_stats_chatml_format(self):
         """Test stats with ChatML format."""
         data = [
-            {"messages": [
-                {"role": "user", "content": "Hello"},
-                {"role": "assistant", "content": "Hi there"}
-            ]},
+            {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there"}]},
         ]
         result = compute_dataset_stats(data, "chatml")
-        
+
         assert result["count"] == 1
         assert result["total_chars"] == len("Hello") + len("Hi there")
 
@@ -724,7 +723,7 @@ class TestComputeDatasetStats:
             {"input": "aaaaaaaaaa", "output": "bbbbbbbbbb"},
         ]
         result = compute_dataset_stats(data, "standard")
-        
+
         assert result["min_input_len"] == 1
         assert result["max_input_len"] == 10
         assert result["min_output_len"] == 1
@@ -736,7 +735,7 @@ class TestComputeDatasetStats:
             {"input": "a" * 100, "output": "b" * 100},
         ]
         result = compute_dataset_stats(data, "standard")
-        
+
         # 200 chars / 4 = 50 tokens
         assert result["estimated_tokens"] == 50
 
@@ -751,22 +750,23 @@ class TestRunWithRetry:
 
     def test_success_first_try(self):
         """Test successful execution on first try."""
+
         def success_func():
             return "success"
-        
+
         result = run_with_retry(success_func, max_retries=3, quiet=True)
         assert result == "success"
 
     def test_retry_on_connection_error(self):
         """Test retry on connection error."""
         call_count = [0]
-        
+
         def flaky_func():
             call_count[0] += 1
             if call_count[0] < 2:
                 raise Exception("connection timeout")
             return "success"
-        
+
         result = run_with_retry(flaky_func, max_retries=3, delay=0.01, quiet=True)
         assert result == "success"
         assert call_count[0] == 2
@@ -774,23 +774,24 @@ class TestRunWithRetry:
     def test_no_retry_on_non_retryable_error(self):
         """Test no retry on non-retryable errors."""
         call_count = [0]
-        
+
         def fail_func():
             call_count[0] += 1
             raise ValueError("invalid input")
-        
+
         try:
             run_with_retry(fail_func, max_retries=3, delay=0.01, quiet=True)
         except ValueError:
             pass
-        
+
         assert call_count[0] == 1  # Only called once
 
     def test_max_retries_exceeded(self):
         """Test exception raised after max retries."""
+
         def always_fail():
             raise Exception("connection error")
-        
+
         with pytest.raises(Exception):
             run_with_retry(always_fail, max_retries=2, delay=0.01, quiet=True)
 
@@ -889,18 +890,19 @@ class TestSaveProgress:
         """Test save_progress creates a file."""
         progress_file = str(tmp_path / "test.progress")
         save_progress(progress_file, ["source1"], {"source1": [0, 1]}, [{"data": "test"}])
-        
+
         assert Path(progress_file).exists()
 
     def test_save_progress_content(self, tmp_path):
         """Test save_progress saves correct content."""
         import json
+
         progress_file = str(tmp_path / "test.progress")
         save_progress(progress_file, ["source1", "source2"], {"source1": [0, 1, 2]}, [{"a": 1}, {"b": 2}])
-        
+
         with open(progress_file) as f:
             data = json.load(f)
-        
+
         assert data["sources_completed"] == ["source1", "source2"]
         assert data["chunks_completed"] == {"source1": [0, 1, 2]}
         assert data["data_count"] == 2
@@ -913,18 +915,19 @@ class TestLoadProgress:
     def test_load_progress_existing(self, tmp_path):
         """Test loading existing progress file."""
         import json
+
         progress_file = str(tmp_path / "test.progress")
         progress_data = {
             "sources_completed": ["s1"],
             "chunks_completed": {"s1": [0]},
             "data_count": 5,
-            "timestamp": 12345.0
+            "timestamp": 12345.0,
         }
         with open(progress_file, "w") as f:
             json.dump(progress_data, f)
-        
+
         result = load_progress(progress_file)
-        
+
         assert result is not None
         assert result["sources_completed"] == ["s1"]
         assert result["data_count"] == 5
@@ -939,7 +942,7 @@ class TestLoadProgress:
         progress_file = str(tmp_path / "test.progress")
         with open(progress_file, "w") as f:
             f.write("not valid json")
-        
+
         result = load_progress(progress_file)
         assert result is None
 
@@ -951,7 +954,7 @@ class TestClearProgress:
         """Test clear_progress removes the file."""
         progress_file = str(tmp_path / "test.progress")
         Path(progress_file).write_text("{}")
-        
+
         assert Path(progress_file).exists()
         clear_progress(progress_file)
         assert not Path(progress_file).exists()

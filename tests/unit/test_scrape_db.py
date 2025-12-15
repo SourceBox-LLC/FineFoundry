@@ -437,9 +437,7 @@ class TestGetRandomPromptsForSession:
         """Test getting random prompts from a session."""
         from db.scraped_data import get_random_prompts_for_session
 
-        pairs = [
-            {"input": f"Question {i}", "output": f"Answer {i}"} for i in range(10)
-        ]
+        pairs = [{"input": f"Question {i}", "output": f"Answer {i}"} for i in range(10)]
         session_id = save_scrape_to_db(source="test", pairs=pairs)
 
         prompts = get_random_prompts_for_session(session_id, count=5)

@@ -383,7 +383,9 @@ def build_build_tab_with_logic(
 
         try:
             if bool(getattr(offline_mode_sw, "value", False)):
-                page.snack_bar = ft.SnackBar(ft.Text("Offline mode is enabled; publishing to Hugging Face Hub is disabled."))
+                page.snack_bar = ft.SnackBar(
+                    ft.Text("Offline mode is enabled; publishing to Hugging Face Hub is disabled.")
+                )
                 page.open(page.snack_bar)
                 await safe_update(page)
                 return
@@ -393,7 +395,7 @@ def build_build_tab_with_logic(
         run_id = (model_run_dd.value or "").strip()
         repo = (model_repo_id_tf.value or "").strip()
         try:
-            tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+            tok = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
         except Exception:
             tok = ""
         if not tok:
@@ -448,7 +450,9 @@ def build_build_tab_with_logic(
 
         model_publish_state["inflight"] = True
         model_publish_ring.visible = True
-        timeline.controls.append(ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), ft.Text(f"Publishing adapter to Hub: {repo}")]))
+        timeline.controls.append(
+            ft.Row([ft.Icon(ICONS.CLOUD_UPLOAD, color=COLORS.BLUE), ft.Text(f"Publishing adapter to Hub: {repo}")])
+        )
         update_status_placeholder()
         await safe_update(page)
 
@@ -505,7 +509,9 @@ def build_build_tab_with_logic(
             page.open(page.snack_bar)
             await safe_update(page)
         except Exception as e:
-            timeline.controls.append(ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Publish failed: {e}")]))
+            timeline.controls.append(
+                ft.Row([ft.Icon(ICONS.ERROR_OUTLINE, color=COLORS.RED), ft.Text(f"Publish failed: {e}")])
+            )
             page.snack_bar = ft.SnackBar(ft.Text(f"Publish failed: {e}"))
             page.open(page.snack_bar)
             await safe_update(page)
@@ -704,7 +710,11 @@ Specify license and any restrictions.
 
     def _model_apply_preview_visibility() -> None:
         try:
-            show = bool(model_use_custom_card.value) and bool(model_card_preview_switch.value) and _model_has_card_content()
+            show = (
+                bool(model_use_custom_card.value)
+                and bool(model_card_preview_switch.value)
+                and _model_has_card_content()
+            )
             try:
                 if hasattr(model_card_preview_md, "visible"):
                     model_card_preview_md.visible = show
@@ -756,7 +766,9 @@ Specify license and any restrictions.
     def _on_model_preview_toggle(_):
         try:
             if hasattr(model_card_preview_md, "visible"):
-                model_card_preview_md.visible = bool(model_card_preview_switch.value) and bool(model_use_custom_card.value)
+                model_card_preview_md.visible = bool(model_card_preview_switch.value) and bool(
+                    model_use_custom_card.value
+                )
         except Exception:
             pass
         _model_update_preview()
@@ -1478,7 +1490,10 @@ Specify license and any restrictions.
     except Exception:
         pass
     try:
-        model_use_custom_card.on_change = lambda e=None: (_on_toggle_model_custom_card(e), _update_publish_action_enabled(e))
+        model_use_custom_card.on_change = lambda e=None: (
+            _on_toggle_model_custom_card(e),
+            _update_publish_action_enabled(e),
+        )
     except Exception:
         pass
     try:

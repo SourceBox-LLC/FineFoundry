@@ -76,9 +76,7 @@ async def chat(base_url: str, model: str, messages: List[dict]) -> str:
                     body = (r.text or "").strip()
                 except Exception:
                     body = ""
-                raise RuntimeError(
-                    f"Ollama HTTP {r.status_code} calling {url}: {body or str(e)}"
-                ) from e
+                raise RuntimeError(f"Ollama HTTP {r.status_code} calling {url}: {body or str(e)}") from e
             try:
                 return r.json()
             except Exception as e:

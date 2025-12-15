@@ -54,13 +54,13 @@ class TestRunGenerationMocked:
         with patch.dict("sys.modules", {"unsloth": MagicMock(), "unsloth.dataprep": MagicMock()}):
             with patch("unsloth.dataprep.SyntheticDataKit") as mock_sdk:
                 mock_sdk.from_pretrained.side_effect = ImportError("No module named 'unsloth'")
-                
+
                 result = run_generation(
                     sources=[temp_source_file],
                     output_path=temp_output_file,
                     quiet=True,
                 )
-                
+
                 assert result is False
 
     def test_run_generation_cuda_error(self, temp_source_file, temp_output_file):
@@ -68,13 +68,13 @@ class TestRunGenerationMocked:
         with patch.dict("sys.modules", {"unsloth": MagicMock(), "unsloth.dataprep": MagicMock()}):
             with patch("unsloth.dataprep.SyntheticDataKit") as mock_sdk:
                 mock_sdk.from_pretrained.side_effect = RuntimeError("CUDA out of memory")
-                
+
                 result = run_generation(
                     sources=[temp_source_file],
                     output_path=temp_output_file,
                     quiet=True,
                 )
-                
+
                 assert result is False
 
     def test_run_generation_oom_error(self, temp_source_file, temp_output_file):
@@ -82,13 +82,13 @@ class TestRunGenerationMocked:
         with patch.dict("sys.modules", {"unsloth": MagicMock(), "unsloth.dataprep": MagicMock()}):
             with patch("unsloth.dataprep.SyntheticDataKit") as mock_sdk:
                 mock_sdk.from_pretrained.side_effect = RuntimeError("out of memory")
-                
+
                 result = run_generation(
                     sources=[temp_source_file],
                     output_path=temp_output_file,
                     quiet=True,
                 )
-                
+
                 assert result is False
 
 
@@ -101,7 +101,7 @@ class TestIngestSource:
         config_path.write_text("output_folder: data")
         workspace = tmp_path
         (workspace / "output").mkdir(exist_ok=True)
-        
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="File not found")
             result = ingest_source("/nonexistent/file.pdf", config_path, workspace, False, True)
@@ -113,7 +113,7 @@ class TestIngestSource:
         config_path.write_text("output_folder: data")
         workspace = tmp_path
         (workspace / "output").mkdir(exist_ok=True)
-        
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="Connection failed")
             result = ingest_source("https://invalid.example.com/doc.pdf", config_path, workspace, False, True)
@@ -126,18 +126,22 @@ class TestConvertToFtFormat:
     def test_convert_qa_pairs_format(self, tmp_path):
         """Test converting qa_pairs format."""
         json_file = tmp_path / "generated.json"
-        json_file.write_text(json.dumps({
-            "summary": "Test summary",
-            "qa_pairs": [
-                {"question": "What is Python?", "answer": "A programming language."},
-                {"question": "What is AI?", "answer": "Artificial Intelligence."},
-            ]
-        }))
+        json_file.write_text(
+            json.dumps(
+                {
+                    "summary": "Test summary",
+                    "qa_pairs": [
+                        {"question": "What is Python?", "answer": "A programming language."},
+                        {"question": "What is AI?", "answer": "Artificial Intelligence."},
+                    ],
+                }
+            )
+        )
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
-        
+
         result = convert_to_ft_format(json_file, config_path, True)
-        
+
         assert result is not None
         assert len(result) == 2
         assert result[0]["messages"][0]["role"] == "user"
@@ -148,15 +152,14 @@ class TestConvertToFtFormat:
     def test_convert_instruction_format(self, tmp_path):
         """Test converting instruction/output format."""
         json_file = tmp_path / "generated.json"
-        json_file.write_text(json.dumps({
-            "instruction": "Explain Python",
-            "output": "Python is a high-level programming language."
-        }))
+        json_file.write_text(
+            json.dumps({"instruction": "Explain Python", "output": "Python is a high-level programming language."})
+        )
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
-        
+
         result = convert_to_ft_format(json_file, config_path, True)
-        
+
         assert result is not None
         assert len(result) == 1
         assert result[0]["messages"][0]["content"] == "Explain Python"
@@ -165,29 +168,37 @@ class TestConvertToFtFormat:
     def test_convert_list_format(self, tmp_path):
         """Test converting list of Q&A pairs."""
         json_file = tmp_path / "generated.json"
-        json_file.write_text(json.dumps([
-            {"question": "Q1", "answer": "A1"},
-            {"question": "Q2", "answer": "A2"},
-        ]))
+        json_file.write_text(
+            json.dumps(
+                [
+                    {"question": "Q1", "answer": "A1"},
+                    {"question": "Q2", "answer": "A2"},
+                ]
+            )
+        )
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
-        
+
         result = convert_to_ft_format(json_file, config_path, True)
-        
+
         assert result is not None
         assert len(result) == 2
 
     def test_convert_messages_format(self, tmp_path):
         """Test converting messages format (passthrough)."""
         json_file = tmp_path / "generated.json"
-        json_file.write_text(json.dumps([
-            {"messages": [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]},
-        ]))
+        json_file.write_text(
+            json.dumps(
+                [
+                    {"messages": [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]},
+                ]
+            )
+        )
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
-        
+
         result = convert_to_ft_format(json_file, config_path, True)
-        
+
         assert result is not None
         assert len(result) == 1
         assert result[0]["messages"][0]["content"] == "Hi"
@@ -198,9 +209,9 @@ class TestConvertToFtFormat:
         json_file.write_text("not valid json")
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
-        
+
         result = convert_to_ft_format(json_file, config_path, True)
-        
+
         assert result is None
 
     def test_convert_empty_data(self, tmp_path):
@@ -209,9 +220,9 @@ class TestConvertToFtFormat:
         json_file.write_text(json.dumps([]))
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
-        
+
         result = convert_to_ft_format(json_file, config_path, True)
-        
+
         assert result is None
 
 
@@ -241,7 +252,7 @@ verbose: true
 keep_server: true
 """)
         config = load_config_file(str(config_file))
-        
+
         assert config["sources"] == ["doc1.pdf", "doc2.txt", "https://example.com/article"]
         assert config["output"] == "my_output.json"
         assert config["type"] == "cot"
@@ -265,7 +276,7 @@ sources:
   - document.pdf
 """)
         config = load_config_file(str(config_file))
-        
+
         assert config["sources"] == ["document.pdf"]
         assert "output" not in config  # Not specified
 
@@ -280,7 +291,7 @@ sources:
 output: out.json
 """)
         config = load_config_file(str(config_file))
-        
+
         assert config["sources"] == ["doc.pdf"]
         assert config["output"] == "out.json"
 

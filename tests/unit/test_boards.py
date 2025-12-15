@@ -84,6 +84,7 @@ class TestLoad4chanBoards:
     def test_fallback_on_empty_boards(self):
         """Test fallback when API returns empty boards list."""
         import json
+
         with patch("helpers.boards.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -97,6 +98,7 @@ class TestLoad4chanBoards:
     def test_parses_valid_api_response(self):
         """Test parsing valid API response."""
         import json
+
         with patch("helpers.boards.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -117,6 +119,7 @@ class TestLoad4chanBoards:
     def test_sorts_boards_alphabetically(self):
         """Test boards are sorted alphabetically."""
         import json
+
         with patch("helpers.boards.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -136,6 +139,7 @@ class TestLoad4chanBoards:
     def test_filters_none_boards(self):
         """Test None board entries are filtered out."""
         import json
+
         with patch("helpers.boards.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.__enter__ = MagicMock(return_value=mock_response)

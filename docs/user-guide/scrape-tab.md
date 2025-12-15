@@ -1,4 +1,3 @@
-
 # Data Sources Tab
 
 The Data Sources tab lets you collect conversational training data from multiple sources and prepare it as `input` / `output` pairs for later building, analysis, and training.

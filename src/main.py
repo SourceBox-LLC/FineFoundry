@@ -742,8 +742,7 @@ Offline Mode is a global switch:
     _ollama_raw = load_ollama_config_helper() or {}
     # Detect whether we appear to have an existing Ollama configuration
     _ollama_has_cfg = any(
-        bool((str(_ollama_raw.get(k) or "").strip()))
-        for k in ("base_url", "default_model", "selected_model")
+        bool((str(_ollama_raw.get(k) or "").strip())) for k in ("base_url", "default_model", "selected_model")
     )
     # If "enabled" was never stored but config exists (pre-refactor installs), treat it as enabled by default
     if "enabled" in _ollama_raw:
@@ -835,9 +834,7 @@ Offline Mode is a global switch:
         }
         save_ollama_config_helper(cfg)
         # Refresh local flags so base URL locking and status reflect the newly saved config
-        _ollama_has_cfg = any(
-            bool((cfg.get(k) or "").strip()) for k in ("base_url", "default_model", "selected_model")
-        )
+        _ollama_has_cfg = any(bool((cfg.get(k) or "").strip()) for k in ("base_url", "default_model", "selected_model"))
         _ollama_enabled = bool(cfg.get("enabled", False))
         try:
             page.snack_bar = ft.SnackBar(ft.Text("Ollama settings saved"))
@@ -1530,9 +1527,7 @@ Offline Mode is a global switch:
             """
 
             # Header for this step
-            system_check_log.controls.append(
-                ft.Text(f"=== {title} ===", size=12, weight=ft.FontWeight.BOLD)
-            )
+            system_check_log.controls.append(ft.Text(f"=== {title} ===", size=12, weight=ft.FontWeight.BOLD))
             await safe_update(page)
 
             try:
@@ -1579,40 +1574,52 @@ Offline Mode is a global switch:
                 "tests/unit/test_scraper_utils.py",
                 "tests/unit/test_scrape_orchestration.py",
             ]
-            if await _run_step(
-                "Scraping & scrape orchestration tests",
-                ["-m", "pytest", *scraping_tests],
-            ) != 0:
+            if (
+                await _run_step(
+                    "Scraping & scrape orchestration tests",
+                    ["-m", "pytest", *scraping_tests],
+                )
+                != 0
+            ):
                 any_failures = True
 
             merge_build_tests = [
                 "tests/unit/test_merge.py",
                 "tests/unit/test_build.py",
             ]
-            if await _run_step(
-                "Merge & build pipeline tests",
-                ["-m", "pytest", *merge_build_tests],
-            ) != 0:
+            if (
+                await _run_step(
+                    "Merge & build pipeline tests",
+                    ["-m", "pytest", *merge_build_tests],
+                )
+                != 0
+            ):
                 any_failures = True
 
             training_tests = [
                 "tests/unit/test_training_config.py",
                 "tests/unit/test_local_docker.py",
             ]
-            if await _run_step(
-                "Training config & local training infra tests",
-                ["-m", "pytest", *training_tests],
-            ) != 0:
+            if (
+                await _run_step(
+                    "Training config & local training infra tests",
+                    ["-m", "pytest", *training_tests],
+                )
+                != 0
+            ):
                 any_failures = True
 
             inference_tests = [
                 "tests/unit/test_local_inference.py",
                 "tests/unit/test_training_controller_local_infer.py",
             ]
-            if await _run_step(
-                "Quick local inference & UI wiring tests",
-                ["-m", "pytest", *inference_tests],
-            ) != 0:
+            if (
+                await _run_step(
+                    "Quick local inference & UI wiring tests",
+                    ["-m", "pytest", *inference_tests],
+                )
+                != 0
+            ):
                 any_failures = True
 
             # 1) Full unit/integration suite

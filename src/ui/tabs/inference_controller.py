@@ -642,7 +642,7 @@ def build_inference_tab_with_logic(
                 infer_prompt_tf.value = selected
                 expected = ""
                 try:
-                    expected = (train_state.get("inference", {}).get("expected_by_prompt", {}).get(selected) or "")
+                    expected = train_state.get("inference", {}).get("expected_by_prompt", {}).get(selected) or ""
                 except Exception:
                     expected = ""
                 try:

@@ -337,9 +337,7 @@ def get_total_pair_count(db_path: Optional[str] = None) -> int:
     return row["count"] if row else 0
 
 
-def get_random_prompts_for_session(
-    session_id: int, count: int = 5, db_path: Optional[str] = None
-) -> List[str]:
+def get_random_prompts_for_session(session_id: int, count: int = 5, db_path: Optional[str] = None) -> List[str]:
     """Get random input prompts from a scrape session for quick testing.
 
     Args:

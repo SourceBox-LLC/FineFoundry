@@ -71,13 +71,13 @@ def html_to_text(html: str) -> str:
 
 def fetch_questions(site: str, page: int, pagesize: int, max_retries: int = 3) -> Dict:
     """Fetch questions from Stack Exchange API with retry logic.
-    
+
     Args:
         site: Stack Exchange site (e.g., 'stackoverflow').
         page: Page number.
         pagesize: Number of questions per page.
         max_retries: Maximum retry attempts on failure.
-    
+
     Returns:
         API response as dictionary.
     """
@@ -93,7 +93,9 @@ def fetch_questions(site: str, page: int, pagesize: int, max_retries: int = 3) -
         params["key"] = STACKAPPS_KEY
     rate_limiter = get_rate_limiter("stackexchange")
     r = make_request_with_retry(
-        _get_session(), "GET", f"{API_BASE}/questions",
+        _get_session(),
+        "GET",
+        f"{API_BASE}/questions",
         max_retries=max_retries,
         rate_limiter=rate_limiter,
         params=params,
@@ -105,12 +107,12 @@ def fetch_questions(site: str, page: int, pagesize: int, max_retries: int = 3) -
 
 def fetch_answers(site: str, ids: List[int], max_retries: int = 3) -> Dict[int, Dict]:
     """Fetch answers from Stack Exchange API with retry logic.
-    
+
     Args:
         site: Stack Exchange site (e.g., 'stackoverflow').
         ids: List of answer IDs to fetch.
         max_retries: Maximum retry attempts on failure.
-    
+
     Returns:
         Dictionary mapping answer_id to answer data.
     """
@@ -126,7 +128,9 @@ def fetch_answers(site: str, ids: List[int], max_retries: int = 3) -> Dict[int, 
         if STACKAPPS_KEY:
             params["key"] = STACKAPPS_KEY
         r = make_request_with_retry(
-            sess, "GET", f"{API_BASE}/answers/{ids_str}",
+            sess,
+            "GET",
+            f"{API_BASE}/answers/{ids_str}",
             max_retries=max_retries,
             rate_limiter=rate_limiter,
             params=params,

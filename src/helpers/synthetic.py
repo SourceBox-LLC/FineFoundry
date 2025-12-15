@@ -278,6 +278,7 @@ async def generate_content_async(
     # Use the official Python API instead of the CLI so we can
     # reliably pass our per-workspace config and vLLM provider.
     try:
+
         def _run() -> str:
             return sdk_process_file(
                 file_path=chunk_file,

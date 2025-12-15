@@ -104,9 +104,7 @@ def generate_text(
 
     # Apply chat template if available (for instruct models)
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
-        formatted_prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     else:
         # Fallback for models without chat template - build simple format
         parts = []

@@ -48,23 +48,23 @@ class TestSyntheticE2EFlow:
             {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hey"}]},  # Dup
             {"messages": [{"role": "user", "content": "Goodbye"}, {"role": "assistant", "content": "Bye"}]},
         ]
-        
+
         # Deduplicate
         deduped = deduplicate_data(data, "chatml")
         assert len(deduped) == 2
-        
+
         # Compute stats
         stats = compute_dataset_stats(deduped, "chatml")
         assert stats["count"] == 2
         assert stats["total_chars"] > 0
         assert "estimated_tokens" in stats
-        
+
         # Save output
         output_path = str(tmp_path / "output.json")
         result = save_output(deduped, output_path, "json", "chatml", quiet=True)
         assert result is True
         assert Path(output_path).exists()
-        
+
         # Verify saved content
         with open(output_path) as f:
             saved = json.load(f)
@@ -74,41 +74,41 @@ class TestSyntheticE2EFlow:
         """Test resume flow: save progress -> load -> continue."""
         progress_file = str(tmp_path / "test.progress")
         output_file = str(tmp_path / "output.json")
-        
+
         # Initial data
         initial_data = [
             {"messages": [{"role": "user", "content": "Q1"}, {"role": "assistant", "content": "A1"}]},
         ]
-        
+
         # Save initial output
         save_output(initial_data, output_file, "json", "chatml", quiet=True)
-        
+
         # Save progress
         save_progress(progress_file, ["source1.pdf"], {"source1.pdf": [0, 1]}, initial_data)
-        
+
         # Verify progress saved
         progress = load_progress(progress_file)
         assert progress is not None
         assert "source1.pdf" in progress["sources_completed"]
         assert progress["chunks_completed"]["source1.pdf"] == [0, 1]
-        
+
         # Load existing data (simulating resume)
         existing = load_existing_data(output_file, "json")
         assert len(existing) == 1
-        
+
         # Add new data
         new_data = [
             {"messages": [{"role": "user", "content": "Q2"}, {"role": "assistant", "content": "A2"}]},
         ]
         combined = existing + new_data
-        
+
         # Save combined
         save_output(combined, output_file, "json", "chatml", quiet=True)
-        
+
         # Verify
         final = load_existing_data(output_file, "json")
         assert len(final) == 2
-        
+
         # Clear progress on success
         clear_progress(progress_file)
         assert not Path(progress_file).exists()
@@ -119,17 +119,17 @@ class TestSyntheticE2EFlow:
             {"input": "What is Python?", "output": "A programming language."},
             {"input": "What is AI?", "output": "Artificial Intelligence."},
         ]
-        
+
         # Compute stats
         stats = compute_dataset_stats(data, "standard")
         assert stats["count"] == 2
         assert stats["avg_input_len"] > 0
         assert stats["avg_output_len"] > 0
-        
+
         # Save
         output_path = str(tmp_path / "standard.json")
         save_output(data, output_path, "json", "standard", quiet=True)
-        
+
         # Load and verify
         loaded = load_existing_data(output_path, "json")
         assert len(loaded) == 2
@@ -140,11 +140,11 @@ class TestSyntheticE2EFlow:
         # Empty stats
         stats = compute_dataset_stats([], "chatml")
         assert stats["count"] == 0
-        
+
         # Empty dedupe
         deduped = deduplicate_data([], "chatml")
         assert deduped == []
-        
+
         # Load non-existent
         loaded = load_existing_data(str(tmp_path / "nonexistent.json"), "json")
         assert loaded == []
@@ -170,7 +170,7 @@ class TestStatsAccuracy:
             {"input": "mid", "output": "very very very long output string here"},
         ]
         stats = compute_dataset_stats(data, "standard")
-        
+
         assert stats["min_input_len"] == 3  # "mid"
         assert stats["max_input_len"] == 34  # "this is a much longer input string"
         assert stats["min_output_len"] == 1  # "a"
@@ -203,16 +203,20 @@ class TestDeduplicationEdgeCases:
     def test_dedupe_chatml_multi_turn(self):
         """Test deduplication with multi-turn ChatML."""
         data = [
-            {"messages": [
-                {"role": "user", "content": "Hello"},
-                {"role": "assistant", "content": "Hi"},
-                {"role": "user", "content": "How are you?"},
-                {"role": "assistant", "content": "Fine"},
-            ]},
-            {"messages": [
-                {"role": "user", "content": "Hello"},  # Same first user message
-                {"role": "assistant", "content": "Hey there"},
-            ]},
+            {
+                "messages": [
+                    {"role": "user", "content": "Hello"},
+                    {"role": "assistant", "content": "Hi"},
+                    {"role": "user", "content": "How are you?"},
+                    {"role": "assistant", "content": "Fine"},
+                ]
+            },
+            {
+                "messages": [
+                    {"role": "user", "content": "Hello"},  # Same first user message
+                    {"role": "assistant", "content": "Hey there"},
+                ]
+            },
         ]
         result = deduplicate_data(data, "chatml")
         assert len(result) == 1  # Deduped on first user message

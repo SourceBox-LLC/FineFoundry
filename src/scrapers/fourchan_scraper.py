@@ -67,18 +67,20 @@ ALLOWLIST_DEFAULT: List[str] = [
 
 def fetch_catalog(board: str, max_retries: int = 3) -> List[int]:
     """Return a list of thread IDs for a board using the catalog endpoint.
-    
+
     Args:
         board: Board code (e.g., 'pol', 'b').
         max_retries: Maximum retry attempts on failure.
-    
+
     Returns:
         List of thread IDs.
     """
     url = f"{BASE_URL}/{board}/catalog.json"
     rate_limiter = get_rate_limiter("4chan")
     resp = make_request_with_retry(
-        SESSION, "GET", url,
+        SESSION,
+        "GET",
+        url,
         max_retries=max_retries,
         rate_limiter=rate_limiter,
         headers={"User-Agent": USER_AGENT},
@@ -96,18 +98,20 @@ def fetch_catalog(board: str, max_retries: int = 3) -> List[int]:
 
 def fetch_catalog_pages(board: str, max_retries: int = 3) -> List[List[int]]:
     """Return a list of pages, each page is a list of thread IDs (preserves page grouping).
-    
+
     Args:
         board: Board code (e.g., 'pol', 'b').
         max_retries: Maximum retry attempts on failure.
-    
+
     Returns:
         List of pages, each containing thread IDs.
     """
     url = f"{BASE_URL}/{board}/catalog.json"
     rate_limiter = get_rate_limiter("4chan")
     resp = make_request_with_retry(
-        SESSION, "GET", url,
+        SESSION,
+        "GET",
+        url,
         max_retries=max_retries,
         rate_limiter=rate_limiter,
         headers={"User-Agent": USER_AGENT},
@@ -128,12 +132,12 @@ def fetch_catalog_pages(board: str, max_retries: int = 3) -> List[List[int]]:
 
 def fetch_thread(board: str, thread_id: int, max_retries: int = 3) -> List[Dict[str, Any]]:
     """Fetch all posts from a thread.
-    
+
     Args:
         board: Board code (e.g., 'pol', 'b').
         thread_id: Thread number.
         max_retries: Maximum retry attempts on failure.
-    
+
     Returns:
         List of post dictionaries, or empty list if thread not found.
     """
@@ -141,7 +145,9 @@ def fetch_thread(board: str, thread_id: int, max_retries: int = 3) -> List[Dict[
     rate_limiter = get_rate_limiter("4chan")
     try:
         resp = make_request_with_retry(
-            SESSION, "GET", url,
+            SESSION,
+            "GET",
+            url,
             max_retries=max_retries,
             rate_limiter=rate_limiter,
             headers={"User-Agent": USER_AGENT},

@@ -133,6 +133,7 @@ class TestCellText:
     def test_returns_text_control(self):
         """Test returns a Text control."""
         import flet as ft
+
         result = cell_text("Hello")
         assert isinstance(result, ft.Text)
 

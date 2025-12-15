@@ -600,9 +600,7 @@ def build_training_tab_with_logic(
     def _update_hf_repo_visibility(_=None):
         """Show HF repo id only when 'Push to HF Hub' is active."""
         try:
-            is_enabled = bool(getattr(push_cb, "value", False)) and not bool(
-                getattr(push_cb, "disabled", False)
-            )
+            is_enabled = bool(getattr(push_cb, "value", False)) and not bool(getattr(push_cb, "disabled", False))
         except Exception:
             is_enabled = False
         try:
@@ -1298,7 +1296,9 @@ def build_training_tab_with_logic(
             if bool(getattr(offline_mode_sw, "value", False)):
                 try:
                     page.snack_bar = ft.SnackBar(
-                        ft.Text("Offline mode is enabled; Runpod training is disabled. Switch target to 'local' or disable Offline mode."),
+                        ft.Text(
+                            "Offline mode is enabled; Runpod training is disabled. Switch target to 'local' or disable Offline mode."
+                        ),
                     )
                     page.open(page.snack_bar)
                     await safe_update(page)
@@ -1488,9 +1488,7 @@ def build_training_tab_with_logic(
         ),
     )
 
-    train_target_offline_reason = offline_reason_text(
-        "Offline Mode: cloud training is disabled (Local Docker only)."
-    )
+    train_target_offline_reason = offline_reason_text("Offline Mode: cloud training is disabled (Local Docker only).")
 
     # Configuration mode controls (basic UI; wiring migrated later)
     config_mode_dd = ft.Dropdown(
@@ -2703,9 +2701,7 @@ def build_training_tab_with_logic(
                 local_infer_prompt_tf.value = selected
                 expected = ""
                 try:
-                    expected = (
-                        train_state.get("local_infer", {}).get("expected_by_prompt", {}).get(selected) or ""
-                    )
+                    expected = train_state.get("local_infer", {}).get("expected_by_prompt", {}).get(selected) or ""
                 except Exception:
                     expected = ""
                 try:
