@@ -1673,6 +1673,10 @@ def build_training_tab_with_logic(
         width=420,
         tooltip=("Optional. Overrides Settings key for this run. You can also set RUNPOD_API_KEY env var."),
     )
+    try:
+        rp_temp_key_tf.visible = False
+    except Exception:
+        pass
 
     # Info icon for "Public template": clarifies visibility and considerations
     rp_public_info = ft.IconButton(

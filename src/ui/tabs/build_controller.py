@@ -210,6 +210,10 @@ def build_build_tab_with_logic(
         can_reveal_password=True,
         width=320,
     )
+    try:
+        token_val_ui.visible = False
+    except Exception:
+        pass
 
     model_run_dd = ft.Dropdown(
         label="Training run",
@@ -228,12 +232,6 @@ def build_build_tab_with_logic(
         hint_text="username/my-adapter-model",
     )
     model_private_sw = ft.Switch(label="Private", value=True)
-    model_token_tf = ft.TextField(
-        label="HF Token",
-        password=True,
-        can_reveal_password=True,
-        width=320,
-    )
     model_publish_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
     model_publish_state: Dict[str, Any] = {"inflight": False}
 
@@ -376,11 +374,6 @@ def build_build_tab_with_logic(
     except Exception:
         pass
 
-    try:
-        model_token_tf.value = (_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else ""
-    except Exception:
-        pass
-
     async def on_publish_adapter():
         try:
             if model_publish_state.get("inflight"):
@@ -399,12 +392,10 @@ def build_build_tab_with_logic(
 
         run_id = (model_run_dd.value or "").strip()
         repo = (model_repo_id_tf.value or "").strip()
-        tok = (model_token_tf.value or "").strip()
-        if not tok:
-            try:
-                tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
-            except Exception:
-                tok = ""
+        try:
+            tok = ((_hf_cfg.get("token") or "").strip() if isinstance(_hf_cfg, dict) else "")
+        except Exception:
+            tok = ""
         if not tok:
             try:
                 tok = os.environ.get("HF_TOKEN") or getattr(HfFolder, "get_token", lambda: "")()
@@ -417,7 +408,7 @@ def build_build_tab_with_logic(
             await safe_update(page)
             return
         if not tok:
-            page.snack_bar = ft.SnackBar(ft.Text("A valid HF token is required to publish."))
+            page.snack_bar = ft.SnackBar(ft.Text("Set your Hugging Face token in Settings → Hugging Face Access."))
             page.open(page.snack_bar)
             await safe_update(page)
             return
@@ -600,6 +591,15 @@ def build_build_tab_with_logic(
         width=960,
         disabled=True,
     )
+
+    # The dataset card editor is wrapped in a bordered container (for scrolling/height).
+    # Disable the TextField's own outline border to avoid a messy double-border effect.
+    try:
+        _InputBorder = getattr(ft, "InputBorder", None)
+        if _InputBorder is not None and hasattr(_InputBorder, "NONE"):
+            card_editor.border = _InputBorder.NONE
+    except Exception:
+        pass
 
     # Safe Markdown factory for wider Flet compatibility
     def _make_md(value: str):
@@ -1503,7 +1503,7 @@ Specify license and any restrictions.
                     content=ft.Column(
                         [
                             ft.Row([model_run_dd, model_run_refresh_btn], wrap=True),
-                            ft.Row([model_repo_id_tf, model_private_sw, model_token_tf], wrap=True),
+                            ft.Row([model_repo_id_tf, model_private_sw], wrap=True),
                             ft.Divider(),
                             ft.Row([model_use_custom_card, model_card_preview_switch], wrap=True),
                             ft.Row([model_load_template_btn, model_clear_card_btn], wrap=True),
@@ -1645,7 +1645,6 @@ Specify license and any restrictions.
             model_run_refresh_btn,
             model_repo_id_tf,
             model_private_sw,
-            model_token_tf,
         ]:
             try:
                 ctl.disabled = is_offline

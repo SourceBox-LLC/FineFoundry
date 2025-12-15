@@ -292,7 +292,7 @@ def build_analysis_tab_with_logic(
         width=360,
         password=True,
         can_reveal_password=True,
-        visible=True,
+        visible=False,
     )
     analysis_sample_size_tf = ft.TextField(
         label="Sample size",
@@ -457,7 +457,10 @@ def build_analysis_tab_with_logic(
         use_api = (
             getattr(analysis_backend_dd, "value", "HF Inference API") or "HF Inference API"
         ) == "HF Inference API"
-        analysis_hf_token_tf.visible = use_api
+        try:
+            analysis_hf_token_tf.visible = False
+        except Exception:
+            pass
         try:
             page.update()
         except Exception:

@@ -176,7 +176,7 @@ def build_scrape_tab_with_logic(
                     color=WITH_OPACITY(0.8, BORDER_BASE),
                 ),
                 ft.Text(
-                    "Drop files here or click to browse",
+                    "Click to browse",
                     size=12,
                     color=WITH_OPACITY(0.8, BORDER_BASE),
                 ),

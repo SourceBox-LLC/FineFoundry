@@ -513,7 +513,9 @@ async def run_push_async(
         except Exception:
             tok = ""
     if not repo or not tok:
-        page.snack_bar = ft.SnackBar(ft.Text("Repo ID and a valid HF token are required."))
+        page.snack_bar = ft.SnackBar(
+            ft.Text("Repo ID and a valid Hugging Face token (Settings → Hugging Face Access) are required.")
+        )
         page.open(page.snack_bar)
         await safe_update(page)
         return

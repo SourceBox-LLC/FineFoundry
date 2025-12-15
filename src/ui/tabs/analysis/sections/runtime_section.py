@@ -23,9 +23,9 @@ def build_runtime_section(
                 section_title(
                     "Runtime settings",
                     getattr(ICONS, "SETTINGS", getattr(ICONS, "TUNE", ICONS.SETTINGS)),
-                    "Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed.",
+                    "Backend and sampling. Sample size limits records analyzed for speed.",
                     on_help_click=_mk_help_handler(
-                        "Backend, token (for private HF datasets), and sampling. Sample size limits records analyzed for speed."
+                        "Backend and sampling. Sample size limits records analyzed for speed."
                     ),
                 ),
                 ft.Container(
