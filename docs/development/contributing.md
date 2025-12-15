@@ -34,6 +34,7 @@ or, if you prefer, follow the user **[Installation](../user-guide/installation.m
 To run the app during development:
 
 ```bash
+# One-time (macOS/Linux): allow executing the launcher script
 chmod +x run_finefoundry.sh
 ./run_finefoundry.sh
 

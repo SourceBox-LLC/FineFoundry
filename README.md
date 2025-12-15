@@ -109,6 +109,7 @@ cd FineFoundry-Core
 pip install uv
 
 # Run the app (creates an isolated env and installs deps automatically)
+# One-time (macOS/Linux): allow executing the launcher script
 chmod +x run_finefoundry.sh
 ./run_finefoundry.sh
 

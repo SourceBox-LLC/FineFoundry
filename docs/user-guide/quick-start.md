@@ -22,6 +22,7 @@ git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
 
 # Run the application (uv handles dependencies automatically)
+# One-time (macOS/Linux): allow executing the launcher script
 chmod +x run_finefoundry.sh
 ./run_finefoundry.sh
 

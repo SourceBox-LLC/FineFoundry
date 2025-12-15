@@ -55,6 +55,8 @@ cd FineFoundry-Core
 
 With `uv`, you do **not** need to create a virtual environment or install requirements manually. `uv` will create an isolated environment, resolve dependencies, and run the app in one command:
 
+On macOS/Linux, you may need to run the `chmod +x` step **once** to mark the script as executable.
+
 ```bash
 chmod +x run_finefoundry.sh
 ./run_finefoundry.sh
@@ -71,7 +73,7 @@ If you want to pre-sync dependencies (for example, before travelling or working 
 uv sync
 ```
 
-and then launch the app with `uv run src/main.py` as above.
+and then launch the app with `./run_finefoundry.sh` (recommended) or `uv run src/main.py` as above.
 
 ______________________________________________________________________
 
@@ -138,7 +140,7 @@ ______________________________________________________________________
 
 ## Verifying your installation
 
-After running the app (via `uv run src/main.py` or `python src/main.py`):
+After running the app (via `./run_finefoundry.sh`, `uv run src/main.py`, or `python src/main.py`):
 
 - A **desktop window** should appear with tabs such as **Data Sources**, **Dataset Analysis**, **Merge Datasets**, **Training**, **Inference**, **Publish**, and **Settings**.
 - You should not see import errors in the terminal. If you do, re-run dependency installation (`uv sync` or `pip install -e . --upgrade`).
