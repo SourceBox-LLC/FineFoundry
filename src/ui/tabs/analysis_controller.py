@@ -454,9 +454,6 @@ def build_analysis_tab_with_logic(
         _validate_analysis_dataset()
 
     def _update_analysis_backend(_=None):
-        use_api = (
-            getattr(analysis_backend_dd, "value", "HF Inference API") or "HF Inference API"
-        ) == "HF Inference API"
         try:
             analysis_hf_token_tf.visible = False
         except Exception:

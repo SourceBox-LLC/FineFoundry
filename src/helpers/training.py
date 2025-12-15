@@ -99,6 +99,16 @@ def build_hp_from_controls(
         hp["packing"] = True
     if bool(getattr(auto_resume_cb, "value", False)):
         hp["auto_resume"] = True
+
+    try:
+        if bool(getattr(push_cb, "value", False)):
+            hp["push"] = True
+            _hf_repo_id = (hf_repo_id_tf.value or "").strip()
+            if _hf_repo_id:
+                hp["hf_repo_id"] = _hf_repo_id
+    except Exception:
+        pass
+
     _resume_from = (resume_from_tf.value or "").strip()
     if _resume_from:
         hp["resume_from"] = _resume_from
@@ -190,7 +200,6 @@ def build_hp_from_controls(
         "json_path",
         "hf_dataset_id",
         "hf_dataset_split",
-        "hf_dataset_config",
         "db_session_id",
         "base_model",
         "epochs",
@@ -211,6 +220,8 @@ def build_hp_from_controls(
         "output_dir",
         "resume_from",
         "auto_resume",
+        "push",
+        "hf_repo_id",
     }
     hp = {k: v for k, v in hp.items() if k in _allowed}
     return hp
