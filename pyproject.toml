@@ -88,3 +88,8 @@ module = [
   "db.scraped_data",
 ]
 ignore_errors = true
+
+[tool.coverage.run]
+omit = [
+  "src/main.py",
+]
