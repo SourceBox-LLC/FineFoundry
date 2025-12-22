@@ -1,172 +1,54 @@
 # Publish Tab
 
-The Publish tab is your hub for publishing artifacts.
-
-In Phase 1, it supports:
-
-- Publishing datasets to the Hugging Face Hub
-- Publishing LoRA adapters (from completed training runs) to the Hugging Face Hub
-
-In Phase 2 (planned), it will add full model publishing (merged weights) and more platform targets.
+The Publish tab is where you get your work out into the world. Here you can build proper train/validation/test splits from your scraped data and push datasets to Hugging Face Hub. You can also publish LoRA adapters from completed training runs. Full model publishing (merged weights) is planned for a future release.
 
 ![Publish Tab](../../img/new/ff_build_publish.png)
 
-______________________________________________________________________
+## Building Datasets
 
-## Overview
+Start by selecting a scrape session from your database history. Then configure how you want to split the data—use the sliders to set validation and test percentages, with the remainder going to the training split. Enable shuffling and set a seed for reproducibility. The min length filter removes pairs where the input or output is too short.
 
-Typical workflow:
+Click Build Dataset to create a `DatasetDict` on disk. The logs show you what's happening, and when it's done you'll have a proper dataset saved to your chosen directory.
 
-1. Select a **Scrape session** from your database history.
-1. Configure **splits**, **min length**, and shuffling.
-1. Click **Build Dataset** to create a `DatasetDict` on disk.
-1. Optionally enable **Push to Hub**, fill in repo details and token.
-1. Click **Push + Upload README** to publish the dataset.
+## Publishing to Hugging Face
 
-If you also have completed training runs, you can publish an adapter:
+If you want to share your dataset, enable Push to Hub and fill in your repo ID (like `username/my-first-dataset`). Set whether it should be private, and provide your HF token if it's not already configured in Settings or as an environment variable. Click Push + Upload README to upload everything, including a generated dataset card.
 
-1. Select a **completed training run**.
-1. Set the **Model repo ID**, privacy, and token.
-1. Click **Publish adapter**.
+You can customize the dataset card before uploading. Load a simple template to start from scratch, or use Generate with Ollama to draft an intelligent card based on your data. The UI shows loading states and success/failure snackbars so you know what's happening.
 
-______________________________________________________________________
+## Publishing Adapters
 
-## Layout at a Glance
+If you've completed training runs, you can publish the resulting LoRA adapters. Select a training run from the dropdown, set your model repo ID and privacy preferences, and click Publish adapter. The adapter folder gets uploaded to Hugging Face as a model repository.
 
-### 1. Data Source
+Like datasets, you can customize the model card before uploading—either start from a template or generate one with Ollama using your training run's metadata.
 
-- **Database (Scrape session)**
-  - Select a scrape session from your database history.
-  - The dataset is built from the stored `input`/`output` pairs.
+## Examples
 
-### 2. Split & Filtering Parameters
+### Local Dataset Only
 
-- **Seed** – Controls shuffling deterministically.
-- **Shuffle** – Whether to shuffle before splitting.
-- **Validation / Test split sliders** – Fractions for validation and test sets (remainder becomes train).
-- **Min Length** – Minimum number of characters for `input` and/or `output` to be kept.
+Select your database session, set validation to 5% and test to 0%, enable shuffle with seed 42, and set a save directory. Click Build Dataset. You'll get a local `DatasetDict` with train and validation splits.
 
-### 3. Output Settings
+### Dataset + Hub Publishing
 
-- **Save dir** – Directory where the built `DatasetDict` is saved.
-  - Uses `datasets.DatasetDict.save_to_disk(SAVE_DIR)`.
+Select your session, configure your splits, set the save directory, enable Push to Hub with your repo ID and token, then click Build Dataset followed by Push + Upload README. You get both a local dataset and a published repo with a generated card.
 
-### 4. Build Actions
+## Tips
 
-- **Build Dataset** button
-  - Loads data from the selected source, applies filtering and splitting, and writes the dataset to `Save dir`.
-  - Shows logs / status for success or errors.
-
-### 5. Push to Hub
-
-- **Push to Hub** toggle
-  - Enables pushing the dataset to the Hugging Face Hub.
-- **Repo ID** – e.g., `username/my-first-dataset`.
-- **Private** – Whether to create a private dataset repo.
-- **HF Token** – Optional if you already authenticated via CLI or `HF_TOKEN` env var.
-- **Push + Upload README** button
-  - Uploads the dataset and a generated dataset card (`README.md` in the repo).
-
-#### Dataset card (README.md)
-
-If you enable the dataset card editor:
-
-- Use **Load simple template** to start from a clean scaffold.
-- Use **Generate with Ollama** to draft an intelligent card from your selected database session.
-
-When you generate with Ollama, the UI shows a small loading spinner and snackbars for start/success/failure.
-
-### 6. Publish model (adapter)
-
-- **Training run** dropdown
-  - Selects from completed runs.
-  - The adapter folder is uploaded from the run's saved adapter output.
-- **Model repo ID** – e.g., `username/my-adapter`.
-- **Private** – Whether to create a private model repo.
-- **HF Token** – Optional if you already authenticated via CLI or `HF_TOKEN` env var.
-- **Publish adapter** button
-  - Uploads the adapter folder (LoRA) to the Hugging Face model repository.
-  - This is adapter-only publishing (Phase 1).
-
-#### Model card (README.md)
-
-If you enable the model card editor:
-
-- Use **Load simple template** to start from a clean scaffold.
-- Use **Generate with Ollama** to draft an intelligent card using the selected training run metadata.
-
-When you generate with Ollama, the UI shows a small loading spinner and snackbars for start/success/failure.
-
-______________________________________________________________________
-
-## Usage Examples
-
-### Example 1: Local splits only
-
-1. Select your **Database Session** from the dropdown.
-1. Set **Validation** to `0.05` and **Test** to `0.0`.
-1. Enable **Shuffle** and choose a **Seed** (e.g. 42).
-1. Set **Save dir** to `hf_dataset`.
-1. Click **Build Dataset**.
-
-Result: a `DatasetDict` saved under `hf_dataset/` with `train` and `validation` splits.
-
-### Example 2: Prepare a dataset for training + Hub
-
-1. Select your scrape session from the dropdown.
-1. Choose validation/test fractions (e.g. 5% validation, 5% test).
-1. Set **Save dir** to something like `my_dataset`.
-1. Enable **Push to Hub** and provide:
-   - **Repo ID**: `username/my-first-dataset`
-   - **Private**: as desired
-   - **HF Token**: if not already set in Settings/env.
-1. Click **Build Dataset** and then **Push + Upload README**.
-
-Result: a local dataset plus a remote dataset repo with a generated card.
-
-______________________________________________________________________
-
-## Tips & Best Practices
-
-- Keep **Min Length** modest at first (e.g. 1–10 chars) to avoid over-filtering; tighten later.
-- Use a consistent **Seed** across experiments so training runs are comparable.
-- Double-check **Repo ID** and permissions before pushing to avoid cluttering your account.
-- Use the **Dataset Analysis** tab after building to understand distribution, duplicates, sentiment, etc.
+Keep min length modest at first (1-10 characters) to avoid over-filtering—you can always tighten it later. Use a consistent seed across experiments so your training runs are comparable. Double-check your repo ID before pushing to avoid cluttering your Hugging Face account. After building, use the Dataset Analysis tab to understand your data before training.
 
 ## Offline Mode
 
-When **Offline Mode** is enabled:
+When Offline Mode is enabled, all Hub actions are disabled. The push controls remain visible so you can see what's available, but they won't work until you go back online. A banner explains this.
 
-- Hugging Face Hub actions are disabled.
-- Push-related controls are disabled, and the UI shows an inline explanation:
-  - "Offline Mode: Hugging Face Hub actions are disabled."
+## Adapter vs Full Model
 
-This applies to:
-
-- Dataset pushing ("Push to Hub")
-- Model adapter publishing ("Publish adapter")
-
-FineFoundry keeps these sections visible so you can see what is available, but blocks the network action.
-
-## Adapter vs full model publishing
-
-- **Adapter (Phase 1)**
-  - Publishes the LoRA adapter weights produced by training.
-  - This is lightweight and the recommended default for sharing fine-tunes.
-  - Consumers load it with the base model.
-- **Full model (Phase 2, planned)**
-  - Publishes a merged set of model weights.
-  - Larger upload and more storage cost, but simpler for consumers.
+Currently, FineFoundry publishes adapters—the lightweight LoRA weights that consumers load alongside the base model. This is efficient and recommended for most use cases. Full model publishing (merged weights) is coming in a future release for situations where you want a simpler experience for consumers.
 
 ______________________________________________________________________
 
-## Related Topics
+## Related Guides
 
-- [Data Sources Tab](scrape-tab.md) – create the initial dataset.
-- [Merge Datasets Tab](merge-tab.md) – combine multiple datasets before building.
-- [Analysis Tab](analysis-tab.md) – analyze the built dataset.
-- [Training Tab](training-tab.md) – fine-tune models on your dataset.
-- [Authentication](authentication.md) – managing your Hugging Face token.
+Before you get here, you'll typically use the [Data Sources Tab](scrape-tab.md) to collect data or the [Merge Datasets Tab](merge-tab.md) to combine datasets. After building, the [Analysis Tab](analysis-tab.md) helps you understand your data quality. Then the [Training Tab](training-tab.md) is where you fine-tune. For token setup, see [Authentication](authentication.md).
 
 ______________________________________________________________________
 

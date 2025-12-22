@@ -1,193 +1,88 @@
 # Data Sources Tab
 
-The Data Sources tab lets you collect conversational training data from multiple sources and prepare it as `input` / `output` pairs for later building, analysis, and training.
-
-**Supported data sources:**
-
-- **4chan** — Scrape boards with adjacent or contextual pairing strategies
-- **Reddit** — Scrape subreddits or single posts with comment expansion
-- **Stack Exchange** — Q&A pairs from Stack Overflow and other sites
-- **Synthetic** — Generate training data from your own documents using local LLMs
-
-Use this tab to:
-
-- Select a data source and configure parameters
-- Choose pairing strategies (for network sources) or generation types (for synthetic)
-- Monitor progress and logs in real time
-- Preview the resulting dataset
-
-All scraped data is automatically saved to the database.
+The Data Sources tab is where you collect the raw material for training—conversational data organized as input/output pairs. You can scrape from 4chan, Reddit, or Stack Exchange, or generate synthetic training data from your own documents using local LLMs.
 
 ![Data Sources Tab](../../img/new/ff_data_sources.png)
 
-______________________________________________________________________
+## How It Works
 
-## Overview
+The workflow is straightforward: pick a data source, configure a few parameters, and hit Start. The tab shows you progress and logs in real time as data comes in. When it's done, you can preview what you collected in a two-column grid before moving on to publishing, merging, or training.
 
-Typical workflow:
-
-1. Select a **data source** from the dropdown (4chan, Reddit, Stack Exchange, or Synthetic).
-1. Configure source-specific parameters.
-1. Click **Start** and watch the progress / logs.
-1. When finished, preview the dataset in the two-column grid.
-1. Use the resulting database session in the **Publish**, **Merge**, and **Training** tabs.
-
-Data is stored in the database using the standard schema:
+Everything you collect gets saved to the database automatically, so you won't lose your work. The data uses a simple schema—either standard input/output pairs or ChatML format with a messages array. If you need to export for external tools, the database helpers can dump to JSON.
 
 ```json
-[
-  {"input": "...", "output": "..."}
-]
+{"input": "...", "output": "..."}
 ```
 
 Or in ChatML format:
 
 ```json
-[
-  {"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
-]
+{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
 ```
 
-You can export data to JSON via the database helpers if needed for external tools.
+______________________________________________________________________
+
+## The Data Sources
+
+### 4chan
+
+For 4chan scraping, you select which boards to scrape using the chip selector (with Select All and Clear buttons for convenience). The scraper supports two modes: **normal** creates pairs from adjacent posts in a thread, while **contextual** builds richer context by looking at quote chains, cumulative history, or the last K posts.
+
+### Reddit
+
+Reddit scraping works with either subreddit URLs or individual post URLs. Set how many posts to fetch, and the scraper handles comment expansion automatically. Like 4chan, you can choose between simple parent-child pairing or contextual mode for richer conversations.
+
+### Stack Exchange
+
+Stack Exchange pulls Q&A pairs from sites like Stack Overflow, Super User, and others. Just pick a site and set how many pairs you want. The scraper focuses on questions with accepted answers to ensure quality.
+
+### Synthetic
+
+Synthetic generation is different—instead of scraping the web, you feed it your own documents (PDFs, Word docs, text files, HTML, or URLs) and it uses a local LLM to generate training pairs. You can create Q&A pairs, chain-of-thought reasoning examples, or summaries. The Curate option adds quality filtering to keep only the best generations.
+
+### Common Settings
+
+Regardless of which source you choose, you can set the output format (standard input/output or ChatML), a polite delay between requests (for network sources), and a minimum character length to filter out low-quality pairs.
 
 ______________________________________________________________________
 
-## Layout at a Glance
+## Examples
 
-### 1. Source Selection
+### Quick 4chan Scrape
 
-- **Source dropdown** — Choose between 4chan, Reddit, Stack Exchange, or Synthetic
-- **Source-specific controls** — Each source shows relevant configuration options
+Select 4chan, pick a couple boards like `pol` and `b`, set Max Threads to 50, Max Pairs to 500, Delay to 0.5, and Min Length to 10. Leave Mode as normal for simple adjacent pairs. Hit Start and watch the progress, then preview what you got.
 
-### 2. Source-Specific Configuration
+### Building Contextual Conversations
 
-#### 4chan
+For richer multi-turn data, use contextual mode with the quote_chain strategy. Set K to 6 for up to 6 turns of context, and Max Input Chars to 2000 to keep inputs manageable. Enable "require question" if you only want pairs where the context contains a question.
 
-- **Boards list** — Multi-select chips (e.g., `pol`, `b`, `x`) with Select All / Clear
-- **Mode** — `normal` (adjacent posts) or `contextual`
-- **Strategy** (contextual only) — `quote_chain`, `cumulative`, or `last_k`
+### Reddit Subreddit Crawl
 
-#### Reddit
+Select Reddit, paste a subreddit URL like `https://www.reddit.com/r/LocalLLaMA/`, set Max Posts to 50, and start. The logs show you each post and comment thread as they're fetched.
 
-- **URL** — Subreddit or single post URL
-- **Max Posts** — Number of posts to scrape
+### Generating Synthetic Data
 
-#### Stack Exchange
-
-- **Site** — Stack Overflow, Super User, etc.
-- **Max Pairs** — Target number of Q&A pairs
-
-#### Synthetic
-
-- **Files/URLs** — Add PDFs, DOCX, TXT, HTML files or URLs
-- **Model** — Local LLM to use (default: `unsloth/Llama-3.2-3B-Instruct`)
-- **Generation Type** — `qa` (Q&A pairs), `cot` (chain-of-thought), or `summary`
-- **Num Pairs** — Target examples per chunk
-- **Max Chunks** — Maximum document chunks to process
-- **Curate** — Enable quality filtering with threshold
-
-### 3. Common Parameters
-
-- **Dataset Format** — Standard (input/output) or ChatML (messages array)
-- **Delay (s)** — Polite delay between HTTP requests (for network sources)
-- **Min Length** — Minimum character count per side for a pair to be kept
-
-All scraped data is automatically saved to the database as a new session.
-
-### 4. Progress & Logs
-
-- **Status line** — High-level state (idle, scraping, completed, error)
-- **Progress bar / counters** — Approximate thread/pair progress
-- **Logs panel** — Streaming log messages from the selected data source
-
-### 5. Output & Preview
-
-- **Preview grid** — Two-column preview of the first N `input` / `output` pairs so you can inspect data before building or training
-- All data is automatically saved to the database as a new scrape session
+Select Synthetic, browse for a PDF (a research paper, manual, or any document), and configure the generation. The default model works well for most cases. Set Generation Type to `qa` for question-answer pairs, Num Pairs to 25 per chunk, and Max Chunks to 10. The first run takes 30-60 seconds while the model loads, but subsequent runs are faster.
 
 ______________________________________________________________________
 
-## Usage Examples
+## Tips
 
-### Example 1: Quick 4chan scrape
+Start with smaller runs to validate your configuration before scaling up. Watch the logs for network issues, rate limiting, or parsing errors. The min length filter is useful for cutting out low-signal or spammy content.
 
-1. Select **4chan** as the source.
-1. Select boards like `pol` and `b`.
-1. Set:
-   - Max Threads: `50`
-   - Max Pairs: `500`
-   - Delay: `0.5`
-   - Min Length: `10`
-1. Leave **Mode** as `normal` (adjacent pairs).
-1. Click **Start** and preview the results when done.
-
-### Example 2: Contextual quote-chain dataset
-
-1. Select **4chan** and a conversation-heavy board (e.g., `pol`).
-1. Set:
-   - Mode: `contextual`
-   - Strategy: `quote_chain`
-   - K: `6`
-   - Max Input Chars: `2000`
-1. Enable "require question" / "merge same author" options as desired.
-1. Start the scrape and inspect the preview to confirm multi-turn context.
-
-### Example 3: Reddit subreddit scrape
-
-1. Select **Reddit** as the source.
-1. Enter a subreddit URL (e.g., `https://www.reddit.com/r/LocalLLaMA/`).
-1. Set Max Posts to `50`.
-1. Click **Start** and watch the logs as posts and comments are fetched.
-
-### Example 4: Synthetic data from PDF
-
-1. Select **Synthetic** as the source.
-1. Click **Browse** and select a PDF document (research paper, manual, etc.).
-1. Configure:
-   - Model: `unsloth/Llama-3.2-3B-Instruct` (default)
-   - Generation Type: `qa`
-   - Num Pairs: `25`
-   - Max Chunks: `10`
-1. Click **Start** — a snackbar appears immediately while the model loads.
-1. Watch live progress as the document is chunked and Q&A pairs are generated.
-1. Preview the generated pairs in the two-column grid.
-
-**Note**: First run takes 30-60 seconds for model loading. Subsequent runs are faster.
-
-______________________________________________________________________
-
-## Tips & Best Practices
-
-- **Start small** — Validate configuration with smaller runs before scaling up.
-- **Use contextual mode** — For conversational context rather than single-turn QA (4chan/Reddit).
-- **Watch the logs** — Monitor for network issues, rate limiting, or parsing errors.
-- **Min Length filter** — Reduce low-signal or spammy pairs.
-- **Synthetic generation** — Use high-quality source documents for better results.
-- **Model choice** — Larger models produce better synthetic data but require more VRAM.
-- **After generation** — Use **Publish** and **Dataset Analysis** to prepare your data before training.
+For synthetic generation, the quality of your output depends heavily on the quality of your input documents. Larger models produce better results but need more VRAM. After any scrape or generation, use the Publish tab to create proper splits and the Analysis tab to check data quality before training.
 
 ______________________________________________________________________
 
 ## Offline Mode
 
-When **Offline Mode** is enabled:
-
-- The Source dropdown remains visible, but **all non-synthetic sources** are disabled.
-- The current source is forced to **Synthetic**.
-- If you try to start a scrape while Offline Mode is enabled and the source is not Synthetic, the app blocks the run and shows a snackbar:
-  - "Offline mode is enabled. Only the Synthetic data source can be used."
-
-The UI also shows an Offline banner at the top of the tab and an inline helper text under the Source dropdown explaining the restriction.
+When Offline Mode is enabled, only the Synthetic source is available—all network-based sources are disabled. The UI shows a banner explaining this, and if you try to start a network scrape, you'll get a snackbar telling you to switch to Synthetic.
 
 ______________________________________________________________________
 
-## Related Topics
+## Related Guides
 
-- [Publish Tab](build-publish-tab.md) – turn scraped data into train/val/test splits.
-- [Merge Datasets Tab](merge-tab.md) – combine multiple scraped datasets.
-- [Analysis Tab](analysis-tab.md) – inspect dataset quality before training.
-- [Training Tab](training-tab.md) – fine-tune models on your prepared dataset.
-- [Quick Start Guide](quick-start.md) – end-to-end overview.
+Once you've collected data, head to the [Publish Tab](build-publish-tab.md) to create train/val/test splits, or the [Merge Datasets Tab](merge-tab.md) if you want to combine multiple sessions. The [Analysis Tab](analysis-tab.md) helps you understand your data quality before training, and the [Training Tab](training-tab.md) is where you fine-tune models on your prepared dataset.
 
 ______________________________________________________________________
 

@@ -1,37 +1,28 @@
 # GUI Overview
 
-This guide provides a high-level tour of the FineFoundry desktop interface and links to detailed tab-specific guides.
+When you launch FineFoundry, you'll see a desktop window with tabs arranged across the top. Each tab handles a different part of the dataset and training workflow, and they're designed to flow naturally from one to the next.
 
-When you launch the app you will see several tabs across the top:
+## The Tabs
 
-1. **Data Sources** – Collect raw conversational data from 4chan, Reddit, Stack Exchange, or generate synthetic data from documents.
-1. **Dataset Analysis** – Inspect dataset quality and statistics.
-1. **Merge Datasets** – Combine multiple datasets from different sources.
-1. **Training** – Fine-tune models on Runpod or locally via Docker.
-1. **Inference** – Run inference against adapters from completed training runs with prompt history and Full Chat View.
-1. **Publish** – Publish datasets and LoRA adapters (Phase 1) to the Hugging Face Hub, including uploading a README model card.
-1. **Settings** – Configure authentication, proxies, and Ollama integration.
+**Data Sources** is where most projects begin. Here you collect training data by scraping 4chan, Reddit, or Stack Exchange, or by generating synthetic data from your own documents using local LLMs. The data you collect gets saved to the database automatically, ready for the next steps.
 
-______________________________________________________________________
+**Dataset Analysis** helps you understand what you've collected before you commit to training. Run analysis modules to check sentiment distribution, find duplicates, measure readability, and spot potential issues. It's a quick sanity check that can save you time later.
 
-## Tab Cheat Sheet
+**Merge Datasets** lets you combine data from multiple sources into a single dataset. If you've scraped from several places or want to mix in some Hugging Face datasets, this is where you bring it all together.
 
-- [Data Sources Tab](scrape-tab.md)
-- [Publish Tab](build-publish-tab.md)
-- [Training Tab](training-tab.md)
-- [Inference Tab](inference-tab.md)
-- [Merge Datasets Tab](merge-tab.md)
-- [Analysis Tab](analysis-tab.md)
-- [Settings Tab](settings-tab.md)
+**Training** is where the fine-tuning happens. Choose between running on Runpod's cloud GPUs or locally via Docker, configure your hyperparameters (or use the beginner-friendly presets), and kick off a training run. The same training script works in both environments, so you can develop locally and scale up to the cloud when you're ready.
 
-Each linked guide contains:
+**Inference** gives you a playground to chat with your fine-tuned models. Select a completed training run, and the tab validates that the adapter is ready to use. Then you can test prompts, adjust temperature and other settings, and have multi-turn conversations to see how your model behaves.
 
-- A screenshot of the tab
-- "Layout at a Glance" section
-- Example workflows
-- Tips and related links
+**Publish** handles getting your work out into the world. Create train/validation/test splits from your scraped data, then push datasets and LoRA adapters to Hugging Face Hub. FineFoundry generates dataset cards automatically.
 
-For detailed end-to-end workflows, also see the [Quick Start Guide](quick-start.md).
+**Settings** is where you configure authentication (Hugging Face tokens, Runpod API keys), proxy settings, and Ollama integration for local LLM features.
+
+## Detailed Guides
+
+Each tab has its own in-depth guide with screenshots, layout explanations, example workflows, and tips. Jump to whichever one you need: [Data Sources](scrape-tab.md), [Publish](build-publish-tab.md), [Training](training-tab.md), [Inference](inference-tab.md), [Merge Datasets](merge-tab.md), [Analysis](analysis-tab.md), or [Settings](settings-tab.md).
+
+For a hands-on walkthrough that touches all the key tabs, see the [Quick Start Guide](quick-start.md).
 
 ______________________________________________________________________
 

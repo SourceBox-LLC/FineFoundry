@@ -1,334 +1,106 @@
 # Training Tab
 
-The Training tab lets you fine‑tune language models on your own data, either on **Runpod pods** or **locally via Docker**, and then quickly test the resulting adapter.
-
-Use this tab to:
-
-- Fine‑tune models with beginner‑friendly presets or full expert control
-- Run the **same training script** on cloud GPUs (Runpod) or your local machine
-- Save and reload complete training setups as reusable configurations (stored in database)
-- Sanity‑check a completed local run with **Quick Local Inference**
+The Training tab is where you fine-tune language models on your own data. You can train on Runpod's cloud GPUs or locally via Docker—the same training script works in both environments, so you can develop locally and scale up when you're ready.
 
 ![Training Tab](../../img/new/ff_training.png)
 
-______________________________________________________________________
+## How Training Works
 
-## Overview
+The basic flow is straightforward: choose where to train (Runpod or local), pick your dataset, configure hyperparameters, and start the run. If you're new to training, the beginner presets handle most of the complexity for you. If you know what you're doing, expert mode gives you full control.
 
-Typical workflow:
-
-1. Choose a **Training target** (Runpod pod or local Docker).
-1. Pick a **Skill level** and (optionally) a **Beginner preset**.
-1. Configure **dataset source**, **hyperparameters**, and **output directory**.
-1. For Runpod: ensure infrastructure (volume + template) and start training on a pod.
-1. For local: configure Docker image, host mount, GPU use, and start local training.
-1. After a successful local run, use **Quick Local Inference** to test the adapter.
-1. At any time, **Save current setup** as a config and reload it later.
+After a successful local run, the Quick Local Inference panel appears so you can immediately test your adapter with a few prompts. And at any point, you can save your entire training setup as a configuration that you can reload later—the last config you used even auto-loads on startup.
 
 ______________________________________________________________________
 
-## Layout at a Glance
+## Choosing Where to Train
 
-### 1. Target & Skill Level
+### Runpod (Cloud GPUs)
 
-- **Training target**
-  - **Runpod - Pod**: train on a remote GPU pod using Runpod.
-  - **Local**: train in a local Docker container on your own GPU/CPU.
-- **Skill level**
-  - **Beginner**: simplifies choices and exposes safe presets.
-  - **Expert**: shows full hyperparameter and infra controls.
-- **Beginner preset** (visible in Beginner mode only)
-  - Presets adapt to the current training target:
-    - **Runpod - Pod**:
-      - `Fastest (Runpod)` – favors throughput on stronger GPUs.
-      - `Cheapest (Runpod)` – favors smaller/cheaper GPUs with more conservative params.
-    - **Local**:
-      - `Quick local test` – short run with small batch for fast sanity checks.
-      - `Auto Set (local)` – detects your GPU VRAM and aggressively pushes throughput (higher per-device batch, lower grad accumulation, packing on) while still aiming to avoid OOM.
-      - `Simple custom` – guided controls for Training duration / Memory & stability / Speed vs quality, mapped onto safe underlying hyperparameters.
+When you select Runpod as your training target, you're running on cloud GPUs. The tab shows infrastructure helpers to create network volumes and pod templates, GPU selection options, and controls to start training on a pod. Logs stream in real time so you can monitor progress.
+
+### Local Docker
+
+For local training, FineFoundry runs the training script inside a Docker container on your machine. You set which local folder to mount as `/data` in the container, choose whether to use your GPU, and optionally pass your HF token so push-to-hub works. The logs panel shows everything happening inside the container, and you can stop the run at any time.
 
 ![Auto Set (local) preset](../../img/new/ff_auto_set.png)
 
-### 2. Dataset & Output
+## Dataset and Hyperparameters
 
-- **Dataset source**
-  - **Database Session**: Select from your scrape history.
-  - **Hugging Face**: `Dataset repo`, `Split`, optional `Config`.
-- **Output directory**
-  - Path used **inside the container** (usually under `/data/outputs/...`).
-  - Mapped back to a real directory on your Runpod network volume or local host mount.
+Your dataset can come from a Database Session (any of your scrape history) or directly from Hugging Face. The output directory is where checkpoints and the final adapter get saved—it's a path inside the container that maps back to your real filesystem.
 
-### 3. Hyperparameters
+The hyperparameters section gives you control over the base model (defaulting to a 4-bit Llama 3.1 8B), epochs, learning rate, batch size, gradient accumulation, and max steps. Enable packing if your examples are short to improve throughput. Auto-resume lets you pick up from the latest checkpoint if training gets interrupted.
 
-- **Base model** (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`).
-- **Epochs**, **Learning rate**, **Per‑device batch size**, **Gradient accumulation steps**.
-- **Max steps** – upper bound on steps; useful for short experiments.
-- **Packing** – packs multiple short examples to improve throughput.
-- **Auto‑resume / Resume from** – continue from latest or a specific checkpoint.
-- **Push to Hub** – upload final adapters/weights; requires HF token and repo id.
+If you want to push your trained adapter to Hugging Face Hub, enable that option and provide your repo ID. Make sure your HF token has write permissions.
 
-### 4. Runpod (Remote) Section
+## Beginner Presets
 
-Visible when Training target = **Runpod - Pod**:
+In Beginner mode, you get presets that handle the complexity for you. For Runpod, choose between "Fastest" (optimized for throughput on good GPUs) or "Cheapest" (conservative settings for smaller GPUs). For local training, "Quick local test" does a short run for sanity checking, "Auto Set" reads your GPU specs and configures things aggressively but safely, and "Simple custom" gives you three intuitive sliders for duration, memory usage, and quality.
 
-- **Infrastructure helpers** – create/ensure network volume and template.
-- **GPU selection** – choose GPU type and region in the template.
-- **Start training on pod** – launches `train.py` inside the selected pod.
-- **Logs & status** – streaming logs, status messages, and exit codes.
+Expert mode hides the presets and exposes all hyperparameters directly for full control.
 
-### 5. Local Docker Section
+## Quick Local Inference
 
-Visible when Training target = **local**:
+After a successful local training run, the Quick Local Inference panel appears. This is your instant demo station—you can immediately test your new adapter without leaving the tab.
 
-- **Host data dir** – local folder mounted as `/data` in the container.
-- **Docker image** – training image (e.g. `sbussiso/unsloth-trainer:latest`).
-- **GPU usage** – whether to expose local GPUs (`--gpus all` when available).
-- **Pass HF token to container** – forwards `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` so `--push` works inside the container.
-- **Container name** – name for the training container.
-- **Start Local Training / Stop** buttons.
-- **Progress & logs** – status text, progress bar, timeline of log lines, and a **Download logs** button.
+The panel shows which adapter and base model you're using, and gives you controls for temperature, max tokens, and generation presets (Deterministic, Balanced, Creative). There's even a dropdown with sample prompts pulled from your training dataset so you can quickly verify the model learned what you intended.
 
-### 6. Quick Local Inference
+Type a prompt and click Run Inference. The button disables while the model loads and generates, then your response appears in a scrollable list. You can clear history or export your conversation to a text file.
 
-Quick Local Inference is your **instant demo station** for freshly trained adapters. It appears after a **successful local Docker run** with a valid adapter path:
+For more extensive testing with full chat history and multi-turn conversations, see the [Inference Tab](inference-tab.md).
 
-- **Status & meta**
-  - Status line (idle/loading/generating, errors).
-  - Meta line showing adapter path and base model.
-- **Controls**
-  - **Preset** dropdown: Deterministic / Balanced / Creative.
-  - **Sample prompts from dataset** – Dropdown with 5 random prompts from your training dataset for quick testing. Click the refresh button to get new samples.
-  - Prompt text area – Enter your own prompt or select a sample above.
-  - Temperature slider.
-  - Max new tokens slider.
-  - **Run Inference** button.
-  - **Clear history** button.
-  - **Export chats** button – Save your prompt/response history to a text file.
-- **Output**
-  - Scrollable list of prompt/response pairs.
-  - Placeholder text when there are no responses yet.
+## Saving and Loading Configurations
 
-> 💡 **Where to see it:** The Quick Local Inference panel is visible near the bottom of the Training tab UI (see the Training tab screenshot in the main README and at the top of this guide).
+Training configurations capture your entire setup—training target, dataset, hyperparameters, skill level, and infrastructure settings. Click "Save current setup" to snapshot everything with a descriptive name. Configs are stored in the database and the last one you used auto-loads on startup.
 
-> 💡 **Sample prompts:** After training completes, 5 random prompts from your training dataset are automatically loaded into the sample prompts dropdown. This lets you quickly verify your model learned from the training data without manually copying prompts.
-
-For deeper prompting and a dedicated chat experience after you have a good adapter, see the [Inference Tab](inference-tab.md), which lets you select **any saved dataset** for sample prompts and includes a Full Chat View dialog.
-
-When you click **Run Inference**:
-
-- The button is disabled.
-- A small **progress ring** appears next to the buttons.
-- Status shows either:
-  - *"Loading fine‑tuned model and generating response..."* (first call), or
-  - *"Generating response from fine‑tuned model..."* (subsequent calls).
-- The model uses proper **chat templates** for instruct models and includes **repetition penalty** to prevent degenerate outputs.
-- Once the response is ready, the spinner disappears, the button is re‑enabled, and the output appears in the list.
-
-### 7. Configuration (Saved Setups)
-
-- **Mode selector / Configuration section** – manage saved training configs.
-- **Saved config dropdown** – list of configs from the database, filtered by current training target.
-- **Actions**
-  - **Refresh list** – reload configs from the database.
-  - **Load** – apply a saved config to all UI fields (dataset, hyperparameters, target, infra).
-  - **Rename** – change config name from within the app.
-  - **Delete** – remove a config from the database.
-- **Save current setup** buttons
-  - One in the Configuration section.
-  - Additional convenience buttons near training controls.
-
-Configs include:
-
-- Training target (Runpod vs local).
-- Dataset source and splits.
-- Hyperparameters and skill level / Beginner preset.
-- Runpod infra settings or local Docker settings.
-
-All configurations are stored in the SQLite database. The last used config is tracked and **auto‑loads on startup**.
+To reload a config, pick it from the dropdown and click Load. The app switches to the right training target and populates all the fields. The dropdown filters configs by training target to avoid accidentally loading a Runpod config when you're in local mode.
 
 ______________________________________________________________________
 
-## Beginner vs Expert Flow
+## Step-by-Step: Training on Runpod
 
-### Beginner Mode
+Select Runpod as your training target, then configure your dataset and hyperparameters. If you're new to this, use Beginner mode and pick either "Fastest" for maximum throughput or "Cheapest" for budget-friendly runs.
 
-Designed for users who want guardrails and good defaults.
+In the Runpod section, use the infrastructure helpers to create a network volume and pod template if you don't have them yet. Select your GPU type and region, then start training. Logs stream in real time so you can monitor progress. When training completes, you can optionally push your adapter to Hugging Face Hub.
 
-- **Skill level = Beginner**:
-  - Shows the **Beginner preset** dropdown.
-  - Applies preset‑dependent defaults whenever skill level / preset / target changes.
+## Step-by-Step: Training Locally
 
-#### Runpod (Beginner)
+Select Local as your training target. For quick experiments, use Beginner mode with the "Quick local test" preset. For serious runs on your GPU, "Auto Set" reads your specs and configures things optimally.
 
-- **Fastest (Runpod)**
-  - Higher learning rate and per‑device batch size.
-  - Lower gradient accumulation.
-  - Higher max steps (for more training under good GPUs).
-- **Cheapest (Runpod)**
-  - Lower learning rate.
-  - Smaller batch sizes.
-  - Higher gradient accumulation to keep effective batch size reasonable.
+Set your host data directory (this is where outputs will appear), enable GPU usage if you have a CUDA-capable card, and optionally pass your HF token to the container if you want to push results. Click Start Local Training and watch the logs. You can stop anytime if something looks wrong.
 
-#### Local (Beginner)
-
-- **Quick local test**
-  - Short run with a small batch and low max steps.
-  - Intended for smoke tests: checks wiring, dataset, and HF token without long runs.
-- **Auto Set (local)**
-  - Reads **local specs** (especially GPU VRAM) and assigns:
-    - Per‑device batch size,
-    - Gradient accumulation steps,
-    - Max steps,
-    - A safe learning rate for your tier.
-  - Heuristics aim to **fly as high as possible without crashing**:
-    - Prioritizes per-device batch size and keeps grad accumulation low.
-    - Enables packing for throughput.
-    - Scales max steps up modestly on higher VRAM tiers.
-  - Good default for first runs on a new GPU when you want a strong baseline quickly.
-- **Simple custom**
-  - Exposes 3 safe knobs:
-    - Training duration
-    - Memory / stability
-    - Speed vs quality
-  - These map onto max steps, batch size, gradient accumulation, packing, and a small bounded LR adjustment.
-
-### Expert Mode
-
-- **Skill level = Expert**:
-  - Exposes full hyperparameter controls directly.
-  - Hides the Beginner preset dropdown.
-  - Meant for users who already know which batch size / grad accum / learning rate they want.
-
-You can still use **Save current setup** in Expert mode to snapshot tuned configurations.
+After a successful run, Quick Local Inference appears with your new adapter ready to test.
 
 ______________________________________________________________________
 
-## Runpod vs Local Flows
+## Under the Hood
 
-### Runpod Flow (Remote Training)
+Both Runpod and local Docker training run the same `train.py` script inside an Unsloth-based trainer image. The stack includes PyTorch for training, Hugging Face Transformers for model loading, bitsandbytes for 4-bit quantization, and PEFT/LoRA via Unsloth for parameter-efficient fine-tuning.
 
-1. In **Training target**, choose **Runpod - Pod**.
-1. Configure **dataset source**, **output dir**, and **hyperparameters**.
-1. Use **Skill level** and **Beginner presets** if desired.
-1. In the Runpod section:
-   - Ensure **network volume** and **template** exist (Infrastructure helpers).
-   - Pick a GPU type and region via the template.
-1. Start training on the pod.
-1. Monitor progress via the **Logs / Status** panel.
-1. Optionally push adapters/weights to the Hub when training completes.
+The default base models are Unsloth-optimized variants of popular open models like Llama 3.1 8B. Adapters and checkpoints get written to your output directory and are picked up by Quick Local Inference and the Inference Tab.
 
-### Local Flow (Local Docker Training)
+## Tips
 
-1. In **Training target**, choose **local**.
-1. (Optional) Set **Skill level = Beginner** and pick a preset:
-   - `Quick local test` for very short runs.
-   - `Auto Set (local)` for tuned defaults based on your GPU.
-1. Configure **dataset source**, **output dir**, and **hyperparameters**.
-1. In the local Docker section:
-   - Set **Host data dir** (e.g., `~/Desktop/test_data`).
-   - Check **Use GPU** if you have a CUDA‑capable GPU.
-   - Enable **Pass HF token to container** if you need `--push`.
-1. Click **Start Local Training**.
-1. Watch logs in the timeline; use **Stop** if needed.
-1. After a successful run, the **Quick Local Inference** panel becomes visible and shows the detected adapter + base model.
-1. Enter a prompt and click **Run Inference** to verify quality.
+Start in Beginner mode until you've found stable hyperparameters for your use case. Use "Quick local test" for rapid experiments and "Auto Set" for your first real run on a new GPU. Once you have settings that work, save them as a config so you can reload and iterate.
 
-______________________________________________________________________
-
-## Training Configurations (Save / Load)
-
-Training configs are stored in the database and capture the **entire training setup**.
-
-### Saving
-
-- Click a **Save current setup** button.
-- Enter a descriptive name.
-- The app saves a configuration capturing:
-  - Training target (Runpod vs local).
-  - Dataset source + split / session ID.
-  - Hyperparameters, skill level, and Beginner preset key.
-  - Runpod infra or local Docker settings.
-- The name is recorded as the **last used config** for auto‑load on startup.
-
-### Loading
-
-- Use the **Saved configuration** dropdown in the Configuration section.
-- Click **Load** to apply it to the UI.
-- The app:
-  - Switches the Training target to match the config.
-  - Populates dataset, hyperparameters, infra, and presets.
-  - Updates the last used config marker.
-
-Configurations are **filtered by Training target** in the dropdown to reduce mistakes (e.g., accidentally applying a Runpod‑specific config while in local mode).
-
-______________________________________________________________________
-
-## Under the Hood: Training stack
-
-Under the hood, both **Runpod** and **local Docker** training paths run the
-same `train.py` script inside an Unsloth‑based trainer image
-(default `docker.io/sbussiso/unsloth-trainer:latest`). That image uses:
-
-- **PyTorch** for accelerated training on CPU/GPU.
-- **Hugging Face Transformers** for loading the base model (for example
-  `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit` by default).
-- **bitsandbytes** for 4‑bit quantization where supported.
-- **PEFT / LoRA** (via Unsloth) for parameter‑efficient fine‑tuning.
-
-The default base models offered in the Training tab are Unsloth‑optimized
-variants of popular open models. Fine‑tuned adapters and checkpoints are
-written under your chosen **Output directory** inside the container
-(typically `/data/outputs/...`) and then picked up by **Quick Local
-Inference** and the [Inference Tab](inference-tab.md).
-
-## Tips & Best Practices
-
-- Start in **Beginner** mode until you've found stable hyperparameters.
-- Use **Quick local test** for small, rapid experiments.
-- Use **Auto Set (local)** for first runs on a new GPU.
-- Save a **known‑good config** after a successful run; reload it for variants.
-- Use **Packing** when most examples are short to improve throughput.
-- Keep an eye on logs for early signs of OOM or dataset issues.
+Enable packing when your examples are short—it significantly improves throughput. And keep an eye on the logs for early signs of out-of-memory errors or dataset issues.
 
 ______________________________________________________________________
 
 ## Offline Mode
 
-When **Offline Mode** is enabled, the Training tab enforces local-only workflows:
-
-- **Runpod cloud training is disabled**.
-  - The training target is forced to `Local`.
-  - Runpod infra and control actions are disabled.
-- **Hugging Face datasets and Hub push are disabled**.
-  - Hugging Face remains visible in dropdowns but is disabled.
-  - If you were previously set to Hugging Face as a dataset source, the UI resets to **Database**.
-  - Push-to-Hub controls are disabled and the push toggle is forced off.
-
-The UI shows an Offline banner at the top of the tab and inline helper text under key controls explaining why they are disabled.
+When Offline Mode is enabled, only local training works. Runpod is disabled, the training target is forced to Local, and Hugging Face datasets and Hub push are unavailable. If you were using a HF dataset, the UI resets to Database. A banner at the top of the tab explains what's disabled and why.
 
 ______________________________________________________________________
 
 ## Troubleshooting
 
-For detailed troubleshooting, see the main guide:
-
-- [Troubleshooting](troubleshooting.md)
-
-Highlights:
-
-- CUDA OOM and exit code 137 for local Docker runs.
-- HF authentication issues inside containers.
-- Config‑related mistakes and how to avoid them with saved setups.
+If you run into problems, check the [Troubleshooting Guide](troubleshooting.md). Common issues include CUDA out-of-memory errors (exit code 137) for local Docker runs, HF authentication problems inside containers, and config-related mistakes that saved setups help avoid.
 
 ______________________________________________________________________
 
-## Related Topics
+## Related Guides
 
-- [Quick Start Guide](quick-start.md) – overall workflow.
-- [Inference Tab](inference-tab.md) – run inference on trained adapters with Prompt & responses and Full Chat View.
-- [Merge Datasets Tab](merge-tab.md) – combine multiple datasets.
-- [Troubleshooting](troubleshooting.md) – common training issues.
-- [Logging Guide](../development/logging.md) – debugging training runs.
+For the overall workflow, see the [Quick Start Guide](quick-start.md). After training, use the [Inference Tab](inference-tab.md) for extensive testing with chat history. The [Merge Datasets Tab](merge-tab.md) helps combine multiple datasets, and the [Logging Guide](../development/logging.md) covers debugging training runs.
 
 ______________________________________________________________________
 

@@ -1,118 +1,54 @@
 # Dataset Analysis Tab
 
-The Dataset Analysis tab provides interactive insights into your datasets so you can assess quality, diversity, and potential issues **before** training.
-
-Use this tab to:
-
-- Load a database session (or optionally a Hugging Face dataset when online)
-- Run a configurable set of analysis modules (stats, duplicates, sentiment, etc.)
-- Visualize distributions and proxy metrics for data quality
+The Dataset Analysis tab helps you understand your data before committing to a long training run. You can check for duplicates, analyze sentiment distribution, spot potential data leakage, and assess overall quality—all without writing any code.
 
 ![Dataset Analysis Tab](../../img/new/ff_data_analysis.png)
 
-______________________________________________________________________
+## How It Works
 
-## Overview
+Select a dataset (either a database session from your scrape history or a Hugging Face dataset when online), enable the analysis modules you're interested in, and click Analyze dataset. The results show up as metrics, charts, and sample previews so you can quickly assess whether your data is ready for training.
 
-Typical workflow:
+## Analysis Modules
 
-1. Select a **dataset source** (Database Session, or Hugging Face repo when online).
-1. Enable the analysis **modules** you care about.
-1. Click **Analyze dataset**.
-1. Review summary stats and module outputs.
-1. Adjust scraping/building/merging parameters if needed.
+The tab offers several analysis modules you can toggle on or off depending on what you want to check:
 
-______________________________________________________________________
+**Basic Stats** gives you record counts and average input/output lengths—a quick sanity check that your dataset has what you expect. **Duplicates & Similarity** uses hashing to estimate how many duplicate pairs you have, which can hurt training if too high. **Sentiment** shows the distribution of positive, negative, and neutral content across your samples.
 
-## Layout at a Glance
+**Class Balance** buckets your data by length (short, medium, long) so you can see if you're skewed toward one type. The **Extra metrics** section provides lightweight proxy signals for things like coverage overlap, potential data leakage, conversation depth, readability, toxicity, and more. These aren't perfect measures, but they surface potential issues worth investigating.
 
-### 1. Dataset Source
+## When to Run Analysis
 
-- **Source selector** – Choose Database Session or Hugging Face dataset (when online).
-- **Session / repo fields** – Select a scrape session or provide repo id + split.
+Run analysis before committing to a long training run—it's much easier to fix data problems now than to debug a model later. Run it again after major changes to your scraping, merging, or cleaning logic to verify you didn't introduce issues.
 
-### 2. Analysis Modules
+## Examples
 
-Toggle modules on/off:
+### Quick Sanity Check
 
-- **Basic Stats** – record counts, mean input/output lengths.
-- **Duplicates & Similarity** – approximate duplicate rate via hashed pairs.
-- **Sentiment** – polarity distribution across samples.
-- **Class Balance (length)** – short/medium/long buckets for input length.
-- **Extra metrics** (proxy signals):
-  - Coverage overlap
-  - Data leakage
-  - Conversation depth
-  - Speaker balance
-  - Question vs statement
-  - Readability
-  - NER proxy
-  - Toxicity / Politeness
-  - Dialogue acts / Topics / Alignment
+After building a dataset in the Publish tab, load it here and enable Basic Stats, Duplicates, and Sentiment. Confirm your record count looks right, duplicates are low, and sentiment distribution makes sense for your use case.
 
-A summary section lists all active modules after each run.
+### Curriculum Planning
 
-### 3. Results & Visualizations
+If you're planning to train in stages or weight certain examples, check Class Balance and Conversation depth. See if you need to rebalance short vs long samples or adjust which sources you're pulling from.
 
-- **KPI tiles / metrics** – e.g., total records, avg lengths.
-- **Progress bars / charts** – visualize distributions (sentiment, length buckets, etc.).
-- **Tables / samples** – preview representative rows and metrics.
+### Safety Review
 
-______________________________________________________________________
+Enable Toxicity/Politeness and Data leakage proxies before training. High toxicity might mean you need additional filtering. Leakage flags suggest your input and output columns might share too much content, which could lead to trivial learning.
 
-## Usage Examples
+## Tips
 
-### Example 1: Quick sanity check
+Use analysis iteratively—check your raw scrape, then check again after merging, and once more after filtering. Each step can introduce or fix issues. The Duplicates module is especially useful after merging multiple datasets, since overlapping sources can inflate duplicate rates.
 
-1. Load your just-built dataset from the **Publish** tab.
-1. Enable **Basic Stats**, **Duplicates & Similarity**, and **Sentiment**.
-1. Click **Analyze dataset**.
-1. Confirm record counts and check for excessive duplicates or extreme sentiment imbalance.
-
-### Example 2: Curriculum planning
-
-1. Load a merged dataset.
-1. Enable **Class Balance (length)**, **Conversation depth**, and **Topics**.
-1. Use the outputs to decide whether you need to:
-   - Rebalance short vs long samples.
-   - Add or remove certain topic sources.
-
-### Example 3: Safety scanning
-
-1. Enable **Toxicity / Politeness** and **Data leakage** proxies.
-1. Identify whether your dataset has significant toxic content or potential leakage issues.
-1. Adjust scraping filters or dataset cleaning steps accordingly.
-
-______________________________________________________________________
-
-## Tips & Best Practices
-
-- Run analysis **before** committing to long training runs.
-- Use **Duplicates & Similarity** to spot unintentional dataset duplication.
-- Use **Sentiment** and **Toxicity** to gauge whether additional filtering is needed for your use case.
-- Re-run analysis after major changes to scraping, merging, or cleaning logic.
-
-______________________________________________________________________
+Don't over-rely on proxy metrics. They're heuristics, not ground truth. Use them to surface things worth a closer look, not as definitive judgments.
 
 ## Offline Mode
 
-When **Offline Mode** is enabled:
-
-- **Hugging Face dataset source** remains visible but is disabled.
-  - If you were previously set to Hugging Face, the selector resets to **Database**.
-- **HF Inference API backend** remains visible but is disabled.
-  - If you were previously using HF Inference API, the backend resets to **Local (Transformers)**.
-
-The UI shows an Offline banner at the top of the tab and inline helper text under key controls explaining why they are disabled.
+When Offline Mode is enabled, Hugging Face dataset sources are disabled (the UI resets to Database if you were using HF). The HF Inference API backend is also disabled, falling back to local processing. A banner explains what's unavailable.
 
 ______________________________________________________________________
 
-## Related Topics
+## Related Guides
 
-- [Data Sources Tab](scrape-tab.md) – collect raw conversational data.
-- [Publish Tab](build-publish-tab.md) – build train/val/test splits from a database session and optionally push to the Hub.
-- [Merge Datasets Tab](merge-tab.md) – combine multiple datasets.
-- [Training Tab](training-tab.md) – fine-tune models on analyzed datasets.
+Collect data in the [Data Sources Tab](scrape-tab.md), build splits in the [Publish Tab](build-publish-tab.md), combine datasets in the [Merge Datasets Tab](merge-tab.md), then train in the [Training Tab](training-tab.md).
 
 ______________________________________________________________________
 

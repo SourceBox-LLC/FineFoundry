@@ -1,93 +1,52 @@
 # FineFoundry Documentation
 
-Welcome to the FineFoundry documentation! This directory contains comprehensive guides for using, developing, and deploying FineFoundry.
+Welcome! This is your home base for learning everything about FineFoundry—from getting your first dataset built in minutes to diving deep into advanced training workflows and contributing to the project.
 
-## 📚 Documentation Index
+Whether you're a first-time user looking to scrape some data and fine-tune a model, or an experienced developer wanting to extend the platform, you'll find what you need here.
 
-### 🚀 Getting Started
+## Getting Started
 
-- [Quick Start Guide](user-guide/quick-start.md) - Get up and running in minutes
-- [Installation](user-guide/installation.md) - Detailed installation instructions
-- [Upgrade Notes](user-guide/upgrade-notes.md) - Important changes between versions
+New to FineFoundry? Start with the [Quick Start Guide](user-guide/quick-start.md) to go from zero to a working dataset in just a few minutes. If you need more detailed setup instructions, the [Installation Guide](user-guide/installation.md) walks you through every step, and [Upgrade Notes](user-guide/upgrade-notes.md) covers important changes if you're updating from an earlier version.
 
-### 👤 User Guides
+## User Guides
 
-- [Using the GUI](user-guide/gui-overview.md) - High-level overview of all tabs
-  - [Data Sources Tab](user-guide/scrape-tab.md) - Data collection from various sources
-  - [Publish Tab](user-guide/build-publish-tab.md) - Dataset creation and Hugging Face publishing
-  - [Training Tab](user-guide/training-tab.md) - Model fine-tuning on Runpod or locally
-  - [Inference Tab](user-guide/inference-tab.md) - Run inference with adapters from completed training runs and chat view
-  - [Merge Datasets Tab](user-guide/merge-tab.md) - Combining multiple datasets
-  - [Analysis Tab](user-guide/analysis-tab.md) - Dataset quality and characteristics analysis
-  - [Settings Tab](user-guide/settings-tab.md) - Configuration and authentication
-- [CLI Usage](user-guide/cli-usage.md) - Command-line tools and scripting
-- [Authentication](user-guide/authentication.md) - Hugging Face and Runpod setup
+Once you're up and running, the [GUI Overview](user-guide/gui-overview.md) gives you a bird's-eye view of the desktop app. From there, each tab has its own in-depth guide:
 
-### 🛠️ Development
+The [Data Sources Tab](user-guide/scrape-tab.md) is where you collect training data—scrape from 4chan, Reddit, or Stack Exchange, or generate synthetic data from your own documents using local LLMs. When your data is ready, the [Publish Tab](user-guide/build-publish-tab.md) helps you create train/val/test splits and push datasets to Hugging Face Hub.
 
-- [Project Structure](development/project-structure.md) - Codebase organization
-- [Database Architecture](development/database.md) - SQLite storage system
-- [Logging System](development/logging.md) - Logging configuration and usage
-- [Contributing Guide](development/contributing.md) - How to contribute to FineFoundry
-- [Testing](development/testing.md) - Running and writing tests
-- [Code Style](development/code-style.md) - Coding standards and conventions
+For training, the [Training Tab](user-guide/training-tab.md) covers everything from beginner-friendly presets to expert-level hyperparameter tuning, whether you're running on Runpod or locally via Docker. After training, use the [Inference Tab](user-guide/inference-tab.md) to chat with your fine-tuned model and verify it learned what you intended.
 
-### 🔌 API Reference
+Need to combine datasets from different sources? The [Merge Datasets Tab](user-guide/merge-tab.md) handles that. Want to understand your data quality before training? The [Analysis Tab](user-guide/analysis-tab.md) provides insights into sentiment, duplicates, readability, and more.
 
-- [Scrapers API](api/scrapers.md) - Programmatic scraping and generation interfaces
-  - [4chan Scraper](api/fourchan-scraper.md)
-  - [Reddit Scraper](api/reddit-scraper.md)
-  - [Stack Exchange Scraper](api/stackexchange-scraper.md)
-  - Synthetic Data Generator (see [Scrapers API](api/scrapers.md#synthetic-data-generation))
-- [Dataset Builder](api/dataset-builder.md) - Programmatic dataset creation
-- [Training API](api/training.md) - Programmatic training interface
+Finally, the [Settings Tab](user-guide/settings-tab.md) is where you configure authentication and preferences, while [CLI Usage](user-guide/cli-usage.md) and [Authentication](user-guide/authentication.md) cover scripting and token setup.
 
-### 🚢 Deployment
+## For Developers
 
-- [Proxy Configuration](deployment/proxy-setup.md) - Tor and custom proxy setup
-- [Docker Deployment](deployment/docker.md) - Running in containers
-- [Runpod Setup](deployment/runpod.md) - Cloud training infrastructure
+If you want to understand or contribute to the codebase, start with [Project Structure](development/project-structure.md) to see how everything is organized. The [Database Architecture](development/database.md) doc explains the SQLite storage system, and the [Logging System](development/logging.md) shows you how to debug issues effectively.
 
-### ❓ Help & Troubleshooting
+Ready to contribute? The [Contributing Guide](development/contributing.md) explains the workflow, [Testing](development/testing.md) covers how to run and write tests, and [Code Style](development/code-style.md) describes the conventions we follow.
 
-- [User FAQ](user-guide/faq.md) - Frequently asked questions and pointers to the right doc
-- [Developer FAQ](development/faq.md) - Questions for contributors and advanced users
-- [Troubleshooting](user-guide/troubleshooting.md) - Common issues and solutions
-- [Ethical & Legal](user-guide/ethical-legal.md) - Important usage considerations
+## API Reference
 
-## 🔍 Quick Links
+For programmatic usage, the [Scrapers API](api/scrapers.md) documents how to use the data collection tools from Python, including the [4chan](api/fourchan-scraper.md), [Reddit](api/reddit-scraper.md), and [Stack Exchange](api/stackexchange-scraper.md) scrapers, plus synthetic data generation. The [Dataset Builder API](api/dataset-builder.md) and [Training API](api/training.md) cover programmatic dataset creation and training workflows.
 
-- **Need help getting started?** → [Quick Start Guide](user-guide/quick-start.md)
-- **Want to scrape data or generate synthetic data?** → [Data Sources Tab Guide](user-guide/scrape-tab.md) or [Scrapers API](api/scrapers.md)
-- **Building datasets?** → [Publish Guide](user-guide/build-publish-tab.md)
-- **Training models?** → [Training Tab Guide](user-guide/training-tab.md)
-- **Contributing code?** → [Contributing Guide](development/contributing.md)
-- **Debugging issues?** → [Logging Guide](development/logging.md) and [Troubleshooting](user-guide/troubleshooting.md)
+## Deployment
 
-## 📝 Documentation Standards
+Running FineFoundry in production or on cloud infrastructure? The [Proxy Configuration](deployment/proxy-setup.md) guide covers Tor and custom proxy setup, [Docker Deployment](deployment/docker.md) explains containerized workflows, and [Runpod Setup](deployment/runpod.md) walks through cloud training infrastructure.
 
-All documentation follows these conventions:
+## Getting Help
 
-- Written in Markdown
-- Cross-linked for easy navigation
-- Includes practical examples
-- Updated with each release
-- Organized by user role (user/developer/deployer)
+If something isn't working, check the [Troubleshooting Guide](user-guide/troubleshooting.md) first—it covers the most common issues and their solutions. The [User FAQ](user-guide/faq.md) answers frequently asked questions, while the [Developer FAQ](development/faq.md) is aimed at contributors and power users.
 
-## 🤝 Contributing to Docs
+For legal and ethical considerations around the data you collect, see [Ethical & Legal](user-guide/ethical-legal.md).
 
-Found a typo? Want to add an example? Documentation contributions are welcome!
+## Contributing to the Docs
 
-See our [Contributing Guide](development/contributing.md) for details on:
+Found a typo or want to improve something? Documentation contributions are always welcome. See the [Contributing Guide](development/contributing.md) for how to submit improvements.
 
-- Writing style guidelines
-- How to submit documentation improvements
-- Where to add new documentation
+## Support
 
-## 📧 Support
-
-- **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions)
+If you can't find what you need here, open an issue on [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues) or start a discussion in [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions).
 
 ______________________________________________________________________
 

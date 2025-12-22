@@ -1,189 +1,86 @@
 # Installation
 
-This page gives you a focused, step‑by‑step path to get FineFoundry running on your machine.
+This guide walks you through installing FineFoundry on your machine. If you want the quickest possible path to a working app with your first dataset, the [Quick Start Guide](quick-start.md) is more concise—but this page covers all the details if you need them.
 
-If you just want the fastest way to go from **clone → running app → first dataset**, you can:
+## What You'll Need
 
-- Follow the **[Quick Start Guide](quick-start.md)** for an end‑to‑end walkthrough, or
-- Use the commands below as a concise reference.
+FineFoundry runs on Python 3.10 or newer across Windows, macOS, and Linux. While not required, having a NVIDIA GPU with recent drivers is recommended if you plan to do training or run 4-bit quantized models locally.
 
-______________________________________________________________________
+You'll also need Git if you want to clone the repository (though you can download a zip instead), and internet access for installing dependencies. Later, if you want to publish datasets or train on cloud GPUs, you'll configure a Hugging Face account and token (see [Authentication](authentication.md)), and optionally a Runpod account for remote training.
 
-## Supported platforms
+## The Easy Way: Using uv
 
-FineFoundry is developed and tested with:
+We recommend `uv` because it handles virtual environments and dependencies automatically—no manual setup required. If you don't already have it, install it with `pip install uv`.
 
-- **Python**: 3.10 or newer
-- **Operating systems**: Windows, macOS, Linux
-- **GPU (optional but recommended)**: NVIDIA GPU with recent drivers for training and 4‑bit models
-
-You will also need:
-
-- **Git** (optional but recommended) for cloning the repository
-- **Internet access** to install dependencies and (optionally) talk to external services
-
-For publishing datasets or using remote training, you will later configure:
-
-- A **Hugging Face** account and access token (see [Authentication](authentication.md))
-- Optionally, a **Runpod** account and API key for remote training
-
-______________________________________________________________________
-
-## Option 1: Install and run with uv (recommended)
-
-`uv` is a fast Python package manager that this project’s CI and docs use. If you want the least amount of setup, use this option.
-
-### 1. Install uv (if needed)
-
-If you do not already have `uv` installed, you can install it into your current Python environment:
+Clone the repository and run the launcher script:
 
 ```bash
-pip install uv
-```
-
-If you prefer to avoid adding `uv` globally, you can also use `pipx` or follow the official `uv` installation instructions, but the simple `pip install uv` is usually sufficient for local development.
-
-### 2. Clone the repository
-
-```bash
-# Clone the repository
 git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
 ```
 
-### 3. Run the application
-
-With `uv`, you do **not** need to create a virtual environment or install requirements manually. `uv` will create an isolated environment, resolve dependencies, and run the app in one command:
-
-On macOS/Linux, you may need to run the `chmod +x` step **once** to mark the script as executable.
+On macOS/Linux, make the script executable (you only need to do this once):
 
 ```bash
 chmod +x run_finefoundry.sh
 ./run_finefoundry.sh
-
-# Alternative (without the launcher script)
-uv run src/main.py
 ```
 
-The first run will take longer while dependencies are resolved and installed. Subsequent runs should be much faster.
+That's it. The script creates an isolated environment, resolves dependencies, and launches the app. The first run takes a bit longer while everything gets set up, but subsequent launches are fast.
 
-If you want to pre-sync dependencies (for example, before travelling or working offline), you can run:
+If you prefer not to use the launcher script, you can run `uv run src/main.py` directly. And if you want to pre-download dependencies (say, before going offline), run `uv sync` first.
 
-```bash
-uv sync
-```
+## The Traditional Way: pip and venv
 
-and then launch the app with `./run_finefoundry.sh` (recommended) or `uv run src/main.py` as above.
+If you'd rather manage your own virtual environment, the classic approach works just as well.
 
-______________________________________________________________________
-
-## Option 2: Install with pip and a virtual environment
-
-If you prefer to manage environments yourself, you can use the classic `venv` + `pip` workflow.
-
-### 1. Clone the repository
+Start by cloning the repository:
 
 ```bash
 git clone https://github.com/SourceBox-LLC/FineFoundry.git
 cd FineFoundry-Core
 ```
 
-> If you cloned into a different directory name, `cd` into that folder instead.
-
-### 2. Create and activate a virtual environment
-
-From the project root:
+Create and activate a virtual environment:
 
 ```bash
 python -m venv venv
+
+# On macOS/Linux:
+source venv/bin/activate
+
+# On Windows (PowerShell):
+./venv/Scripts/Activate.ps1
 ```
 
-Then activate it:
+If your system uses `py` instead of `python`, run `py -3.10 -m venv venv` instead.
 
-- **Windows (PowerShell)**
-
-  ```bash
-  ./venv/Scripts/Activate.ps1
-  ```
-
-- **macOS/Linux**
-
-  ```bash
-  source venv/bin/activate
-  ```
-
-If your system uses `py` to select Python, you can run `py -3.10 -m venv venv` instead.
-
-### 3. Install dependencies
-
-With the virtual environment active, install the required packages:
+With the environment active, install the package:
 
 ```bash
 pip install -e .
 ```
 
-### 4. Launch the GUI
-
-From the project root (with the virtual environment active):
+Then launch the app:
 
 ```bash
 python src/main.py
 ```
 
-Alternatively, if you have `flet`’s CLI on your PATH, you can use:
+## Checking That It Worked
 
-```bash
-flet run src/main.py
-```
+When FineFoundry starts, you should see a desktop window with tabs across the top: Data Sources, Dataset Analysis, Merge Datasets, Training, Inference, Publish, and Settings. If you see import errors in the terminal, try re-running `uv sync` or `pip install -e . --upgrade`.
 
-______________________________________________________________________
+To really verify everything is working, try the "Your First Dataset" section in the [Quick Start Guide](quick-start.md)—scrape a small sample, build a dataset, and optionally run a quick analysis. If that all works, you're good to go.
 
-## Verifying your installation
+## If Something Goes Wrong
 
-After running the app (via `./run_finefoundry.sh`, `uv run src/main.py`, or `python src/main.py`):
+Installation problems are usually one of a few common issues. "Python command not found" or confusion between `python` and `py` is common on Windows. "uv command not found" means you need to install uv first. "Module not found" errors after launch typically mean dependencies didn't install correctly—re-run the installation step.
 
-- A **desktop window** should appear with tabs such as **Data Sources**, **Dataset Analysis**, **Merge Datasets**, **Training**, **Inference**, **Publish**, and **Settings**.
-- You should not see import errors in the terminal. If you do, re-run dependency installation (`uv sync` or `pip install -e . --upgrade`).
+The [Troubleshooting Guide](troubleshooting.md) has detailed solutions for these and other issues. If you're still stuck, open a GitHub issue with your OS, Python version, the command you ran, and the full error message.
 
-To quickly exercise the app after installation:
+## What's Next
 
-- Follow **Your First Dataset** in the **[Quick Start Guide](quick-start.md)** to:
-  - Scrape a small sample from 4chan.
-  - Build a tiny train/validation split.
-  - Optionally run a basic dataset analysis.
+With FineFoundry installed and running, head to the [Quick Start Guide](quick-start.md) to create your first dataset. The [GUI Overview](gui-overview.md) gives you a tour of all the tabs, and [Authentication](authentication.md) covers setting up your Hugging Face and Runpod credentials.
 
-If those steps work, your installation is healthy.
-
-______________________________________________________________________
-
-## Common installation problems
-
-If you hit issues during installation, check the **[Troubleshooting Guide](troubleshooting.md)**, especially:
-
-- **"Python command not found"** or `python` vs `py` on Windows.
-- **"uv command not found"** when using the uv-based flow.
-- **"Module not found"** errors after launch (usually fixed by re-running dependency installation).
-- **SSL/certificate errors** when installing dependencies.
-
-Relevant sections:
-
-- [Troubleshooting – Installation Issues](troubleshooting.md#installation-issues)
-- [Troubleshooting – Logging & Debugging](troubleshooting.md#logging--debugging) for enabling debug logs
-
-If the Troubleshooting guide does not cover your case, please open an issue on GitHub with:
-
-- Your OS and Python version
-- The exact command you ran
-- The full error message and any relevant logs
-
-______________________________________________________________________
-
-## Next steps
-
-Once FineFoundry is installed and launching correctly:
-
-- Walk through the **[Quick Start Guide](quick-start.md)** to create your first dataset.
-- Read the **[GUI Overview](gui-overview.md)** to understand the main tabs.
-- Set up tokens and API keys in **[Authentication](authentication.md)** and the **Settings** tab.
-
-From there, you can explore the detailed tab guides (Data Sources, Publish, Training, Inference, Merge, Analysis) and start iterating on your own datasets and models.
+From there, you can dive into the detailed guides for each tab and start building datasets and training models.
