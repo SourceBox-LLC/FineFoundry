@@ -1,142 +1,50 @@
 # Settings Tab
 
-The Settings tab centralizes configuration for **authentication**, **proxies**, and optional **Ollama** integration used by other parts of the app.
+The Settings tab is your control center for credentials, proxy configuration, and optional integrations. Everything you configure here flows through to the other tabs—your Hugging Face token enables publishing, your Runpod key enables cloud training, and your proxy settings affect how scrapers reach the web.
 
-Use this tab to:
+## Hugging Face
 
-- Configure and persist **Hugging Face** and **Runpod** credentials
-- Set up **proxy behavior** for scrapers
-- Configure **Ollama** connection for optional dataset card generation
-- Run a **System Check** to verify that core scraping, build, training, and inference flows work end-to-end
+Paste your Hugging Face token here if you want to push datasets or adapters to the Hub. You'll need a token with write permissions, which you can create at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 
-______________________________________________________________________
+Click Test to verify the token works, then Save to persist it. The Publish tab uses this token when pushing datasets, and Training uses it when you enable push-to-hub for adapters.
 
-## Overview
+If you prefer not to store tokens in the app, you can set the `HF_TOKEN` environment variable instead—FineFoundry will pick it up automatically.
 
-Typical workflow:
+## Runpod
 
-1. Enter and save your **Hugging Face** token.
-1. (Optional) Enter and save your **Runpod** API key.
-1. Configure proxy behavior if you use Tor or HTTP proxies.
-1. (Optional) Point the app at an **Ollama** instance and test connectivity.
+If you're using Runpod for cloud GPU training, paste your API key here. Get it from the [Runpod console settings](https://runpod.io/console/user/settings). Click Test to verify connectivity, then Save.
 
-These settings are used by the Data Sources, Publish, Training, Inference, and tooling features throughout the app.
+This key lets the Training tab create and manage network volumes, pod templates, and training pods on your behalf.
 
-______________________________________________________________________
+## Proxy Settings
 
-## Layout at a Glance
+If you're scraping through Tor or a custom proxy, configure it here. Toggle on proxy support, enter your proxy URL (like `socks5h://127.0.0.1:9050` for Tor), and the scrapers will route their requests through it.
 
-### 1. Hugging Face Settings
+You can also enable "Use env proxies" to pick up `HTTP_PROXY` and `HTTPS_PROXY` from your environment instead of specifying a URL directly.
 
-- **HF Token** field
-  - Paste a token with the required read/write permissions.
-- **Test** button
-  - Verifies connectivity to Hugging Face using the provided token or environment variables.
-- **Save / Remove** buttons
-  - Persist or clear the stored token.
+## Ollama (Optional)
 
-The token is used by:
+If you have Ollama running locally, you can connect FineFoundry to it for generating dataset and model cards. Enable Ollama, set the base URL (usually `http://localhost:11434`), and pick a model from the dropdown. Click Test to verify the connection works.
 
-- Publish tab (dataset push and model adapter publishing)
+This is entirely optional—you can always write cards manually or use the simple template instead.
 
-### 2. Runpod Settings
+## System Check
 
-- **Runpod API Key** field
-  - Paste your key from the Runpod console.
-- **Test** button
-  - Verifies that the key can reach Runpod APIs.
-- **Save / Remove** buttons
-  - Persist or clear the stored key.
+The System Check panel at the bottom runs diagnostics to verify your environment is set up correctly. It executes the test suite in focused groups (data collection, dataset build, training and inference) and then runs full coverage.
 
-The key is used by:
+Results appear in a live log view, and after completion you get a summary showing which areas passed or failed. This is useful when you first install FineFoundry, after upgrading dependencies, or whenever something seems off and you want a quick sanity check.
 
-- Training tab (Runpod infrastructure & pod management)
+You can download the full diagnostics log to attach to bug reports or share with collaborators.
 
-### 3. Proxy Settings
+## Tips
 
-Controls proxy behavior for scrapers:
-
-- **Enable proxy / Use env proxies** toggles
-- **Proxy URL** field
-  - Example: `socks5h://127.0.0.1:9050` for Tor.
-
-These settings map onto the underlying helper modules so Scrape and other features respect your proxy configuration.
-
-### 4. Ollama Settings (Optional)
-
-If you use **Ollama** for dataset/model card drafting or other features:
-
-- **Enable Ollama** toggle
-- **Base URL** (e.g. `http://localhost:11434`)
-- **Default model** field
-- **Models dropdown + Refresh button** – list and select models from the Ollama instance.
-- **Test / Save** buttons
-
-### 5. System Check (Diagnostics)
-
-The **System Check** panel lives at the bottom of the Settings tab and provides a one-click health check for your environment.
-
-- **Run system diagnostics** button
-
-  - Executes a diagnostics pipeline using your current Python environment.
-  - Runs focused `pytest` groups for key feature areas:
-    - **Data Collection** – scraping utilities and scrape-tab orchestration.
-    - **Dataset Build** – merge and publish pipelines.
-    - **Training & Inference** – training config + local training infra, and Quick Local Inference wiring.
-  - Then runs the **full test suite** (`pytest tests`) and a **coverage run + report**:
-    - `coverage run --source=src -m pytest`
-    - `coverage report -m`
-  - All output is streamed live into a log view so you can see exactly what passed or failed.
-
-  This System Check is focused on **pytest and coverage**. Linting and type checking are handled separately (for example, in CI).
-
-- **Live log viewer**
-
-  - Initially hidden and shown automatically when diagnostics start.
-  - Displays detailed stdout/stderr from each step (pytest and coverage commands).
-  - Useful for debugging environment issues without leaving the app.
-
-- **System Health Summary**
-
-  - After the run completes, a summary appears **beneath** the log.
-  - Results are grouped into card-like sections:
-    - **Data Collection** – scraping and scrape orchestration tests.
-    - **Dataset Build** – merge and build pipeline tests.
-    - **Training & Inference** – training config, local Docker training helpers, and Quick Local Inference UI wiring.
-    - **Overall Health** – full test suite and coverage steps.
-  - Each card lists its component checks with icons and a clear **Passed / Failed** label and exit code.
-  - The overall status line above the log tells you whether everything passed or if some areas failed.
-
-- **Download diagnostics log**
-
-  - A **Download log** button opens a file-save dialog.
-  - Saves the full textual log to a `.txt` file so you can:
-    - Attach it to bug reports.
-    - Share it with collaborators.
-    - Keep a local record of a given run.
-
-The System Check is optional but recommended when:
-
-- You first install FineFoundry on a new machine.
-- You upgrade dependencies or Python versions.
-- You want a quick, visual confirmation that scraping, build, training, and inference are all wired up correctly.
+Store long-lived tokens in environment variables when possible—it's more secure than pasting them into the UI, and they persist across sessions. Always click Test after changing credentials to catch typos early. If scraping seems slow or blocked, check your proxy settings here first.
 
 ______________________________________________________________________
 
-## Tips & Best Practices
+## Related Guides
 
-- Prefer storing long‑lived tokens in **environment variables** when possible, then confirm them via the Settings tab.
-- Use the **Test** buttons after changing tokens or API keys.
-- If scraping over Tor or an HTTP proxy, configure proxy settings here and verify scrapers behave as expected.
-
-______________________________________________________________________
-
-## Related Topics
-
-- [Authentication](authentication.md) – Hugging Face and Runpod auth in more detail.
-- [Proxy Setup](../deployment/proxy-setup.md) – Tor and custom proxy configuration.
-- [Training Tab](training-tab.md) – uses Hugging Face and Runpod settings.
-- [Publish Tab](build-publish-tab.md) – uses Hugging Face token for pushing.
+For more on authentication, see the [Authentication Guide](authentication.md). Proxy details are in [Proxy Setup](../deployment/proxy-setup.md). The [Training Tab](training-tab.md) and [Publish Tab](build-publish-tab.md) are the main consumers of these settings.
 
 ______________________________________________________________________
 

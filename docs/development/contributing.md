@@ -1,183 +1,112 @@
 # Contributing Guide
 
-Thank you for your interest in contributing to FineFoundry!
+Thanks for wanting to contribute to FineFoundry! This guide covers setting up your development environment, making changes, and getting your PR ready for review.
 
-This guide summarizes how to set up a development environment, how to structure changes, and which checks to run before opening a pull request.
-
-For deeper background on tests and CI, see:
-
-- [Testing Guide](testing.md)
-- [Developer FAQ](faq.md)
+For more on tests and CI, see the [Testing Guide](testing.md) and [Developer FAQ](faq.md).
 
 ______________________________________________________________________
 
 ## Getting Started
 
-- Use **Python 3.10+**.
-- Use **`uv`** for dependency management and commands (recommended).
-
-Clone the repository:
+You'll need Python 3.10+ and we recommend using `uv` for dependency management.
 
 ```bash
 git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
-```
-
-Install dependencies using `uv`:
-
-```bash
 uv sync
 ```
 
-or, if you prefer, follow the user **[Installation](../user-guide/installation.md)** guide for a `venv` + `pip` setup.
+If you prefer pip and venv, see the [Installation Guide](../user-guide/installation.md).
 
 To run the app during development:
 
 ```bash
-# One-time (macOS/Linux): allow executing the launcher script
-chmod +x run_finefoundry.sh
-./run_finefoundry.sh
-
-# Alternative (without the launcher script)
 uv run src/main.py
 ```
+
+Or use the launcher script (`./run_finefoundry.sh` on macOS/Linux).
 
 ______________________________________________________________________
 
 ## Branches and Workflow
 
-- Base your work on the current default branch (usually `master`).
-- Create a feature branch for each logical change (for example, `feat/new-scraper`, `fix/training-oom`, `docs/update-user-guide`).
-- Keep changes focused:
-  - Small, incremental PRs are easier to review and debug.
-  - Avoid mixing large refactors with behavior changes.
+Base your work on the default branch (usually `master`) and create a feature branch for each change—something like `feat/new-scraper`, `fix/training-oom`, or `docs/update-user-guide`.
 
-When you open a pull request:
+Keep your PRs focused. Small, incremental changes are easier to review and debug. Avoid mixing large refactors with behavior changes in the same PR.
 
-- Clearly describe **what** you changed and **why**.
-- Call out any behavioral changes, UI changes, or new external dependencies.
-- Mention any follow‑up work you intentionally left for a later PR.
+When you open a pull request, clearly describe what you changed and why. Call out behavioral changes, UI changes, or new dependencies. Mention any follow-up work you're leaving for a later PR.
 
 ______________________________________________________________________
 
 ## Local Checks Before a PR
 
-Run these checks locally before pushing. This keeps CI green and shortens review time.
+Run these checks locally before pushing—it keeps CI green and speeds up review.
 
-### 1. Lint (Ruff)
+### Linting
 
 ```bash
 uv run ruff check src
+uv run ruff check src --fix  # auto-fix many issues
 ```
 
-Fix issues as needed. You can often auto‑fix many of them:
+### Tests
+
+Run unit tests for a fast feedback loop, integration tests when changing core flows, or the full suite:
 
 ```bash
-uv run ruff check src --fix
+uv run pytest tests/unit                # unit tests only
+uv run pytest -m "integration"          # integration tests only
+uv run pytest                           # full suite
 ```
 
-See `ruff.toml` for the current configuration (Python 3.10 target, 120‑column line length, and a small set of ignored rules).
+See the [Testing Guide](testing.md) for more on test structure and markers.
 
-### 2. Tests (Pytest)
+### Coverage
 
-Run the unit tests for a fast inner loop:
-
-```bash
-uv run pytest tests/unit
-```
-
-When changing core flows, also run integration tests:
+CI enforces a minimum coverage threshold. Check locally with:
 
 ```bash
-uv run pytest -m "integration"          # only integration tests
-uv run pytest -m "not integration"      # everything except integration tests
-```
-
-For a full run (what CI effectively does):
-
-```bash
-uv run pytest
-```
-
-See the [Testing Guide](testing.md) for details about the test layout and markers.
-
-### 3. Coverage
-
-Coverage is enforced in CI with a minimum threshold. To check coverage locally:
-
-```bash
-uv pip install coverage
-uv run coverage run --source=src -m pytest --ignore=proxy_test.py
+uv run coverage run --source=src -m pytest
 uv run coverage report -m
 ```
 
-If coverage drops significantly for critical modules, consider adding tests before submitting the PR.
-
-### 4. Type Checking (mypy)
-
-FineFoundry uses `mypy` with configuration in `pyproject.toml` (currently focused on `src/helpers` and `src/save_dataset.py`, with some overrides for runtime‑heavy modules).
-
-Run type checking locally:
+### Type Checking
 
 ```bash
 uv run mypy
 ```
 
-When touching typed modules, prefer tightening annotations rather than adding broad `ignore` rules. If you must add `# type: ignore[...]`, include a brief comment or pick the most specific code to ignore.
+When adding type annotations, prefer precise types over `Any`. If you need `# type: ignore`, keep it narrow and use a specific error code.
 
-### 5. Docs (formatting, spelling, links)
+### Docs
 
-Documentation is validated in CI by a dedicated `docs` job that runs `mdformat`, `codespell`, and `lychee`.
-
-Locally, you can run:
+CI validates documentation formatting, spelling, and links:
 
 ```bash
 uv run mdformat README.md docs
 uv run codespell README.md docs
 ```
 
-- `mdformat` enforces consistent Markdown formatting.
-- `codespell` catches common spelling mistakes.
-
-CI also runs **lychee** to validate links in `README.md` and `docs/**/*.md`. You typically do not need to run lychee locally unless you are working heavily on docs or debugging link issues.
-
 ______________________________________________________________________
 
 ## Adding Features or Fixes
 
-When adding a new feature or fixing a bug:
+When you add something new or fix a bug, include tests—unit tests for helper logic, integration tests for end-to-end flows. Update the relevant docs too, whether that's user-facing guides in `docs/user-guide/` or developer docs in `docs/development/`.
 
-- **Add or update tests**:
-  - Unit tests for helpers and logic in `src/helpers/`.
-  - Integration tests for end‑to‑end flows (for example, new CLI entrypoints or multi‑step GUI flows using controllers).
-  - See "Adding New Tests" in the [Testing Guide](testing.md) for guidance.
-- **Update documentation**:
-  - User‑facing changes: update relevant pages under `docs/user-guide/`.
-  - Developer changes: update `docs/development/` and `docs/api/` as needed.
-
-Try to keep code, tests, and docs changes in the same PR so they stay in sync.
+Keep code, tests, and docs in the same PR so they stay in sync.
 
 ______________________________________________________________________
 
 ## Style and Architecture
 
-A few high‑level conventions:
+Follow the existing patterns in `src/helpers/` and `src/ui/`. Use clear, explicit names. Log with the central logging system instead of `print`. For GUI code, keep layout and controller logic separated.
 
-- Follow the existing patterns in `src/helpers/` and `src/ui/`.
-- Prefer clear, explicit names over clever abbreviations.
-- Log meaningful events via the central logging configuration instead of using `print`.
-- For the GUI, keep **layout** code and **controller/logic** code separated, following the tab controller pattern described in the main `README.md` and UI docs.
-
-For more details, see the **[Code Style](code-style.md)** page.
+See the [Code Style Guide](code-style.md) for more details.
 
 ______________________________________________________________________
 
-## Questions and Support
+## Questions?
 
-If you are unsure about how to implement something or how strict a rule is meant to be:
+If you're not sure how to approach something, check the [Developer FAQ](faq.md), open a draft PR early and ask in the description, or start a discussion in GitHub Issues.
 
-- Check the **[Developer FAQ](faq.md)**.
-- Open a draft PR early and ask questions in the description.
-- Use GitHub Issues or Discussions on the main repository to discuss larger changes before investing a lot of time.
-
-Thoughtful, well‑tested, and well‑documented contributions are very welcome.
+We welcome thoughtful, well-tested contributions!

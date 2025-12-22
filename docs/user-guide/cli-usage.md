@@ -1,53 +1,24 @@
 # CLI Usage
 
-FineFoundry includes command‑line tools in addition to the GUI. The CLI is useful when you want to:
+While most users interact with FineFoundry through the desktop app, everything also works from the command line. The CLI is especially useful when you want to automate dataset builds, schedule scrapes, or integrate FineFoundry into larger workflows and CI pipelines.
 
-- Automate dataset builds in scripts or CI.
-- Run scrapers on a schedule.
-- Reproduce a known‑good configuration without clicking through the UI.
+This guide covers three main CLI tools: dataset building, Reddit scraping, and synthetic data generation.
 
-This page focuses on three common CLI entry points:
+## Before You Start
 
-- `src/save_dataset.py` – build and (optionally) push a dataset to the Hugging Face Hub.
-- `src/scrapers/reddit_scraper.py` – crawl Reddit and build conversational pairs.
-- `src/synthetic_cli.py` – generate synthetic training data from documents and URLs.
+Make sure you have Python 3.10+ installed and the repository cloned and set up (see the [Installation Guide](installation.md)). If you're pushing to Hugging Face, you'll need a token—see [Authentication](authentication.md) for setup options.
 
-For general installation and a first end‑to‑end run, start with the **[Quick Start Guide](quick-start.md)** and GUI tab guides.
+All commands below assume you're running from the project root.
 
 ______________________________________________________________________
 
-## Prerequisites
+## Building and Pushing Datasets
 
-Before using the CLI tools, make sure you have:
+The `src/save_dataset.py` script turns a JSON file of input/output pairs into a proper Hugging Face dataset, with optional push to the Hub.
 
-- Python **3.10+**
-- This repository cloned and installed (see **[Installation](installation.md)**)
-- Optional: a Hugging Face token for pushing datasets (see **[Authentication](authentication.md)**)
+### Preparing Your Data
 
-All examples assume you are running commands from the project root.
-
-______________________________________________________________________
-
-## Dataset build & push: `src/save_dataset.py`
-
-`src/save_dataset.py` is a scriptable path for turning a JSON file of pairs into a Hugging Face dataset, with optional push and dataset card generation.
-
-There are **no CLI flags** – you configure a small block of constants in the file header, then run the script.
-
-### 1. Prepare your JSON file
-
-You should have a JSON file with a list of input/output pairs, for example:
-
-```json
-[
-  {"input": "...", "output": "..."}
-]
-```
-
-FineFoundry's GUI is database-first: Scrape results are saved to the SQLite database (`finefoundry.db`).
-If you want a JSON file for `src/save_dataset.py`, export a scrape session to JSON.
-
-Example (run from the project root):
+FineFoundry stores scrape results in its SQLite database. To use them with this script, export a session to JSON first:
 
 ```bash
 uv run python -c "import sys; sys.path.append('src'); from db.scraped_data import list_scrape_sessions; print(list_scrape_sessions(limit=10))"
@@ -55,7 +26,15 @@ uv run python -c "import sys; sys.path.append('src'); from db.scraped_data impor
 uv run python -c "import sys; sys.path.append('src'); from db.scraped_data import export_session_to_json; export_session_to_json(SESSION_ID, 'scraped_training_data.json')"
 ```
 
-### 2. Configure `src/save_dataset.py`
+Your JSON should look like this:
+
+```json
+[
+  {"input": "...", "output": "..."}
+]
+```
+
+### Configuring the Script
 
 Open `src/save_dataset.py` and edit the configuration block near the top:
 
@@ -70,41 +49,24 @@ MIN_LEN = 1
 PUSH_TO_HUB = True
 REPO_ID = "username/my-dataset"
 PRIVATE = True
-HF_TOKEN = None  # if None, uses env HF_TOKEN or cached login
+HF_TOKEN = None  # uses env HF_TOKEN or cached login if None
 ```
 
-Key points:
-
-- `DATA_FILE` points to your JSON file.
-- `SAVE_DIR` is where the `datasets.DatasetDict` will be saved locally.
-- `VAL_SIZE` / `TEST_SIZE` control the split fractions.
-- `PUSH_TO_HUB`, `REPO_ID`, `PRIVATE`, and `HF_TOKEN` control whether/how you push to the Hub.
-- If `HF_TOKEN` is `None`, FineFoundry will fall back to environment variables or cached CLI login (see **[Authentication](authentication.md)**).
-
-### 3. Run the script
-
-From the project root:
+Then run it:
 
 ```bash
 python src/save_dataset.py
 ```
 
-This will:
-
-- Read `DATA_FILE`.
-- Build a `datasets.DatasetDict` with the configured splits.
-- Save the dataset to `SAVE_DIR`.
-- Optionally push to `REPO_ID` on the Hugging Face Hub and upload a dataset card as `README.md`.
-
-If you intend to use this in CI, wrap the command in your workflow and provide the token via environment variables or a secure secret store.
+The script reads your JSON, builds train/validation/test splits, saves locally, and optionally pushes to the Hub with a dataset card. For CI, provide your token via environment variables.
 
 ______________________________________________________________________
 
-## Reddit scraper CLI: `src/scrapers/reddit_scraper.py`
+## Reddit Scraping
 
-The Reddit scraper provides a CLI for crawling subreddits or individual posts and building conversation pairs.
+The Reddit scraper CLI crawls subreddits or individual posts and builds conversation pairs.
 
-### Basic crawl example
+### Basic Example
 
 ```bash
 python src/scrapers/reddit_scraper.py \
@@ -114,43 +76,17 @@ python src/scrapers/reddit_scraper.py \
   --pairs-path reddit_pairs.json --cleanup
 ```
 
-This will:
+This crawls up to 50 posts from r/AskReddit, builds contextual pairs (using the last 4 posts as context, truncated to 2000 chars), saves the result to `reddit_pairs.json`, and cleans up intermediate files.
 
-- Crawl up to 50 posts from `r/AskReddit`.
-- Build contextual pairs (using the last `k` posts as context, up to `max-input-chars`).
-- Save pairs to `reddit_pairs.json`.
-- Clean up the intermediate dump directory when finished.
+### Key Options
 
-### Important options (general crawl)
+For crawling: `--url` sets the target, `--max-posts` limits how many posts to process, `--request-delay` controls pacing (respect rate limits!), and `--stop-after-seconds` sets a time limit.
 
-- `--url` – subreddit or post URL to crawl.
-- `--max-posts` – maximum posts to process.
-- `--request-delay` – delay between requests (seconds).
-- `--request-jitter-frac` – random jitter fraction applied to the delay.
-- `--max-requests` – hard cap on total HTTP requests (`0` = off).
-- `--stop-after-seconds` – wall‑clock time limit (`0` = off).
-- `--output-dir` – where to store the raw dump (`reddit_dump_<slug>/` by default).
-- `--use-temp-dump` – use a temporary dump directory.
-- `--no-expand-more` – disable expansion of “more comments”.
+For dataset building: `--mode` chooses between `parent_child` (simple reply pairs) or `contextual` (conversation context), `--k` sets context depth, `--require-question` filters for Q&A-style content, and `--min-len` sets minimum character length.
 
-### Important options (dataset build)
+### Single Post
 
-- `--build-dataset` – enable dataset building (on by default).
-- `--mode {parent_child,contextual}` – pairing strategy.
-- `--k` – context depth for contextual mode.
-- `--max-input-chars` – truncate context to this many characters (`0` = off).
-- `--require-question` – keep only pairs where context looks like a question.
-- `--no-merge-same-author` – disable merging consecutive messages from the same author.
-- `--min-len` – minimum characters per side.
-- `--include-automod` – include AutoModerator posts.
-- `--pairs-path` – stable path to copy the final pairs JSON.
-- `--cleanup` – delete the dump folder after copying pairs.
-
-Proxy behavior is controlled in `src/scrapers/reddit_scraper.py` via `PROXY_URL` and `USE_ENV_PROXIES`. For an overview of proxy configuration, see **[Proxy Setup](../deployment/proxy-setup.md)**.
-
-### Single-post example
-
-To build pairs from a single Reddit post:
+To focus on one thread:
 
 ```bash
 python src/scrapers/reddit_scraper.py \
@@ -158,47 +94,31 @@ python src/scrapers/reddit_scraper.py \
   --mode parent_child --pairs-path reddit_pairs.json
 ```
 
-This ignores `--max-posts` and focuses on the given post/thread.
+Proxy settings are configured in the script file itself. See [Proxy Setup](../deployment/proxy-setup.md) for details.
 
 ______________________________________________________________________
 
-## When to use CLI vs GUI
+## CLI vs GUI
 
-Use the **GUI** when you want to:
+Use the GUI when you want to explore interactively, iterate on settings with visual feedback, or manage the full workflow from scraping through training and inference in one place.
 
-- Explore boards, parameters, and datasets interactively.
-- Iterate on scraping and dataset settings with visual feedback.
-- Manage training runs and inference from a single desktop app.
-
-Use the **CLI** when you want to:
-
-- Schedule scrapes or dataset builds as cron jobs.
-- Integrate scraping and dataset building into larger Python workflows.
-- Reproduce the same configuration across machines or CI.
-
-For a complete overview of all tabs and features, see the **[GUI Overview](gui-overview.md)** and the tab‑specific guides.
+Use the CLI when you're automating—cron jobs, CI pipelines, batch processing, or reproducing exact configurations across machines. The CLI gives you the same functionality with scriptability.
 
 ______________________________________________________________________
 
-## Synthetic data generation: `src/synthetic_cli.py`
+## Synthetic Data Generation
 
-The synthetic CLI generates training data from documents (PDF, DOCX, TXT, HTML) and URLs using Unsloth's SyntheticDataKit.
+The synthetic CLI generates training data from your documents and web pages. Point it at PDFs, Word docs, text files, or URLs, and it produces Q&A pairs, chain-of-thought examples, or summaries.
 
-### Basic example
+### Basic Usage
 
 ```bash
 python src/synthetic_cli.py --source document.pdf --output qa_pairs.json
 ```
 
-This will:
+This loads a model, chunks your document, generates Q&A pairs from each chunk, and saves everything to JSON. Results also go to the FineFoundry database by default.
 
-- Load the specified model (default: `unsloth/Llama-3.2-3B-Instruct`).
-- Ingest and chunk the document.
-- Generate Q&A pairs from each chunk.
-- Save the combined dataset to `qa_pairs.json`.
-- Save results to the FineFoundry database by default (use `--no-db` to disable).
-
-### Multiple sources
+You can process multiple sources at once:
 
 ```bash
 python src/synthetic_cli.py \
@@ -208,55 +128,31 @@ python src/synthetic_cli.py \
   --output combined_data.json
 ```
 
-### Generation types
+### Generation Types
 
-- `--type qa` – Generate question-answer pairs (default).
-- `--type cot` – Generate chain-of-thought reasoning examples.
-- `--type summary` – Generate summaries.
+Use `--type` to choose what kind of data to generate:
+
+- `qa` (default) — question-answer pairs
+- `cot` — chain-of-thought reasoning examples
+- `summary` — summaries
 
 ```bash
 python src/synthetic_cli.py --source paper.pdf --type cot --output cot_data.json
 ```
 
-### Quality curation
+### Quality Curation
 
-Enable Llama-as-judge curation to filter low-quality pairs:
+Enable `--curate` to filter out low-quality pairs using Llama-as-judge:
 
 ```bash
-python src/synthetic_cli.py \
-  --source document.pdf \
-  --curate --threshold 8.0 \
-  --output curated_pairs.json
+python src/synthetic_cli.py --source document.pdf --curate --threshold 8.0 --output curated_pairs.json
 ```
 
-### Important options
+Higher thresholds (up to 10) are stricter.
 
-- `--source`, `-s` – Source file or URL (can be specified multiple times).
-- `--output`, `-o` – Output JSON file path (default: `synthetic_data.json`).
-- `--type`, `-t` – Generation type: `qa`, `cot`, or `summary` (default: `qa`).
-- `--num-pairs`, `-n` – Pairs to generate per chunk (default: 25).
-- `--max-chunks` – Maximum chunks to process per source (default: 10).
-- `--model`, `-m` – Model to use (default: `unsloth/Llama-3.2-3B-Instruct`).
-- `--curate` – Enable quality curation.
-- `--threshold` – Curation quality threshold 1-10 (default: 7.5).
-- `--format`, `-f` – Output format: `chatml` or `standard` (default: `chatml`).
-- `--output-type` – Output type: `json`, `hf` (HuggingFace datasets), or `parquet` (default: `json`).
-- `--multimodal` – Enable multimodal ingestion where supported by `synthetic-data-kit`.
-  - Note: the CLI `--source` inputs must still be a supported document type (PDF/DOCX/PPTX/HTML/TXT) or a URL.
-- `--dedupe` – Remove duplicate pairs based on input text.
-- `--resume` – Resume from previous run (load existing output and append). Saves progress after each chunk.
-- `--stats` – Show dataset statistics (token counts, length distribution) after generation.
-- `--push-to-hub REPO_ID` – Push dataset to HuggingFace Hub (e.g., `username/dataset-name`).
-- `--private` – Make the HuggingFace Hub repo private (use with `--push-to-hub`).
-- `--no-db` – Don't save results to the FineFoundry database.
-- `--quiet`, `-q` – Quiet mode (JSON summary output only).
-- `--verbose`, `-v` – Verbose mode (detailed debug output).
-- `--config` – Load options from a YAML config file.
-- `--keep-server` – Keep vLLM server running after generation (faster for batch runs).
+### Config Files
 
-### Config file
-
-Use a YAML config file to avoid repeating options:
+For repeatable setups, use a YAML config:
 
 ```yaml
 # synthetic_config.yaml
@@ -267,101 +163,48 @@ output: synthetic_data.json
 type: qa
 num_pairs: 25
 max_chunks: 10
-model: unsloth/Llama-3.2-3B-Instruct
 curate: false
-threshold: 7.5
-format: chatml
 ```
 
 ```bash
 uv run python src/synthetic_cli.py --config synthetic_config.yaml
 ```
 
-CLI arguments override config file values.
+CLI arguments override config values.
 
-### Batch processing with model caching
+### Batch Processing
 
-For processing multiple batches, use `--keep-server` to avoid reloading the model:
+When processing multiple files, use `--keep-server` to avoid reloading the model each time:
 
 ```bash
-# First run - loads model and keeps server running
 uv run python src/synthetic_cli.py --source batch1.pdf --output batch1.json --keep-server
-
-# Subsequent runs reuse the running server (much faster)
 uv run python src/synthetic_cli.py --source batch2.pdf --output batch2.json --keep-server
-
-# Final run - let it clean up
-uv run python src/synthetic_cli.py --source batch3.pdf --output batch3.json
+uv run python src/synthetic_cli.py --source batch3.pdf --output batch3.json  # last run cleans up
 ```
 
-### Quiet mode for scripting
+### Resuming and Deduplication
 
-Use `--quiet` for machine-readable output:
+If generation gets interrupted, use `--resume` to continue from where you left off. Progress saves after each chunk. Use `--dedupe` to remove duplicate entries based on input text.
 
-```bash
-uv run python src/synthetic_cli.py --source doc.pdf --quiet
-# Output: {"success": true, "output": "synthetic_data.json", "pairs": 125, ...}
-```
+### Output Formats
 
-### Verbose mode for debugging
-
-Use `--verbose` to see detailed processing information:
+Besides JSON, you can export directly to Hugging Face datasets format or Parquet:
 
 ```bash
-uv run python src/synthetic_cli.py --source doc.pdf --verbose
-```
-
-### Export to HuggingFace datasets
-
-Export directly to HuggingFace datasets format for easy upload:
-
-```bash
-# Save as HuggingFace dataset directory
 uv run python src/synthetic_cli.py --source doc.pdf --output-type hf --output my_dataset
-
-# Save as Parquet file
 uv run python src/synthetic_cli.py --source doc.pdf --output-type parquet --output data.parquet
 ```
 
-### Deduplication
+### Pushing to Hub
 
-Remove duplicate entries based on input text:
-
-```bash
-uv run python src/synthetic_cli.py --source doc.pdf --dedupe
-```
-
-### Resume interrupted generation
-
-Resume from a previous run, appending new data to existing output. Progress is saved after each chunk, so you can resume mid-source:
+Push directly to Hugging Face:
 
 ```bash
-# First run (interrupted)
-uv run python src/synthetic_cli.py --source large_doc.pdf --output data.json
-
-# Resume and continue (skips completed chunks)
-uv run python src/synthetic_cli.py --source large_doc.pdf --output data.json --resume
-```
-
-### Dataset statistics
-
-Show statistics after generation:
-
-```bash
-uv run python src/synthetic_cli.py --source doc.pdf --stats
-# Output includes: entry count, estimated tokens, avg/min/max lengths
-```
-
-### Push to HuggingFace Hub
-
-Push your dataset directly to HuggingFace Hub:
-
-```bash
-# Public dataset
-uv run python src/synthetic_cli.py --source doc.pdf --push-to-hub username/my-dataset
-
-# Private dataset
 uv run python src/synthetic_cli.py --source doc.pdf --push-to-hub username/my-dataset --private
 ```
 
-Requires `huggingface-cli login` or `HF_TOKEN` environment variable.
+Requires authentication via `huggingface-cli login` or `HF_TOKEN`.
+
+### Scripting and Debugging
+
+Use `--quiet` for machine-readable JSON output, or `--verbose` for detailed logs. Add `--stats` to see token counts and length distributions after generation.

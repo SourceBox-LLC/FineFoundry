@@ -1,116 +1,43 @@
 # Runpod Setup
 
-FineFoundry can use **Runpod** to run training jobs on remote GPUs instead of your local machine. This page describes how that integration works and how to get set up.
+Runpod lets you train on remote GPUs instead of your local machine. FineFoundry integrates directly—you configure everything in the app and it handles launching pods, managing volumes, and streaming logs.
 
-For a user‑level walkthrough of the Training tab itself, see the **[Training Tab](../user-guide/training-tab.md)** guide.
+For the Training tab UI details, see the [Training Tab Guide](../user-guide/training-tab.md).
 
-______________________________________________________________________
+## How It Works
 
-## How FineFoundry uses Runpod
+When you select Runpod as your training target, FineFoundry connects using your API key, ensures a network volume exists (mounted at `/data`), creates or reuses a pod template, and launches training. Checkpoints and adapters get written to the network volume so they persist after the pod terminates.
 
-When you select **Runpod – Pod** as the training target in the Training tab, FineFoundry:
+The default trainer image (`sbussiso/unsloth-trainer:latest`) bundles the same LoRA fine-tuning stack used for local Docker training.
 
-- Connects to Runpod using your **Runpod API key** (configured in the **[Settings Tab](../user-guide/settings-tab.md)**).
-- Ensures a **Network Volume** exists and is mounted at `/data` inside pods.
-- Ensures a **Pod Template** exists for your chosen image and hardware.
-- Launches pods from that template to run your training job.
-- Writes logs, checkpoints, and final adapters under `/data/outputs/...` on the network volume.
-- By default, uses an **Unsloth-based trainer image** (`docker.io/sbussiso/unsloth-trainer:latest`) that runs LoRA fine-tuning on top of PyTorch, Hugging Face Transformers, bitsandbytes, and PEFT.
+## What You Need
 
-This lets you keep your training artifacts persistent across pods and accessible both from Runpod and (optionally) your local machine.
+- A Runpod account with billing set up
+- A Runpod API key (see [Authentication](../user-guide/authentication.md))
+- GPU availability in your desired region
 
-______________________________________________________________________
+## Setup Steps
 
-## Prerequisites
+### 1. Add Your API Key
 
-Before using Runpod with FineFoundry, you should have:
+In the Settings tab, paste your Runpod API key and click Test to verify it works. Then Save.
 
-- A **Runpod account** with billing/credits set up.
-- A **Runpod API key** (see **[Authentication](../user-guide/authentication.md)**).
-- At least one supported **GPU type** available in your desired region.
+### 2. Create a Network Volume
 
-______________________________________________________________________
+In the Runpod console, create a network volume sized for your datasets and checkpoints. Back in FineFoundry's Training tab, use the Ensure Infrastructure controls to verify the volume is available and mounted at `/data`.
 
-## Step 1: Configure your Runpod API key
+### 3. Set Up a Pod Template
 
-1. Open the **Settings** tab in FineFoundry.
-1. In the **Runpod Settings** section, paste your API key.
-1. Click **Test** to confirm it works, then **Save**.
+Create a pod template in Runpod that uses the trainer image, mounts your volume at `/data`, and specifies your desired GPU/CPU/RAM. In the Training tab, point your configuration at this template and verify it with Ensure Infrastructure.
 
-If the test fails, refer to **Runpod API key issues** in the **[Troubleshooting Guide](../user-guide/troubleshooting.md#authentication-issues)**.
+### 4. Launch Training
 
-______________________________________________________________________
+Select Runpod as your target, pick your dataset, configure hyperparameters, set an output directory under `/data/outputs/...`, and start. FineFoundry launches the pod, streams logs, and writes results to the network volume.
 
-## Step 2: Create a Network Volume (mounted at `/data`)
+## Output Location
 
-In the Runpod console:
+Training outputs go to `/data/outputs/...` on the network volume. They persist after the pod terminates, so you can download them from the Runpod console or any system that can access the volume.
 
-1. Create a **Network Volume** (size depends on your dataset and checkpoint needs).
-1. Note its identifier.
+## Troubleshooting
 
-In the Training tab:
-
-1. Choose **Runpod – Pod** as the target.
-1. In the Runpod infrastructure section, make sure the volume is referenced and mounted at `/data` (this is where FineFoundry expects to read/write training artifacts).
-
-FineFoundry’s **Ensure Infrastructure** controls help you verify that the volume is available and correctly mounted.
-
-______________________________________________________________________
-
-## Step 3: Create or reuse a Pod Template
-
-Still in the Runpod console:
-
-1. Create a **Pod Template** that:
-   - Uses a compatible training image. The recommended default is `docker.io/sbussiso/unsloth-trainer:latest`, which bundles the Unsloth training stack (PyTorch, Transformers, bitsandbytes, PEFT).
-   - Mounts the Network Volume at `/data`.
-   - Exposes the resources (GPU, CPU, RAM) you want.
-1. Note the template identifier.
-
-Back in FineFoundry’s Training tab:
-
-1. Point the Runpod configuration at your template.
-1. Use **Ensure Infrastructure** to confirm that the template can be queried and reused.
-
-______________________________________________________________________
-
-## Step 4: Launch a training job
-
-In the Training tab:
-
-1. Set **Training target** to **Runpod – Pod**.
-1. Choose your dataset source (Database Session or Hugging Face repo/split).
-1. Configure hyperparameters (base model, LoRA, batch size, max steps, etc.).
-1. Set an **Output dir** under `/data/outputs/...`.
-1. Optionally enable **Push to Hub** (requires working Hugging Face auth).
-1. Start the training job.
-
-FineFoundry will launch a pod from your template, monitor status, and stream logs (where supported). Checkpoints and the final adapter will be written under the configured output directory on the network volume.
-
-______________________________________________________________________
-
-## Where logs and outputs are stored
-
-By default, when training on Runpod:
-
-- Logs and checkpoints are written under `/data/outputs/...` inside the pod.
-- These paths map to your Network Volume, so they persist after the pod terminates.
-- You can browse or download results from the Runpod console or any system that can mount/sync the volume.
-
-For local runs (Docker on your own machine), the Training tab uses a similar pattern but mounts a host directory instead of a Runpod volume.
-
-______________________________________________________________________
-
-## Troubleshooting Runpod setup
-
-If things do not work as expected, check:
-
-- **Runpod API key issues** and **Network volume not found** in the **[Troubleshooting Guide](../user-guide/troubleshooting.md#training-issues)**.
-- The **[Training Tab](../user-guide/training-tab.md)** documentation for details on the Runpod controls and status indicators.
-
-Common issues include:
-
-- Incorrect or missing API key.
-- Network Volume not mounted at `/data`.
-- Pod Template referencing the wrong volume or image.
-- Insufficient credits or GPU availability in the selected region.
+Common issues: wrong API key, volume not mounted at `/data`, template pointing to wrong volume or image, insufficient credits, no GPU availability. See [Training Issues](../user-guide/troubleshooting.md#training-issues) in the Troubleshooting Guide.

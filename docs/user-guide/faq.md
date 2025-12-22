@@ -1,263 +1,88 @@
-# FineFoundry FAQ
+# Frequently Asked Questions
 
-This FAQ helps you answer common questions about **installing, using, and troubleshooting** FineFoundry by pointing you straight to the right guides.
-
-If you're not sure which document to open, start here and click the link that best matches what you're trying to do.
+Not sure where to start? This FAQ points you to the right documentation for common questions.
 
 ______________________________________________________________________
 
 ## Getting Started
 
-### I just discovered FineFoundry. Where should I start?
+**Where should I start?**  
+The [Quick Start Guide](quick-start.md) walks you through installation and your first end-to-end workflow. For a tour of the interface, see the [GUI Overview](gui-overview.md).
 
-Start with the **Quick Start Guide**:
+**What are the system requirements?**  
+Python 3.10+ on Linux, macOS, or Windows. Full details in the [Installation Guide](installation.md).
 
-- [`user-guide/quick-start.md`](quick-start.md)
-
-It walks you through installation, launching the app, and running your first simple flow end-to-end.
-
-For a bird’s-eye view of the interface, also see:
-
-- [`user-guide/gui-overview.md`](gui-overview.md)
-
-### Where are installation instructions and system requirements?
-
-See:
-
-- **Installation** – [`user-guide/installation.md`](installation.md) (OS, Python, dependencies)
-- **Quick Start** – [`user-guide/quick-start.md`](quick-start.md) (practical “do this, then this” setup)
-
-If you’re developing locally, also glance at:
-
-- **Project Structure** – [`development/project-structure.md`](../development/project-structure.md)
-
-### What Python version does FineFoundry target?
-
-FineFoundry is developed and tested against **Python 3.10+**.
-
-- For installation details and any version-specific notes, see [`user-guide/installation.md`](installation.md).
-- CI runs tests and checks on a matrix of Python versions; see **CI Coverage and Quality Gates** in [`development/testing.md`](../development/testing.md).
+**How do I install FineFoundry?**  
+Clone the repo and run `uv sync` (or use pip). The [Installation Guide](installation.md) covers both methods.
 
 ______________________________________________________________________
 
-## Using the Application
+## Using the App
 
-### Where can I find documentation for each tab in the GUI?
+**Where's the documentation for each tab?**  
+Start with the [GUI Overview](gui-overview.md), then see individual guides: [Data Sources](scrape-tab.md), [Publish](build-publish-tab.md), [Training](training-tab.md), [Inference](inference-tab.md), [Merge Datasets](merge-tab.md), [Analysis](analysis-tab.md), and [Settings](settings-tab.md).
 
-Start with the high-level overview:
+**Is there a CLI?**  
+Yes—see [CLI Usage](cli-usage.md) for automating dataset builds, scraping, and synthetic data generation from the command line.
 
-- [`user-guide/gui-overview.md`](gui-overview.md)
-
-Then drill into the tab-specific guides:
-
-- **Data Sources Tab** – [`user-guide/scrape-tab.md`](scrape-tab.md)
-- **Publish Tab** – [`user-guide/build-publish-tab.md`](build-publish-tab.md)
-- **Training Tab** – [`user-guide/training-tab.md`](training-tab.md)
-- **Inference Tab** – [`user-guide/inference-tab.md`](inference-tab.md)
-- **Merge Datasets Tab** – [`user-guide/merge-tab.md`](merge-tab.md)
-- **Analysis Tab** – [`user-guide/analysis-tab.md`](analysis-tab.md)
-- **Settings Tab** – [`user-guide/settings-tab.md`](settings-tab.md)
-
-Each tab guide explains the main concepts, key controls, and typical workflows.
-
-### Is there a command-line interface (CLI)?
-
-Yes. CLI usage is documented separately from the GUI:
-
-- [`user-guide/cli-usage.md`](cli-usage.md)
-
-Use that guide when you want to automate dataset building, integrations, or CI workflows without opening the GUI.
-
-### How do I handle authentication for Hugging Face and Runpod?
-
-See:
-
-- **Authentication** – [`user-guide/authentication.md`](authentication.md)
-- **Runpod Setup** – [`deployment/runpod.md`](../deployment/runpod.md)
-
-These cover token management, environment variables, and best practices for storing credentials.
+**How do I set up authentication?**  
+The [Authentication Guide](authentication.md) covers Hugging Face tokens and Runpod API keys. For cloud training specifics, see [Runpod Setup](../deployment/runpod.md).
 
 ______________________________________________________________________
 
-## Data, Scraping, and Proxies
+## Data and Scraping
 
-### Where is scraping and synthetic data generation documented?
+**Where's the scraping documentation?**  
+For the GUI, see [Data Sources Tab](scrape-tab.md). For programmatic use, see the [Scrapers API](../api/scrapers.md) and individual scraper docs for [4chan](../api/fourchan-scraper.md), [Reddit](../api/reddit-scraper.md), and [Stack Exchange](../api/stackexchange-scraper.md).
 
-There are two complementary places:
-
-- **GUI flows** – [`user-guide/scrape-tab.md`](scrape-tab.md)
-- **Programmatic API** – [`api/scrapers.md`](../api/scrapers.md) and per-source pages:
-  - [`api/fourchan-scraper.md`](../api/fourchan-scraper.md)
-  - [`api/reddit-scraper.md`](../api/reddit-scraper.md)
-  - [`api/stackexchange-scraper.md`](../api/stackexchange-scraper.md)
-  - Synthetic data generation is documented in the main scrapers API page
-
-### How do I configure proxies or Tor for scraping?
-
-See the deployment docs:
-
-- **Proxy Configuration** – [`deployment/proxy-setup.md`](../deployment/proxy-setup.md)
-
-This explains SOCKS proxies, Tor integration, and environment variables used by the helpers.
+**How do I use a proxy or Tor?**  
+See the [Proxy Setup Guide](../deployment/proxy-setup.md) for SOCKS proxy configuration and Tor integration.
 
 ______________________________________________________________________
 
-## Training, Inference, and Runpod
+## Training and Inference
 
-### Where can I learn about training models with FineFoundry?
+**How do I train a model?**  
+The [Training Tab](training-tab.md) covers the GUI workflow. For programmatic training, see the [Training API](../api/training.md).
 
-For the GUI-based training flow:
+**How do I use Runpod?**  
+The [Runpod Setup Guide](../deployment/runpod.md) explains cloud training infrastructure.
 
-- **Training Tab** – [`user-guide/training-tab.md`](training-tab.md)
-
-For programmatic usage and advanced configuration:
-
-- **Training API** – [`api/training.md`](../api/training.md)
-
-### How do I set up or use Runpod for training?
-
-See:
-
-- **Runpod Setup** – [`deployment/runpod.md`](../deployment/runpod.md)
-
-It explains how the Runpod integration works, how infrastructure is provisioned, and where to configure related settings.
-
-### Where is inference documented?
-
-Use:
-
-- **Inference Tab** – [`user-guide/inference-tab.md`](inference-tab.md)
-
-for the GUI side, and refer to the Training API docs if you need to wire inference into scripts.
+**Where's the inference documentation?**  
+See the [Inference Tab](inference-tab.md) for testing trained adapters.
 
 ______________________________________________________________________
 
-## Testing, CI, and Code Quality
+## Testing and CI
 
-### How do I run tests locally?
+**How do I run tests?**  
+Use `uv run pytest` for the full suite. Unit tests are in `tests/unit/`, integration tests in `tests/integration/`. The [Testing Guide](../development/testing.md) has full details.
 
-See the Testing guide:
+**How does coverage work?**  
+Coverage is measured with `coverage.py`. CI enforces a minimum threshold. See the Testing Guide for commands and thresholds.
 
-- [`development/testing.md`](../development/testing.md)
-
-In short:
-
-- **Unit tests** live under `tests/unit/`.
-- **Integration tests** live under `tests/integration/`.
-- Tests are collected by `pytest` (configured in `pyproject.toml`).
-
-The Testing guide shows commands like:
-
-- `uv run pytest` – full suite
-- `uv run pytest tests/unit` – only unit tests
-- `uv run pytest -m "integration"` – only integration tests
-- `uv run pytest -m "not integration"` – fast inner loop without integration tests
-
-### How is coverage measured, and what is the CI threshold?
-
-Coverage is handled with `coverage.py`:
-
-- The Testing guide documents the recommended local command:
-  - `uv run coverage run --source=src -m pytest --ignore=proxy_test.py`
-  - `uv run coverage report -m`
-- In CI, the `test` job runs under coverage and enforces an initial minimum threshold via:
-  - `coverage report -m --fail-under=30`
-
-Details are under **CI Coverage and Quality Gates** in:
-
-- [`development/testing.md`](../development/testing.md)
-
-### Where is mypy/type-checking documented?
-
-Type checking is configured via `mypy` and described in the same Testing guide:
-
-- The **Typecheck (`typecheck` job)** section in [`development/testing.md`](../development/testing.md)
-  explains which paths are checked (e.g., `src/helpers`, `src/save_dataset.py`) and how it is wired into CI.
-
-You can run it locally with:
-
-- `uv run mypy`
-
-### What security checks run in CI?
-
-The **Security audit (`security` job)** section in
-[`development/testing.md`](../development/testing.md) covers this.
-
-In short:
-
-- CI installs and runs `pip-audit` against the synced environment.
-- Several specific CVEs/GHSAs in transitive dependencies are currently ignored in CI and tracked separately:
-  - `CVE-2025-6176` (affecting `brotli` 1.1.0; fixed in 1.2.0)
-  - `CVE-2025-62727` (affecting `starlette` 0.48.0; fixed in 0.49.1)
-  - `CVE-2025-66418` (affecting `urllib3` 2.5.0; fixed in 2.6.0)
-  - `CVE-2025-66471` (affecting `urllib3` 2.5.0; fixed in 2.6.0)
-  - `GHSA-f83h-ghpp-7wcc` (affecting `pdfminer-six` ≤20251107; no fix yet)
-- Any **other** vulnerability reported by `pip-audit` will still fail the `security` job.
-
-See **CI Coverage and Quality Gates** in
-[`development/testing.md`](../development/testing.md) for the full matrix of CI jobs: `lint`, `test`, `typecheck`, `security`, and `build`.
+**What about type checking?**  
+Run `uv run mypy` locally. The Testing Guide documents which paths are checked.
 
 ______________________________________________________________________
 
-## Development & Internals
+## Development
 
-### How is the codebase organized?
+**How is the code organized?**  
+The [Project Structure](../development/project-structure.md) guide explains the layout.
 
-See:
+**Where do logs go?**  
+See the [Logging Guide](../development/logging.md) for log locations and how to use them for debugging.
 
-- **Project Structure** – [`development/project-structure.md`](../development/project-structure.md)
-
-It explains the layout of `src/`, helpers, UI tabs, tests, and deployment-related modules.
-
-### Where can I learn about logging and where logs go?
-
-Use:
-
-- **Logging System** – [`development/logging.md`](../development/logging.md)
-
-This describes how logs are structured, where they are written, and how to use them for troubleshooting.
-
-### Is there a coding style or contribution guide?
-
-Yes:
-
-- **Code Style** – [`development/code-style.md`](../development/code-style.md)
-- **Contributing Guide** – [`development/contributing.md`](../development/contributing.md)
-
-These cover formatting, naming conventions, and how to submit changes (including tests and documentation updates).
+**How do I contribute?**  
+The [Contributing Guide](../development/contributing.md) and [Code Style](../development/code-style.md) cover conventions and submission process.
 
 ______________________________________________________________________
 
-## Troubleshooting & Support
+## Troubleshooting
 
-### Where should I look first when something goes wrong?
+**Something's broken—where do I start?**  
+The [Troubleshooting Guide](troubleshooting.md) covers common issues. For more detail, enable debug logging as described in the [Logging Guide](../development/logging.md).
 
-Two main documents:
-
-- **Troubleshooting** – [`user-guide/troubleshooting.md`](troubleshooting.md)
-- **Logging System** – [`development/logging.md`](../development/logging.md)
-
-The troubleshooting guide covers common runtime issues, while the logging guide shows how to gather more detail.
-
-### Where can I ask questions or report bugs?
-
-See the main docs index:
-
-- [`docs/README.md`](../README.md)
-
-for current links to GitHub Issues / Discussions and any other support channels. When filing an issue, include:
-
-- Your OS and Python version
-- The FineFoundry version
-- Steps to reproduce
-- Relevant logs and configuration snippets
-
-______________________________________________________________________
-
-## How to Use This FAQ
-
-- If you are **a new user**, start with **Getting Started** and **Using the Application**.
-- If you are **debugging a problem**, jump straight to **Troubleshooting & Support**.
-- If you are **contributing code**, see **Testing, CI, and Code Quality** plus **Development & Internals**.
-
-When you add new documentation, consider adding a short Q&A here that points readers to it.
+**How do I report a bug?**  
+Check [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues) first to see if it's known. If not, create an issue with your OS, Python version, steps to reproduce, and relevant logs.

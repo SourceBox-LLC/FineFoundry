@@ -1,73 +1,33 @@
 # Troubleshooting Guide
 
-Common issues and their solutions for FineFoundry.
-
-## Table of Contents
-
-- [Installation Issues](#installation-issues)
-- [Scraping Issues](#scraping-issues)
-- [Synthetic Data Generation Issues](#synthetic-data-generation-issues)
-- [Dataset Building Issues](#dataset-building-issues)
-- [Training Issues](#training-issues)
-- [Merge Issues](#merge-issues)
-- [Authentication Issues](#authentication-issues)
-- [Performance Issues](#performance-issues)
-- [Logging & Debugging](#logging--debugging)
+When something goes wrong, this guide helps you figure out what happened and how to fix it. The sections below cover the most common issues, organized by what you were trying to do.
 
 ______________________________________________________________________
 
 ## Installation Issues
 
-### "Python command not found"
+### Python Not Found
 
-**Problem**: `python` or `python3` not recognized
+If your terminal doesn't recognize `python` or `python3`, make sure Python 3.10+ is installed and added to your PATH. On Windows, try `py` instead of `python`.
 
-**Solution**:
+### Missing uv
 
-- Ensure Python 3.10+ is installed
-- On Windows, use `py` instead of `python`
-- Add Python to your PATH environment variable
-
-### "uv command not found"
-
-**Problem**: `uv` is not installed
-
-**Solution**:
+If `uv` isn't installed, you can get it with `pip install uv`. Or skip uv entirely and use pip directly:
 
 ```bash
-# Install uv
-pip install uv
-
-# Or use pip directly
 pip install -e .
 python src/main.py
 ```
 
-### "Module not found" errors
+### Missing Dependencies
 
-**Problem**: Missing dependencies
+If you see "Module not found" errors, your dependencies are out of sync. Run `uv sync` (or `pip install -e . --upgrade` if you're using pip) to fix it.
 
-**Solution**:
+### SSL Certificate Errors
 
-```bash
-# With uv
-uv sync
-
-# With pip
-pip install -e . --upgrade
-```
-
-### SSL/Certificate Errors
-
-**Problem**: `SSL: CERTIFICATE_VERIFY_FAILED`
-
-**Solution**:
+Certificate errors usually mean your SSL packages are outdated. Update them:
 
 ```bash
-# Update certifi
-pip install --upgrade certifi
-
-# Or update all SSL-related packages
 pip install --upgrade certifi urllib3 requests
 ```
 
@@ -75,474 +35,201 @@ ______________________________________________________________________
 
 ## Scraping Issues
 
-### "No data found" after scraping
+### No Data Found
 
-**Possible causes**:
+If scraping finishes but you don't have any data, check a few things: Are boards actually selected (highlighted)? Is Max Pairs set to something greater than zero? Try 500 for testing. Check your internet connection and try different boards—some may be slow or empty at any given time.
 
-1. No boards selected
-1. Max Pairs set to 0
-1. Network connectivity issues
-1. Boards are currently slow/empty
+If you're using a proxy, try disabling it temporarily to see if that's the issue. Check the logs for specific error messages.
 
-**Solutions**:
+### Scraping Is Slow
 
-- Verify boards are actually selected (highlighted)
-- Set Max Pairs > 0 (try 500 for testing)
-- Check your internet connection
-- Try different boards
-- Disable proxy if enabled and test
-- Check logs for specific errors
+Some slowness is expected due to rate limiting, but if it's unusually slow: check your network speed, try reducing the delay (but keep it at least 0.3s to respect rate limits), and increase Max Threads if your connection can handle it.
 
-### Scraping is very slow
+If you're using Tor, that adds latency—try without the proxy to see the difference. Some sources are naturally slower than others.
 
-**Solutions**:
+### Too Few Pairs with Contextual Mode
 
-- Decrease Delay (but respect rate limits - minimum 0.3s recommended)
-- Increase Max Threads (but more threads = more API requests)
-- Check your network speed
-- If using proxy (Tor), it may be slow - try without proxy
-- Some boards are naturally slower than others
+Contextual mode is pickier about what it captures. Try reducing the "Last K" value to 3-4 instead of 6. Uncheck "Require question" if you're not specifically looking for Q&A. Try different boards with more conversation depth, or switch from "quote_chain" to "cumulative" or "last_k" strategy.
 
-### "Too few pairs" with contextual mode
+### Proxy Connection Fails
 
-**Solutions**:
+First, verify your proxy is actually running. For Tor, check if it's listening on port 9050:
 
-- Reduce "Last K" value (try 3-4 instead of 6)
-- Uncheck "Require question" option
-- Increase Max Threads
-- Increase Max Pairs
-- Try different boards (some have more conversation depth)
-- Switch strategy from "quote_chain" to "cumulative" or "last_k"
+```bash
+netstat -an | grep 9050
+```
 
-### Proxy connection fails
-
-**Problem**: Tor or custom proxy not working
-
-**Solution**:
-
-1. Verify Tor is running:
-   ```bash
-   # Check if Tor is listening on port 9050
-   netstat -an | grep 9050
-   ```
-1. Try without proxy first to isolate the issue
-1. Verify proxy URL format: `socks5h://127.0.0.1:9050`
-1. Check proxy settings in [Settings Tab](settings-tab.md)
-1. See [Proxy Setup Guide](../deployment/proxy-setup.md)
+Try without the proxy to isolate the issue. Make sure the URL format is correct—for Tor it should be `socks5h://127.0.0.1:9050`. Check your proxy settings in the [Settings Tab](settings-tab.md) and see the [Proxy Setup Guide](../deployment/proxy-setup.md) for more details.
 
 ______________________________________________________________________
 
 ## Synthetic Data Generation Issues
 
-### Model loading takes a long time
+### Model Loading Is Slow
 
-**Problem**: First synthetic generation run takes 30-60+ seconds before any progress
+The first run takes 30-60+ seconds because the model has to download and load. This is normal—a snackbar appears immediately to let you know it's working. Subsequent runs are much faster since the model is cached. Make sure you have enough disk space (3-6 GB for model weights).
 
-**Solution**:
+### No Pairs Generated
 
-- This is expected behavior — the model must be downloaded and loaded on first run
-- A snackbar notification appears immediately when you click Start
-- Subsequent runs are faster as the model is cached
-- Ensure you have sufficient disk space for model weights (~3-6 GB)
+If generation completes but you get no output, the document might be too short, have no extractable text, or parsing might have failed. Try a different format (TXT usually works best), increase the Max Chunks parameter, and check the logs for parsing errors. Make sure your document has actual text, not just images.
 
-### "No pairs generated" after synthetic generation
+### CUDA or Model Errors
 
-**Possible causes**:
+GPU issues usually come down to insufficient VRAM—you need at least 4GB. Try closing other GPU-intensive applications, use a smaller model if available, and verify PyTorch and CUDA are properly installed.
 
-1. Document is too short or has no extractable content
-1. Max Chunks set too low
-1. PDF/document parsing failed
+### Low Quality Output
 
-**Solutions**:
-
-- Try a different document format (TXT often works best)
-- Increase Max Chunks parameter
-- Check logs for parsing errors
-- Verify the document has actual text content (not just images)
-
-### Synthetic generation fails with model errors
-
-**Problem**: Errors related to model loading or CUDA
-
-**Solutions**:
-
-- Ensure you have sufficient GPU VRAM (4GB+ recommended)
-- Try a smaller model if available
-- Check that PyTorch and CUDA are properly installed
-- Close other GPU-intensive applications
-
-### Generated pairs are low quality
-
-**Solutions**:
-
-- Enable **Curate** option with a higher threshold (e.g., 8.0)
-- Try a different generation type (qa, cot, summary)
-- Use higher quality source documents
-- Increase Num Pairs to generate more candidates for curation
+Enable the Curate option with a higher threshold (try 8.0) to filter out weak pairs. Try different generation types—sometimes `cot` or `summary` work better than `qa` depending on your source material. Higher quality source documents produce better results.
 
 ______________________________________________________________________
 
 ## Dataset Building Issues
 
-### "Failed to load database session"
+### Failed to Load Database Session
 
-**Problem**: Database session not found or corrupted
+The session might not exist or could be corrupted. You can verify it exists by checking the database directly, or simply try re-scraping to create a fresh session.
 
-**Solution**:
+### No Records After Filtering
 
-1. Verify the session exists in the database:
-   ```python
-   from db import list_scrape_sessions
-   sessions = list_scrape_sessions()
-   print(sessions)
-   ```
-1. Check the session has data:
-   ```python
-   from db import get_pairs_for_session
-   pairs = get_pairs_for_session(session_id)
-   print(f"Found {len(pairs)} pairs")
-   ```
-1. Re-scrape if session data is missing
+If all your records get filtered out, your min length setting is probably too aggressive. Lower it and try again. Also check that your scraped data actually has content—preview the session to verify data quality before building.
 
-### "No records after filtering"
+### Push to Hub Fails (401/403)
 
-**Problem**: All records filtered out due to min length or empty fields
+This is an authentication error. Make sure your HF token has write permissions, not just read. Check that it's saved correctly in the Settings tab or set as an environment variable. Verify your repo ID format is `username/repo-name`.
 
-**Solution**:
-
-- Reduce minimum length requirement
-- Check that scraped data has actual content
-- Preview the database session to verify data quality
-- Check logs for specific filtering reasons
-
-### Push to Hub fails (401/403)
-
-**Problem**: Authentication error
-
-**Solution**:
-
-1. Verify HF token has write permissions
-1. Check token in Settings tab or environment variable
-1. Try logging in via CLI:
-   ```bash
-   huggingface-cli login
-   ```
-1. Verify repo ID format: `username/repo-name`
-1. Check if repo already exists and you have access
-1. See [Authentication Guide](authentication.md)
+If the repo already exists, make sure you have access to it. Try `huggingface-cli login` to refresh your credentials. See the [Authentication Guide](authentication.md) for more details.
 
 ______________________________________________________________________
 
 ## Training Issues
 
-### "CUDA out of memory"
+### CUDA Out of Memory
 
-**Problem**: GPU doesn't have enough VRAM
+Your GPU doesn't have enough VRAM. Try reducing per-device batch size (start with 1-2 for an 8B 4-bit model on a 12GB GPU), increasing gradient accumulation (2-4), using a smaller base model, or disabling packing.
 
-**Solution**:
+The Beginner preset "Auto Set (local)" automatically configures conservative settings based on your GPU. Use it if you're unsure what values to pick.
 
-- Enable LoRA (reduces memory significantly)
-- Reduce per-device batch size
-- Increase gradient accumulation steps
-- Use a smaller base model
-- Use 4-bit quantized models (e.g., models with `bnb-4bit`)
-- Disable packing if enabled
+### Invalid Adapter Errors in Inference Tab
 
-On a single 12 GB GPU (e.g., RTX 3060), a conservative starting point for 8B 4-bit models is:
+If the Inference tab won't validate your adapter, the training run either didn't complete or didn't produce valid adapter files. Select a completed run, check that the adapter directory contains `adapter_config.json` and weight files (`.safetensors` or `.bin`), and wait for validation to finish before trying to generate.
 
-- Batch size per device: 1–2
-- Grad accumulation: 2–4
-- Max steps: 50–200 for quick experiments
+### Runpod Pod Won't Start
 
-If you still hit OOM, also reduce sequence length and/or disable evaluation during training.
+Check the Runpod dashboard for status. Common causes: GPU unavailable in your region, insufficient credits, or network volume not accessible. Try a different GPU type and verify your network volume exists and is attached to the template.
 
-For local Docker training, the Training tab's Beginner preset **Auto Set (local)** automatically picks conservative batch size, grad accumulation, and max steps based on your detected GPU VRAM. Use this preset for first runs on consumer GPUs if you're unsure what values to choose.
+### Network Volume Not Found
 
-### Inference tab: "Adapter validated" errors / invalid adapter
+Make sure the volume exists in Runpod and is attached to your template with mount path `/data` (not `/workspace`). Click "Ensure Infrastructure" in the Training tab and give it a few minutes to sync.
 
-**Problem**: The Inference tab refuses to validate the selected training run's adapter and shows a red error like:
+### Training Stops Unexpectedly
 
-- *"Invalid adapter directory. Please select a completed training run."*, or
-- *"Adapter directory doesn't look like a valid LoRA adapter."*.
+Enable Auto-resume to recover from interruptions. Check logs for error messages, verify your dataset is accessible, and make sure there's enough disk space on the network volume.
 
-**Causes**:
+### Container Exits with Code 137
 
-- The selected training run is not **completed**.
-- The training run completed but did not produce a valid adapter directory.
-- The adapter directory exists but is missing key adapter files.
+This means the container was killed, usually by the OS OOM killer. Reduce batch size, increase gradient accumulation, use a smaller model, and close other heavy workloads while training.
 
-**Solution**:
+### HF Auth Errors Inside Container
 
-1. Select a **completed** training run in the Inference tab.
-1. If the latest run failed, re-run training and confirm it completes successfully.
-1. Verify the adapter directory created by the run contains at least one of:
-   - `adapter_config.json`
-   - LoRA weight files such as `*.safetensors` or `*.bin`
-1. After changing the selected run, wait for validation (spinner + snackbar) before trying to generate.
+If push-to-hub fails at the end of training, your HF token isn't reaching the container. In Settings, save a valid token with write access, then enable "Pass HF token to container" in the Local Docker section. Or just disable Push to Hub if you don't need it for this run.
 
-### Training pod won't start
+### Config Mistakes
 
-**Problem**: Runpod pod fails to start or reach ready state
-
-**Solution**:
-
-1. Check Runpod dashboard for pod status
-1. Verify GPU availability in selected region
-1. Check if you have sufficient credits
-1. Try a different GPU type
-1. Verify network volume is accessible
-1. Check pod logs in Runpod dashboard
-
-### "Network volume not found"
-
-**Problem**: Training can't find /data mount
-
-**Solution**:
-
-1. Verify network volume exists in Runpod
-1. Check volume is attached to template
-1. Ensure mount path is `/data` (not `/workspace`)
-1. Click "Ensure Infrastructure" in Training tab
-1. Wait for volume to sync (can take a few minutes)
-
-### Training stops/fails unexpectedly
-
-**Solutions**:
-
-- Enable "Auto-resume" to recover from interruptions
-- Check logs for specific error messages
-- Verify dataset is accessible
-- Check disk space on network volume
-- Monitor pod status in Runpod dashboard
-
-### Local training: container exits with code 137
-
-**Problem**: Local Docker training exits with status code 137.
-
-**Cause**: This usually means the container was killed by the OS (often an OOM killer) or manually stopped.
-
-**Solution**:
-
-- Treat it like a CUDA OOM: reduce per-device batch size, increase grad accumulation, or use a smaller model.
-- Make sure other heavy GPU/CPU workloads are closed while training.
-- Check local logs (Training → Local Docker section) for additional error messages.
-
-### Local training: Hugging Face auth errors inside container
-
-**Problem**: Training completes but fails at the end with a `huggingface_hub` error (e.g., around `api.whoami()`), especially when `--push` is enabled.
-
-**Causes**:
-
-- HF token not present inside the Docker container.
-- Token lacks required write permissions.
-
-**Solutions**:
-
-1. In **Settings → Hugging Face**, save a valid token with write access, or export `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` before launching the app.
-1. In the **Local Docker: Run Training** section, enable **"Pass HF token to container"** so the token is forwarded as env vars.
-1. If you don't need to push to the Hub for a given run, disable **Push to Hub** to avoid calling Hub APIs at the end.
-
-### Config‑related mistakes
-
-**Problem**: Training fails or behaves unexpectedly after manual changes to many fields.
-
-**Solution**:
-
-- Use the Training tab's **Save current setup** buttons (or Configuration mode) to snapshot known‑good setups.
-- Re‑load a saved config instead of re‑entering values manually, especially when switching between Runpod and local runs.
-- Configs are stored in the database, and the last used config auto-loads on startup.
-- Enable DEBUG logging (see [Logging Guide](../development/logging.md))
+If training behaves unexpectedly after lots of manual changes, use "Save current setup" to snapshot known-good configurations and reload them instead of re-entering everything. The last config auto-loads on startup.
 
 ______________________________________________________________________
 
 ## Merge Issues
 
-### "Merged dataset not found"
+### Merged Dataset Not Found
 
-**Problem**: Can't find merged dataset to download
+Check the Status section to confirm the merge actually completed. Look at the output path you specified and check the project root directory. Use the Preview Merged button to verify the result exists.
 
-**Solution**:
+### Column Mapping Fails
 
-- Verify merge completed successfully (check Status section)
-- Check the output path you specified
-- Look in project root directory
-- Check logs for actual save location
-- Try Preview Merged button to verify it exists
+For Hugging Face datasets, manually specify the input/output column names—auto-detection doesn't always work. Database sessions use the standard schema automatically. Double-check for typos in column names.
 
-### Column mapping fails
+### Out of Memory During Merge
 
-**Problem**: Input/output columns not detected
-
-**Solution**:
-
-- Manually specify column names for HF datasets
-- For database sessions, data uses standard schema automatically
-- Check for typos in column names
-- Verify dataset actually has the columns you specified
-
-### Out of memory during merge
-
-**Problem**: Large datasets cause memory issues
-
-**Solution**:
-
-- Merge fewer datasets at once
-- Close other applications
-- Merge in batches (2-3 at a time)
-- Upgrade system RAM if consistently hitting limits
+Large merges can exhaust RAM. Merge fewer datasets at once, close other applications, or merge in batches of 2-3 at a time.
 
 ______________________________________________________________________
 
 ## Authentication Issues
 
-### Hugging Face token not working
+### Hugging Face Token Not Working
 
-**Problem**: Token rejected or not recognized
+Generate a new token with write permissions at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). Copy it exactly (no extra spaces) and paste it in the Settings tab. Alternatively, set the `HF_TOKEN` environment variable and restart the app.
 
-**Solution**:
+### Runpod API Key Issues
 
-1. Generate a new token with write permissions: https://huggingface.co/settings/tokens
-1. Copy token exactly (no extra spaces)
-1. Paste in Settings tab HF Token field
-1. Or set environment variable:
-   ```bash
-   # Linux/macOS
-   export HF_TOKEN="hf_xxxxxxxxxxxxx"
-
-   # Windows PowerShell
-   $env:HF_TOKEN="hf_xxxxxxxxxxxxx"
-
-   # Windows CMD
-   set HF_TOKEN=hf_xxxxxxxxxxxxx
-   ```
-1. Restart the application after setting env variable
-
-### Runpod API key issues
-
-**Problem**: Can't access Runpod features
-
-**Solution**:
-
-1. Get API key from Runpod Settings: https://runpod.io/console/user/settings
-1. Paste in Settings tab
-1. Click "Save Runpod Settings"
-1. Verify key has correct permissions
-1. Try refreshing the page/app
+Get your key from the [Runpod console](https://runpod.io/console/user/settings), paste it in Settings, and save. Verify it has the right permissions. If features still don't work, try refreshing the app.
 
 ______________________________________________________________________
 
 ## Performance Issues
 
-### Application is slow/laggy
+### Application Is Slow
 
-**Solutions**:
+Close unused tabs, reduce preview sizes, and clear old logs periodically. Check system resources—if you're low on RAM or CPU, close other applications. Disable analysis modules you're not using.
 
-- Close unused tabs in the application
-- Reduce preview size in dataset views
-- Clear logs periodically
-- Close other resource-intensive applications
-- Check system resources (CPU, RAM)
-- Disable unnecessary analysis modules
+### Large Dataset Previews Lag
 
-### Large dataset previews feel slow
+Use paginated previews instead of inline ones. For very large datasets, open them in external tools or subsample for preview purposes.
 
-**Solutions**:
+### Database Growing Too Large
 
-- Use paginated preview dialogs instead of inline previews
-- Open datasets in external tools for large datasets
-- Consider dataset subsampling for preview purposes
-
-### Database growing too large
-
-**Solutions**:
-
-- Clear old logs: `from db import clear_logs; clear_logs(older_than_days=30)`
-- Delete old scrape sessions you no longer need
-- See [Database Guide](../development/database.md) for details
-- Disable DEBUG mode if enabled
+Clear old logs and delete scrape sessions you no longer need. Disable DEBUG mode if it's enabled. See the [Database Guide](../development/database.md) for maintenance details.
 
 ______________________________________________________________________
 
 ## Logging & Debugging
 
-### Enable debug logging
+### Enabling Debug Mode
 
-To see detailed diagnostic information:
+For detailed diagnostic information, set the debug flag before launching:
 
 ```bash
-# Linux/macOS
 export FINEFOUNDRY_DEBUG=1
 uv run src/main.py
-
-# Windows PowerShell
-$env:FINEFOUNDRY_DEBUG=1
-uv run src/main.py
 ```
 
-### View logs
+On Windows PowerShell, use `$env:FINEFOUNDRY_DEBUG=1`.
 
-Logs are stored in the SQLite database (`finefoundry.db`). Access them programmatically:
+### Viewing Logs
 
-```python
-from db import get_logs, get_log_count
-
-# Get recent errors
-errors = get_logs(level="ERROR", limit=50)
-
-# Get log count
-count = get_log_count(level="WARNING")
-```
-
-Or query directly with SQLite:
+Logs go to the SQLite database and print to the console in real time. You can query them directly:
 
 ```bash
 sqlite3 finefoundry.db "SELECT * FROM app_logs WHERE level='ERROR' ORDER BY timestamp DESC LIMIT 10"
 ```
 
-Logs are also printed to the console in real-time.
-
-See the complete [Logging Guide](../development/logging.md) for more details.
+See the [Logging Guide](../development/logging.md) for more details on accessing and filtering logs.
 
 ______________________________________________________________________
 
-## Still Having Issues?
+## Still Stuck?
 
-### Check the logs
+### Check Existing Issues
 
-Enable DEBUG mode and check log files for detailed error information.
+Someone else may have hit the same problem. Check [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues) to see if there's already a solution.
 
-### Search existing issues
+### Report a Bug
 
-Check [GitHub Issues](https://github.com/SourceBox-LLC/FineFoundry/issues) to see if others have encountered the same problem.
+If you've found something new: enable DEBUG logging, reproduce the issue, and create a GitHub issue with a clear description, steps to reproduce, relevant log excerpts (remove sensitive info), and your system information (OS, Python version).
 
-### Report a bug
+### Ask for Help
 
-If you've found a bug:
-
-1. Enable DEBUG logging
-1. Reproduce the issue
-1. Collect relevant log files
-1. Create a GitHub issue with:
-   - Clear description of the problem
-   - Steps to reproduce
-   - Log excerpts (remove sensitive info)
-   - System information (OS, Python version)
-   - Screenshots if applicable
-
-### Ask for help
-
-- [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions)
-- Include relevant context and logs
-- Be specific about what you tried
+For questions and discussion, use [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions). Include context and logs, and be specific about what you've already tried.
 
 ______________________________________________________________________
 
-**Related Documentation**:
+## Related Guides
 
-- [Logging Guide](../development/logging.md)
-- [Authentication](authentication.md)
-- [FAQ](faq.md)
-- [Proxy Setup](../deployment/proxy-setup.md)
+- [Logging Guide](../development/logging.md) — detailed logging and debugging
+- [Authentication](authentication.md) — credential setup
+- [FAQ](faq.md) — quick answers to common questions
+- [Proxy Setup](../deployment/proxy-setup.md) — network configuration
 
 ______________________________________________________________________
 

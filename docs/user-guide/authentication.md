@@ -1,144 +1,66 @@
 # Authentication
 
-FineFoundry talks to a few external services:
+FineFoundry connects to Hugging Face for dataset and model hosting, and optionally to Runpod for cloud GPU training. This guide explains how to set up credentials for both.
 
-- **Hugging Face Hub** – for hosting datasets and (optionally) models.
-- **Runpod** – for remote GPU training via pods and a shared network volume.
+## Hugging Face
 
-This page shows how to provide credentials for those services and how to verify that everything is wired up correctly.
+You'll need a Hugging Face token with write permissions to push datasets or adapters. Create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 
-For where these settings live in the UI, see the **[Settings Tab](settings-tab.md)** guide.
+FineFoundry looks for your token in three places, in order:
 
-______________________________________________________________________
+1. The HF Token field in the Settings tab
+2. The `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` environment variable
+3. A cached login from `huggingface-cli login`
 
-## Hugging Face authentication
+Use whichever method fits your workflow—you don't need all three.
 
-You need a Hugging Face account and an access token with **write** permissions to push datasets or models.
+### Storing in Settings (Easiest)
 
-Create or manage tokens here:
+Open the Settings tab, paste your token in the HF Token field, click Test to verify it works, then Save. That's it—the Publish tab will use this token when pushing to the Hub.
 
-- <https://huggingface.co/settings/tokens>
+### Using Environment Variables
 
-FineFoundry can discover your token in three ways, in this order:
-
-1. The **HF Token field** in the Settings tab
-1. Environment variables (`HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN`)
-1. A cached login from the `huggingface-cli` tool
-
-You can use whichever method fits your workflow; you do **not** need all three.
-
-**Offline Mode note**: When Offline Mode is enabled, Hugging Face dataset access and Hub push actions are disabled throughout the app, even if you have a valid token configured.
-
-### Option A: Paste a token in the Settings tab (recommended for most users)
-
-1. Open the **Settings** tab.
-1. In the **Hugging Face Settings** section, paste your token into the **HF Token** field.
-1. Click **Test** to verify that the token works.
-1. Click **Save** to persist it.
-
-This token will be used by:
-
-- The **Publish** tab when pushing datasets or publishing adapters.
-
-### Option B: Use environment variables
-
-If you prefer not to store tokens in the app, you can provide them via environment variables before launching FineFoundry.
-
-On **Linux/macOS**:
+If you'd rather not store tokens in the app, set them in your shell before launching:
 
 ```bash
 export HF_TOKEN="hf_xxxxxxxxxxxxx"
 uv run src/main.py
 ```
 
-On **Windows PowerShell**:
+On Windows PowerShell, use `$env:HF_TOKEN="hf_xxxxxxxxxxxxx"`. FineFoundry picks up the environment variable automatically.
 
-```powershell
-$env:HF_TOKEN="hf_xxxxxxxxxxxxx"
-uv run src/main.py
-```
+### Using the Hugging Face CLI
 
-On **Windows CMD**:
+If you've already logged in with `huggingface-cli login`, FineFoundry will use that cached credential as a fallback when no token is set in Settings or the environment.
 
-```cmd
-set HF_TOKEN=hf_xxxxxxxxxxxxx
-python src\main.py
-```
+### Verifying It Works
 
-FineFoundry will use the `HF_TOKEN` (or `HUGGINGFACE_HUB_TOKEN`, if set) even if you leave the HF Token field blank in Settings.
+Click Test in the Settings tab to check connectivity. For a real test, try pushing a small dataset from the Publish tab and check your Hugging Face account to see if it appeared.
 
-### Option C: Log in via the Hugging Face CLI
+### Security Tips
 
-If you already use the Hugging Face CLI on this machine, you can log in once and let FineFoundry reuse that cached auth.
+Treat tokens like passwords. Never commit them to Git or share them in logs. Environment variables are generally more secure than pasting into the UI, especially on shared machines.
 
-```bash
-huggingface-cli login
-```
+## Runpod
 
-After logging in, start FineFoundry from the same user account. The app will first try the Settings tab token and environment variables; if those are not present, it will fall back to the cached CLI login.
+For cloud training, you'll need a Runpod API key. Get it from [runpod.io/console/user/settings](https://runpod.io/console/user/settings).
 
-### Verifying Hugging Face authentication
+Paste it in the Settings tab under Runpod Settings, click Test, then Save. The Training tab uses this key to create network volumes, pod templates, and manage training pods.
 
-To confirm that auth is working:
+### Verifying It Works
 
-1. In the **Settings** tab, click **Test** in the Hugging Face section.
-1. In the **Publish** tab, enable **Push to Hub**, set a test `Repo ID` (such as `username/test-dataset`), and build a tiny dataset.
-1. Check your Hugging Face account to see whether the dataset repo was created or updated.
+Click Test in Settings. Then try the Ensure Infrastructure controls in the Training tab—if it can create a network volume and template, you're set.
 
-If authentication fails, see **Authentication Issues** in the **[Troubleshooting Guide](troubleshooting.md#authentication-issues)**.
+### Security Tips
 
-### Security best practices
+Keep your API key private and revoke it from the Runpod console when you no longer need it. Consider separate keys for experimentation vs production workloads.
 
-- Treat Hugging Face tokens like **passwords**.
-- Never commit tokens to Git, screenshots, or shared logs.
-- Prefer environment variables or the local Settings store over hard‑coding tokens into scripts.
-- Use different tokens (or scopes) for development vs production where appropriate.
+## Offline Mode
+
+When Offline Mode is enabled, all Hub and Runpod features are disabled regardless of whether you have valid credentials configured.
 
 ______________________________________________________________________
 
-## Runpod authentication
+## Quick Summary
 
-If you use Runpod for remote training, FineFoundry needs a **Runpod API key**.
-
-**Offline Mode note**: When Offline Mode is enabled, Runpod infrastructure helpers and Runpod training are disabled.
-
-Create or view your key from the Runpod console (you may be redirected between domains):
-
-- <https://runpod.io/console/user/settings>
-
-### Provide your Runpod API key to FineFoundry
-
-1. Open the **Settings** tab.
-1. In the **Runpod Settings** section, paste your API key into the **Runpod API Key** field.
-1. Click **Test** to verify that the key can reach Runpod APIs.
-1. Click **Save** to persist it.
-
-This key is used by the **Training** tab when you select **Runpod – Pod** as the training target. It allows FineFoundry to:
-
-- Create and reuse **Network Volumes** (usually mounted at `/data`).
-- Create and reuse **Pod Templates** for training jobs.
-- Launch pods, monitor status, and fetch logs.
-
-### Verifying Runpod authentication
-
-To confirm that Runpod auth is working:
-
-1. Click **Test** in the Runpod section of the Settings tab.
-1. In the **Training** tab, choose **Runpod – Pod** and use the **Ensure Infrastructure** controls (Network Volume and Template).
-1. Check the Runpod console to see whether the volume/template exist and whether pods can be created from the template.
-
-If Runpod operations fail, see the **Runpod API key issues** and related sections in the **[Troubleshooting Guide](troubleshooting.md#authentication-issues)** and the **[Training Tab](training-tab.md)** documentation.
-
-### Security best practices for Runpod
-
-- Keep your API key private and never commit it to Git.
-- Revoke keys that are no longer needed from the Runpod console.
-- Consider using separate keys or accounts for experimentation vs more critical workloads.
-
-______________________________________________________________________
-
-## Summary
-
-- Use the **Settings** tab as the primary place to paste and manage credentials.
-- Environment variables and CLI logins are supported for Hugging Face if you prefer not to store tokens in the UI.
-- Always verify auth using the **Test** buttons and a small end‑to‑end action (such as pushing a test dataset or launching a small training job).
+Set up credentials in the Settings tab, verify with the Test buttons, and try a small push or pod creation to confirm everything works. If something fails, check the [Troubleshooting Guide](troubleshooting.md#authentication-issues).
