@@ -13,6 +13,86 @@ from helpers.common import safe_update
 from helpers.theme import COLORS, ACCENT_COLOR
 from helpers.ui import WITH_OPACITY
 
+# Optional datasets dependency for HF sample fetching
+try:
+    from datasets import load_dataset as hf_load_dataset
+except Exception:
+    hf_load_dataset = None
+
+
+async def _fetch_hf_samples(repo_id: str, split: str, num_samples: int = 10):
+    """Fetch random sample prompts from a HuggingFace dataset.
+    
+    Returns list of (prompt, expected_answer) tuples.
+    """
+    import asyncio
+    import random
+    
+    if hf_load_dataset is None:
+        return []
+    
+    def _load():
+        try:
+            ds = hf_load_dataset(repo_id, split=split, trust_remote_code=True)
+            if len(ds) == 0:
+                return []
+            
+            # Get random indices
+            indices = list(range(len(ds)))
+            random.shuffle(indices)
+            indices = indices[:num_samples]
+            
+            samples = []
+            for idx in indices:
+                row = ds[idx]
+                prompt = ""
+                expected = ""
+                
+                # Try to extract prompt/response from common column formats
+                # ChatML format (messages column)
+                if "messages" in row:
+                    msgs = row["messages"]
+                    if isinstance(msgs, list) and len(msgs) >= 2:
+                        for m in msgs:
+                            if isinstance(m, dict):
+                                role = m.get("role", "")
+                                content = m.get("content", "")
+                                if role in ("user", "human"):
+                                    prompt = content
+                                elif role in ("assistant", "gpt", "bot"):
+                                    expected = content
+                # Alpaca format
+                elif "instruction" in row:
+                    prompt = row.get("instruction", "") or row.get("input", "")
+                    if row.get("input"):
+                        prompt = f"{row.get('instruction', '')}\n{row.get('input', '')}".strip()
+                    expected = row.get("output", "") or row.get("response", "")
+                # Simple Q&A format
+                elif "question" in row:
+                    prompt = row.get("question", "")
+                    expected = row.get("answer", "") or row.get("response", "")
+                # Input/output format
+                elif "input" in row:
+                    prompt = row.get("input", "")
+                    expected = row.get("output", "") or row.get("response", "")
+                # Text/label format
+                elif "text" in row:
+                    prompt = row.get("text", "")
+                    expected = row.get("label", "") or ""
+                # Prompt/completion format
+                elif "prompt" in row:
+                    prompt = row.get("prompt", "")
+                    expected = row.get("completion", "") or row.get("response", "")
+                
+                if prompt:
+                    samples.append((str(prompt).strip(), str(expected).strip() if expected else ""))
+            
+            return samples
+        except Exception:
+            return []
+    
+    return await asyncio.to_thread(_load)
+
 
 def build_hp_from_controls(
     *,
@@ -355,6 +435,7 @@ async def run_local_training(
     DEFAULT_DOCKER_IMAGE: str,
     rp_pod_module,
     ICONS_module=None,
+    on_training_complete: Callable[[], None] = None,
 ) -> None:
     # Prevent concurrent runs
     if train_state.get("local", {}).get("running"):
@@ -546,10 +627,19 @@ async def run_local_training(
         pass
 
     try:
-        # Prefer an explicit token from the text field; fall back to process env
-        _hf_tok = (
-            (hf_token_tf.value or "") or os.environ.get("HF_TOKEN", "") or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
-        ).strip()
+        # Get HF token: if field is read-only (masked), use env var; otherwise use field value
+        _hf_tok = ""
+        tf_value = (hf_token_tf.value or "").strip()
+        tf_readonly = getattr(hf_token_tf, "read_only", False)
+        
+        if tf_readonly or tf_value.startswith("•"):
+            # Token is saved and masked - retrieve from environment (set by _apply_hf_env_from_cfg)
+            _hf_tok = os.environ.get("HF_TOKEN", "") or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
+        else:
+            # Use explicit token from text field, fall back to env
+            _hf_tok = tf_value or os.environ.get("HF_TOKEN", "") or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
+        _hf_tok = _hf_tok.strip()
+        
         if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
             # Match the environment variable names used by huggingface_hub and the Runpod flow
             run_args += [
@@ -668,6 +758,7 @@ async def run_local_training(
                         abs_out_dir = os.path.join(host_dir, rel)
                     else:
                         abs_out_dir = os.path.join(host_dir, out_dir.lstrip("/"))
+                adapter_path = ""
                 if abs_out_dir:
                     try:
                         train_state.setdefault("local", {})
@@ -680,27 +771,54 @@ async def run_local_training(
                         train_state["local_infer"]["adapter_path"] = adapter_path
                         train_state["local_infer"]["base_model"] = base_model_name
                         train_state["local_infer"]["model_loaded"] = False
-                        # Store dataset session ID for sample prompts feature
-                        db_session_val = (train_db_session_dd.value or "").strip()
-                        if db_session_val:
-                            train_state["local_infer"]["dataset_session_id"] = db_session_val
+                        # Store dataset info for sample prompts feature - only for the actual source used
+                        train_state["local_infer"]["dataset_session_id"] = None
+                        train_state["local_infer"]["hf_dataset_id"] = None
+                        src_used = (train_source.value or "Database").strip()
+                        if src_used == "Database":
+                            db_session_val = (train_db_session_dd.value or "").strip()
+                            if db_session_val:
+                                train_state["local_infer"]["dataset_session_id"] = db_session_val
+                        elif src_used == "Hugging Face":
+                            hf_repo_val = (train_hf_repo.value or "").strip()
+                            hf_split_val = (train_hf_split.value or "train").strip()
+                            if hf_repo_val:
+                                train_state["local_infer"]["hf_dataset_id"] = hf_repo_val
+                                train_state["local_infer"]["hf_dataset_split"] = hf_split_val
+                                # Fetch sample prompts from HF dataset
+                                try:
+                                    hf_samples = await _fetch_hf_samples(hf_repo_val, hf_split_val, 10)
+                                    if hf_samples:
+                                        train_state["local_infer"]["hf_samples"] = hf_samples
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
-                    # Update training run with completed status and paths
-                    try:
-                        from db.training_runs import update_training_run
-                        from datetime import datetime
+                # Update training run with completed status and paths - ALWAYS update status
+                try:
+                    from db.training_runs import update_training_run
+                    from datetime import datetime
 
-                        update_training_run(
-                            int(training_run_id),
-                            status="completed",
-                            output_dir=abs_out_dir,
-                            adapter_path=adapter_path,
-                            completed_at=datetime.now().isoformat(),
-                            logs=local_log_buffer[:500],  # Save last 500 log lines
-                        )
-                    except Exception:
-                        pass
+                    update_training_run(
+                        int(training_run_id),
+                        status="completed",
+                        output_dir=abs_out_dir or None,
+                        adapter_path=adapter_path or None,
+                        completed_at=datetime.now().isoformat(),
+                        logs=local_log_buffer[:500],  # Save last 500 log lines
+                    )
+                except Exception as e:
+                    # Log the error so we can debug if update fails
+                    await _append_local_log_line(
+                        page,
+                        local_train_timeline,
+                        local_train_timeline_placeholder,
+                        local_log_buffer,
+                        local_save_logs_btn,
+                        f"Warning: Failed to update training run status: {e}",
+                        color=WITH_OPACITY(0.8, COLORS.ORANGE),
+                        ICONS_module=None,
+                    )
             except Exception:
                 pass
         elif rc == 137:
@@ -785,6 +903,12 @@ async def run_local_training(
             await safe_update(page)
         except Exception:
             pass
+        # Always refresh UI after training ends (success or failure)
+        if on_training_complete:
+            try:
+                on_training_complete()
+            except Exception:
+                pass
 
 
 async def stop_local_training(

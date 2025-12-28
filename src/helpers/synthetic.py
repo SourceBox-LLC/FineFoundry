@@ -452,6 +452,7 @@ async def run_synthetic_generation(
     multimodal: bool = False,
     dataset_format: str = "ChatML",
     model: str = "unsloth/Llama-3.2-3B-Instruct",
+    dataset_name: Optional[str] = None,
 ) -> None:
     """Run synthetic data generation - adapted from unsloth-synth-test."""
     import time
@@ -689,6 +690,7 @@ async def run_synthetic_generation(
                             pairs=final_data,
                             source_details=source_details,
                             dataset_format=dataset_format,
+                            name=dataset_name,
                         )
                     )
                 else:
@@ -697,6 +699,7 @@ async def run_synthetic_generation(
                             source="synthetic",
                             conversations=final_data,
                             source_details=source_details,
+                            name=dataset_name,
                         )
                     )
                 await log("📊 Saved to database")

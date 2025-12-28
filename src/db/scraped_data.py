@@ -18,6 +18,7 @@ def create_scrape_session(
     dataset_format: str = "standard",
     metadata: Optional[Dict[str, Any]] = None,
     db_path: Optional[str] = None,
+    name: Optional[str] = None,
 ) -> int:
     """Create a new scrape session.
 
@@ -27,6 +28,7 @@ def create_scrape_session(
         dataset_format: Format type ("standard", "chatml", etc.)
         metadata: Optional metadata dictionary
         db_path: Optional database path
+        name: Optional custom name for the dataset
 
     Returns:
         Session ID
@@ -39,10 +41,10 @@ def create_scrape_session(
 
     cursor.execute(
         """
-        INSERT INTO scrape_sessions (source, source_details, dataset_format, metadata_json)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO scrape_sessions (name, source, source_details, dataset_format, metadata_json)
+        VALUES (?, ?, ?, ?, ?)
     """,
-        (source, source_details, dataset_format, metadata_json),
+        (name, source, source_details, dataset_format, metadata_json),
     )
 
     conn.commit()
@@ -115,7 +117,7 @@ def get_scrape_session(session_id: int, db_path: Optional[str] = None) -> Option
 
     cursor.execute(
         """
-        SELECT id, source, source_details, dataset_format, pair_count, created_at, metadata_json
+        SELECT id, name, source, source_details, dataset_format, pair_count, created_at, metadata_json
         FROM scrape_sessions WHERE id = ?
     """,
         (session_id,),
@@ -127,6 +129,7 @@ def get_scrape_session(session_id: int, db_path: Optional[str] = None) -> Option
 
     result = {
         "id": row["id"],
+        "name": row["name"],
         "source": row["source"],
         "source_details": row["source_details"],
         "dataset_format": row["dataset_format"],
@@ -163,7 +166,7 @@ def list_scrape_sessions(
     if source:
         cursor.execute(
             """
-            SELECT id, source, source_details, dataset_format, pair_count, created_at
+            SELECT id, name, source, source_details, dataset_format, pair_count, created_at
             FROM scrape_sessions
             WHERE source = ?
             ORDER BY created_at DESC
@@ -174,7 +177,7 @@ def list_scrape_sessions(
     else:
         cursor.execute(
             """
-            SELECT id, source, source_details, dataset_format, pair_count, created_at
+            SELECT id, name, source, source_details, dataset_format, pair_count, created_at
             FROM scrape_sessions
             ORDER BY created_at DESC
             LIMIT ?

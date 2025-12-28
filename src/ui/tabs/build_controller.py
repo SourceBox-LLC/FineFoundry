@@ -126,9 +126,13 @@ def build_build_tab_with_logic(
             sessions = list_scrape_sessions(limit=50)
             options = []
             for s in sessions:
-                label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
-                if s.get("source_details"):
+                # Prefer custom name if set, otherwise fallback to auto-generated label
+                if s.get("name"):
+                    label = f"{s['name']} ({s['pair_count']} pairs)"
+                elif s.get("source_details"):
                     label = f"{s['source']}: {s['source_details'][:30]} - {s['pair_count']} pairs"
+                else:
+                    label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
                 options.append(ft.dropdown.Option(key=str(s["id"]), text=label))
             db_session_dd.options = options
             if options and not db_session_dd.value:

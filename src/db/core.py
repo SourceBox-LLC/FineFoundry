@@ -107,6 +107,7 @@ def init_db(db_path: Optional[str] = None) -> None:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scrape_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
             source TEXT NOT NULL,
             source_details TEXT,
             dataset_format TEXT DEFAULT 'standard',
@@ -115,6 +116,14 @@ def init_db(db_path: Optional[str] = None) -> None:
             metadata_json TEXT
         )
     """)
+
+    # Migration: Add 'name' column to existing scrape_sessions table
+    try:
+        cursor.execute("ALTER TABLE scrape_sessions ADD COLUMN name TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
     # Scraped pairs table
     cursor.execute("""

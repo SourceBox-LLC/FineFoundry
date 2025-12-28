@@ -281,9 +281,13 @@ def build_training_tab_with_logic(
             sessions = list_scrape_sessions(limit=50)
             options = []
             for s in sessions:
-                label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
-                if s.get("source_details"):
+                # Prefer custom name if set, otherwise fallback to auto-generated label
+                if s.get("name"):
+                    label = f"{s['name']} ({s['pair_count']} pairs)"
+                elif s.get("source_details"):
                     label = f"{s['source']}: {s['source_details'][:30]} - {s['pair_count']} pairs"
+                else:
+                    label = f"{s['source']} - {s['pair_count']} pairs ({s['created_at'][:10]})"
                 options.append(ft.dropdown.Option(key=str(s["id"]), text=label))
             train_db_session_dd.options = options
             if options and not train_db_session_dd.value:
@@ -2698,10 +2702,65 @@ def build_training_tab_with_logic(
     def _refresh_sample_prompts(e=None):
         """Refresh the sample prompts dropdown with random prompts from the training dataset."""
         try:
+            local_infer_info = train_state.get("local_infer", {})
+            
+            # Check if HuggingFace dataset was used - use cached HF samples if available
+            hf_dataset_id = local_infer_info.get("hf_dataset_id")
+            if hf_dataset_id:
+                hf_samples = local_infer_info.get("hf_samples", [])
+                if hf_samples:
+                    # Use cached HF samples
+                    import random
+                    samples_to_show = list(hf_samples)
+                    random.shuffle(samples_to_show)
+                    samples_to_show = samples_to_show[:5]
+                    
+                    expected_by_prompt: Dict[str, str] = {}
+                    options = []
+                    for i, (prompt, expected) in enumerate(samples_to_show):
+                        expected_by_prompt[prompt] = expected or ""
+                        display_text = prompt[:80] + "..." if len(prompt) > 80 else prompt
+                        display_text = display_text.replace("\n", " ")
+                        options.append(ft.dropdown.Option(key=prompt, text=f"{i + 1}. {display_text}"))
+                    
+                    local_infer_sample_prompts_dd.options = options
+                    local_infer_sample_prompts_dd.value = None
+                    
+                    # Store mapping for selection -> expected answer
+                    try:
+                        li = train_state.get("local_infer")
+                        if not isinstance(li, dict):
+                            li = {}
+                            train_state["local_infer"] = li
+                        li["expected_by_prompt"] = expected_by_prompt
+                    except Exception:
+                        pass
+                    
+                    try:
+                        local_infer_expected_tf.value = ""
+                        local_infer_expected_tf.visible = False
+                    except Exception:
+                        pass
+                    page.update()
+                    return
+                else:
+                    # No cached samples available
+                    local_infer_sample_prompts_dd.options = [
+                        ft.dropdown.Option(key="", text=f"(HF dataset: {hf_dataset_id} - no samples cached)")
+                    ]
+                    local_infer_sample_prompts_dd.value = None
+                    try:
+                        local_infer_expected_tf.value = ""
+                        local_infer_expected_tf.visible = False
+                    except Exception:
+                        pass
+                    page.update()
+                    return
+            
             # Get the dataset session ID from training state
-            session_id = train_state.get("local_infer", {}).get("dataset_session_id")
+            session_id = local_infer_info.get("dataset_session_id")
             if not session_id:
-                # Try to get from current UI selection
+                # Try to get from current UI selection only if source is Database
                 src = train_source.value or "Database"
                 if src == "Database":
                     session_id = train_db_session_dd.value
@@ -2947,6 +3006,7 @@ def build_training_tab_with_logic(
             DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
             rp_pod_module=rp_pod,
             ICONS_module=ICONS,
+            on_training_complete=_refresh_training_runs,
         )
         try:
             try:

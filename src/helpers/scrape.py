@@ -39,6 +39,7 @@ async def run_stackexchange_scrape(
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
     dataset_format: str,
+    dataset_name: Optional[str] = None,
 ) -> None:
     """Run the Stack Exchange scraper in a worker thread and integrate results into the UI."""
 
@@ -135,6 +136,7 @@ async def run_stackexchange_scrape(
                         pairs=payload,
                         source_details=f"site={site}",
                         dataset_format=dataset_format,
+                        name=dataset_name,
                     )
                 )
             else:
@@ -143,6 +145,7 @@ async def run_stackexchange_scrape(
                         source="stackexchange",
                         conversations=payload,
                         source_details=f"site={site}",
+                        name=dataset_name,
                     )
                 )
             log("Saved to database")
@@ -235,6 +238,7 @@ async def run_reddit_scrape(
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
     dataset_format: str,
+    dataset_name: Optional[str] = None,
 ) -> None:
     """Run the Reddit scraper in a worker thread and integrate results into the UI."""
 
@@ -437,6 +441,7 @@ async def run_reddit_scrape(
                         pairs=standard_pairs,
                         source_details=f"url={url}",
                         dataset_format=dataset_format,
+                        name=dataset_name,
                     )
                 )
             else:
@@ -445,6 +450,7 @@ async def run_reddit_scrape(
                         source="reddit",
                         conversations=chatml_convs,
                         source_details=f"url={url}",
+                        name=dataset_name,
                     )
                 )
             log("Saved to database")
@@ -559,6 +565,7 @@ async def run_real_scrape(
     ui_proxy_url: Optional[str],
     ui_use_env_proxies: bool,
     dataset_format: str,
+    dataset_name: Optional[str] = None,
 ) -> None:
     def log(msg: str):
         log_view.controls.append(ft.Text(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
@@ -755,6 +762,7 @@ async def run_real_scrape(
                         pairs=db_pairs,
                         source_details=f"boards={boards_str}",
                         dataset_format=dataset_format,
+                        name=dataset_name,
                     )
                 )
             else:
@@ -763,6 +771,7 @@ async def run_real_scrape(
                         source="4chan",
                         conversations=payload,
                         source_details=f"boards={boards_str}",
+                        name=dataset_name,
                     )
                 )
             log("Saved to database")

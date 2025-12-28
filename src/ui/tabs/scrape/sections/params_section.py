@@ -21,6 +21,7 @@ def build_params_section(
     min_len,
     export_json_cb,  # Kept for compatibility but not displayed
     output_path,  # Kept for compatibility but not displayed
+    dataset_name_tf,
     dataset_format_dd,
     multiturn_sw,
     scrape_actions,
@@ -42,7 +43,8 @@ def build_params_section(
                             reddit_params_row,
                             se_params_row,
                             synthetic_params_row,
-                            ft.Row([max_threads, max_pairs, delay, min_len, dataset_format_dd], wrap=True),
+                            ft.Row([dataset_name_tf, dataset_format_dd], wrap=True),
+                            ft.Row([max_threads, max_pairs, delay, min_len], wrap=True),
                             ft.Row([multiturn_sw], wrap=True),
                             scrape_actions,
                         ],

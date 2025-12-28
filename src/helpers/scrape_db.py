@@ -23,6 +23,7 @@ def save_scrape_to_db(
     source_details: Optional[str] = None,
     dataset_format: str = "standard",
     metadata: Optional[Dict[str, Any]] = None,
+    name: Optional[str] = None,
 ) -> int:
     """Save scraped pairs to the database.
 
@@ -32,6 +33,7 @@ def save_scrape_to_db(
         source_details: Additional details (e.g., board names, subreddit URL)
         dataset_format: Format type ("standard", "chatml")
         metadata: Optional metadata dictionary
+        name: Optional custom name for the dataset
 
     Returns:
         Session ID
@@ -44,6 +46,7 @@ def save_scrape_to_db(
         source_details=source_details,
         dataset_format=dataset_format,
         metadata=metadata,
+        name=name,
     )
 
     # Add pairs
@@ -58,6 +61,7 @@ def save_chatml_to_db(
     conversations: List[Dict[str, Any]],
     source_details: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    name: Optional[str] = None,
 ) -> int:
     """Save ChatML conversations to the database.
 
@@ -68,6 +72,7 @@ def save_chatml_to_db(
         conversations: List of ChatML conversation dicts
         source_details: Additional details
         metadata: Optional metadata
+        name: Optional custom name for the dataset
 
     Returns:
         Session ID
@@ -106,6 +111,7 @@ def save_chatml_to_db(
         source_details=source_details,
         dataset_format="chatml",
         metadata=metadata,
+        name=name,
     )
 
     # Add pairs

@@ -551,10 +551,15 @@ def build_inference_tab_with_logic(
                     source = s.get("source", "unknown")
                     details = s.get("source_details", "")
                     pair_count = s.get("pair_count", 0)
-                    label = f"{source}"
-                    if details:
-                        label += f" - {details[:30]}"
-                    label += f" ({pair_count} pairs)"
+                    name = s.get("name")
+                    # Prefer custom name if set
+                    if name:
+                        label = f"{name} ({pair_count} pairs)"
+                    else:
+                        label = f"{source}"
+                        if details:
+                            label += f" - {details[:30]}"
+                        label += f" ({pair_count} pairs)"
                     options.append(ft.dropdown.Option(key=str(session_id), text=label))
                 infer_dataset_dd.options = options
             else:

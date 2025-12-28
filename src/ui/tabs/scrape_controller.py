@@ -271,6 +271,14 @@ def build_scrape_tab_with_logic(
         visible=False,  # Hidden - JSON export removed
     )
 
+    dataset_name_tf = ft.TextField(
+        label="Dataset Name (optional)",
+        value="",
+        width=300,
+        hint_text="e.g., 'Political Discussions v2'",
+        tooltip="Custom name to identify this dataset. Leave empty to use auto-generated label.",
+    )
+
     dataset_format_dd = ft.Dropdown(
         label="Dataset Format",
         options=[ft.dropdown.Option("ChatML"), ft.dropdown.Option("Standard")],
@@ -804,6 +812,7 @@ def build_scrape_tab_with_logic(
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
                     dataset_format=(dataset_format_dd.value or "ChatML"),
+                    dataset_name=(dataset_name_tf.value or "").strip() or None,
                 )
             elif source_dd.value == "stackexchange":
                 await run_stackexchange_scrape_helper(
@@ -821,6 +830,7 @@ def build_scrape_tab_with_logic(
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
                     dataset_format=(dataset_format_dd.value or "ChatML"),
+                    dataset_name=(dataset_name_tf.value or "").strip() or None,
                 )
             elif source_dd.value == "synthetic":
                 # Collect sources from text field or file picker
@@ -864,6 +874,7 @@ def build_scrape_tab_with_logic(
                     multimodal=bool(synthetic_multimodal_cb.value),
                     dataset_format=(dataset_format_dd.value or "ChatML"),
                     model=synthetic_model.value or "unsloth/Llama-3.2-3B-Instruct",
+                    dataset_name=(dataset_name_tf.value or "").strip() or None,
                 )
             else:
                 await run_real_scrape_helper(
@@ -888,6 +899,7 @@ def build_scrape_tab_with_logic(
                     ui_proxy_url=(proxy_url_tf.value or "").strip(),
                     ui_use_env_proxies=bool(use_env_cb.value),
                     dataset_format=(dataset_format_dd.value or "ChatML"),
+                    dataset_name=(dataset_name_tf.value or "").strip() or None,
                 )
         except Exception as e:
             try:
@@ -1268,6 +1280,7 @@ def build_scrape_tab_with_logic(
         min_len=min_len,
         export_json_cb=export_json_cb,
         output_path=output_path,
+        dataset_name_tf=dataset_name_tf,
         dataset_format_dd=dataset_format_dd,
         multiturn_sw=multiturn_sw,
         strategy_dd=strategy_dd,
