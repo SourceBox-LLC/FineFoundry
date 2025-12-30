@@ -50,7 +50,6 @@ from helpers.training_config import (
     set_last_used_config_name as set_last_used_config_name_helper,
     validate_config as validate_config_helper,
 )
-from helpers.local_docker import on_docker_pull as on_docker_pull_helper
 from helpers.local_specs import (
     gather_local_specs as gather_local_specs_helper,
     refresh_local_gpus as refresh_local_gpus_helper,
@@ -470,7 +469,7 @@ def build_training_tab_with_logic(
             pass
         try:
             page.update()
-        except Exception:  # pragma: no cover - UI best-effort
+        except Exception:
             pass
 
     expert_gpu_dd.on_change = _update_expert_spot_enabled
@@ -991,7 +990,7 @@ def build_training_tab_with_logic(
                         grad_acc_tf.value = "4"
                         max_steps_tf.value = "200"
                 else:
-                    # Local Docker presets
+                    # Local presets
                     if mode == "fastest":
                         # Quick local test: short run, small-ish batch for a fast sanity check
                         lr_tf.value = "2e-4"
@@ -1555,11 +1554,11 @@ def build_training_tab_with_logic(
         width=420,
         tooltip=(
             "Choose where training runs. 'Runpod - Pod' uses the Runpod workflow; "
-            "'Local' runs via Docker on this machine."
+            "'Local' runs directly on this machine (no Docker)."
         ),
     )
 
-    train_target_offline_reason = offline_reason_text("Offline Mode: cloud training is disabled (Local Docker only).")
+    train_target_offline_reason = offline_reason_text("Offline Mode: cloud training is disabled (Local only).")
 
     # Configuration mode controls (basic UI; wiring migrated later)
     config_mode_dd = ft.Dropdown(
@@ -2325,29 +2324,7 @@ def build_training_tab_with_logic(
         visible=False,
     )
 
-    # Docker image pull controls (Local section)
-    # Use the same default image as the Runpod template to avoid tag mismatches.
-    DEFAULT_DOCKER_IMAGE = "docker.io/sbussiso/unsloth-trainer:latest"
-    docker_image_tf = ft.TextField(
-        label="Docker image",
-        value=DEFAULT_DOCKER_IMAGE,
-        width=600,
-        dense=True,
-        hint_text="e.g., repo/image:tag",
-    )
-    docker_status = ft.Text("")
-    docker_log_timeline = ft.ListView(expand=True, spacing=4, auto_scroll=True)
-    docker_log_placeholder = ft.Text(
-        "Docker pull logs will appear here after starting a pull.",
-        color=WITH_OPACITY(0.5, BORDER_BASE),
-    )
-    docker_pull_ring = ft.ProgressRing(width=18, height=18, value=None, visible=False)
-    docker_pull_btn = ft.ElevatedButton(
-        "Pull image",
-        icon=getattr(ICONS, "CLOUD_DOWNLOAD", getattr(ICONS, "DOWNLOAD", ICONS.CLOUD)),
-    )
-
-    # ---------- LOCAL DOCKER: Run Training ----------
+    # ---------- LOCAL: Run Training ----------
     # Training run selector (managed storage)
     local_training_run_dd = ft.Dropdown(
         label="Training run",
@@ -2461,34 +2438,18 @@ def build_training_tab_with_logic(
     except Exception:
         pass
 
-    # Hidden field for backward compatibility (stores managed path)
-    local_host_dir_tf = ft.TextField(
-        label="Host data directory (mounted to /data)",
-        width=600,
-        dense=True,
-        visible=False,  # Hidden - managed internally
-    )
-    local_container_name_tf = ft.TextField(
-        label="Container name",
-        value=f"ds-local-train-{int(time.time())}",
-        width=280,
-        dense=True,
-    )
     local_use_gpu_cb = ft.Checkbox(
-        label="Use NVIDIA GPU (adds --gpus all)",
+        label="Use NVIDIA GPU",
         value=False,
     )
     local_pass_hf_token_cb = ft.Checkbox(
-        label="Pass HF token to container (HF_TOKEN / HUGGINGFACE_HUB_TOKEN)",
+        label="Pass HF token to trainer (HF_TOKEN / HUGGINGFACE_HUB_TOKEN)",
     )
     local_train_status = ft.Text("")
     local_save_config_btn = ft.OutlinedButton(
         "Save current setup",
         icon=getattr(ICONS, "SAVE", ICONS.CHECK),
-        tooltip=(
-            "Save the current training setup (dataset, hyperparameters, target, and local Docker settings) "
-            "as a reusable config."
-        ),
+        tooltip=("Save the current training setup (dataset, hyperparameters, target, and local settings) as a reusable config."),
         on_click=lambda e: page.run_task(on_save_current_config),
     )
     local_train_progress = ft.ProgressBar(value=0.0, width=280)
@@ -2985,14 +2946,12 @@ def build_training_tab_with_logic(
             proxy_enable_cb=proxy_enable_cb,
             use_env_cb=use_env_cb,
             proxy_url_tf=proxy_url_tf,
-            docker_image_tf=docker_image_tf,
             train_source=train_source,
             train_hf_repo=train_hf_repo,
             train_hf_split=train_hf_split,
             train_json_path=train_json_path,
             train_db_session_dd=train_db_session_dd,
             local_training_run_dd=local_training_run_dd,
-            local_container_name_tf=local_container_name_tf,
             local_train_status=local_train_status,
             local_train_progress=local_train_progress,
             local_train_prog_label=local_train_prog_label,
@@ -3003,8 +2962,6 @@ def build_training_tab_with_logic(
             local_start_btn=local_start_btn,
             local_stop_btn=local_stop_btn,
             build_hp_fn=_build_hp,
-            DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
-            rp_pod_module=rp_pod,
             ICONS_module=ICONS,
             on_training_complete=_refresh_training_runs,
         )
@@ -3333,54 +3290,7 @@ def build_training_tab_with_logic(
     local_infer_btn.on_click = lambda e: page.run_task(on_local_infer_generate)
     local_infer_clear_btn.on_click = on_local_infer_clear
 
-    async def on_docker_pull(e=None):
-        logger.info("Docker pull button clicked")
-        try:
-            logger.info(
-                "Docker pull UI before update: disabled=%s text=%r ring_visible=%s",
-                getattr(docker_pull_btn, "disabled", None),
-                getattr(docker_pull_btn, "text", None),
-                getattr(docker_pull_ring, "visible", None),
-            )
-            docker_pull_btn.disabled = True
-            docker_pull_btn.text = "Pulling..."
-            docker_pull_ring.visible = True
-            await safe_update(page)
-            logger.info(
-                "Docker pull UI after set busy: disabled=%s text=%r ring_visible=%s",
-                docker_pull_btn.disabled,
-                getattr(docker_pull_btn, "text", None),
-                docker_pull_ring.visible,
-            )
-        except Exception:
-            logger.exception("Failed to update Docker pull UI state before pull")
-        try:
-            logger.info("Starting on_docker_pull_helper (Docker CLI pull)")
-            await on_docker_pull_helper(
-                page=page,
-                ICONS=ICONS,
-                COLORS=COLORS,
-                docker_image_tf=docker_image_tf,
-                docker_status=docker_status,
-                DEFAULT_DOCKER_IMAGE=DEFAULT_DOCKER_IMAGE,
-                docker_log_timeline=docker_log_timeline,
-                docker_log_placeholder=docker_log_placeholder,
-            )
-            logger.info("on_docker_pull_helper completed")
-        except Exception:
-            logger.exception("on_docker_pull_helper raised an error")
-        finally:
-            try:
-                docker_pull_btn.disabled = False
-                docker_pull_btn.text = "Pull image"
-                docker_pull_ring.visible = False
-                await safe_update(page)
-            except Exception:
-                logger.exception("Failed to reset Docker pull UI state after pull")
-
-    docker_pull_btn.on_click = lambda e: page.run_task(on_docker_pull)
-
-    # Local specs + Docker pull / local training container (delegated layout)
+    # Local specs + local training container (delegated layout)
     local_specs_container = build_local_specs_container(
         section_title=section_title,
         ICONS=ICONS,
@@ -3397,19 +3307,12 @@ def build_training_tab_with_logic(
         local_gpus_txt=local_gpus_txt,
         local_flags_box=local_flags_box,
         local_capability_txt=local_capability_txt,
-        docker_image_tf=docker_image_tf,
-        docker_pull_btn=docker_pull_btn,
-        docker_pull_ring=docker_pull_ring,
-        docker_status=docker_status,
-        docker_log_timeline=docker_log_timeline,
-        docker_log_placeholder=docker_log_placeholder,
         refresh_specs_click_cb=lambda e: page.run_task(on_refresh_local_specs),
         local_training_run_dd=local_training_run_dd,
         local_training_run_refresh_btn=local_training_run_refresh_btn,
         local_new_run_name_tf=local_new_run_name_tf,
         local_create_run_btn=local_create_run_btn,
         local_run_storage_info=local_run_storage_info,
-        local_container_name_tf=local_container_name_tf,
         local_use_gpu_cb=local_use_gpu_cb,
         local_pass_hf_token_cb=local_pass_hf_token_cb,
         local_train_progress=local_train_progress,
@@ -3453,18 +3356,6 @@ def build_training_tab_with_logic(
 
     def _collect_local_ui_state() -> dict:
         data: dict = {}
-        try:
-            data["host_dir"] = local_host_dir_tf.value or ""
-        except Exception:
-            data["host_dir"] = ""
-        try:
-            data["container_name"] = local_container_name_tf.value or ""
-        except Exception:
-            data["container_name"] = ""
-        try:
-            data["docker_image"] = docker_image_tf.value or ""
-        except Exception:
-            data["docker_image"] = ""
         try:
             data["use_gpu"] = bool(getattr(local_use_gpu_cb, "value", False))
         except Exception:
@@ -3719,21 +3610,9 @@ def build_training_tab_with_logic(
             rp_public_cb.value = bool(iu.get("public", rp_public_cb.value))
         except Exception:
             pass
-        # local UI (local Docker training settings)
+        # local UI (local training settings)
         try:
             lu = conf.get("local_ui") or {}
-            try:
-                local_host_dir_tf.value = lu.get("host_dir", local_host_dir_tf.value)
-            except Exception:
-                pass
-            try:
-                local_container_name_tf.value = lu.get("container_name", local_container_name_tf.value)
-            except Exception:
-                pass
-            try:
-                docker_image_tf.value = lu.get("docker_image", docker_image_tf.value)
-            except Exception:
-                pass
             try:
                 local_use_gpu_cb.value = bool(lu.get("use_gpu", getattr(local_use_gpu_cb, "value", False)))
             except Exception:
@@ -4464,15 +4343,15 @@ def build_training_tab_with_logic(
                     ds_tp_group_container.content = ft.Column(
                         [
                             section_title(
-                                "Local Training: Dataset & Params",
+                                "Local: Dataset & Params",
                                 getattr(
                                     ICONS,
                                     "LIST_ALT",
                                     getattr(ICONS, "DESCRIPTION", ICONS.SETTINGS),
                                 ),
-                                "Choose dataset and set training parameters for local runs.",
+                                "Choose dataset and configure training parameters for local runs.",
                                 on_help_click=_mk_help_handler(
-                                    "Choose dataset source and configure training parameters for local Docker runs.",
+                                    "Choose dataset source and configure training parameters for local runs.",
                                 ),
                             ),
                             ft.Container(
@@ -4564,7 +4443,7 @@ def build_training_tab_with_logic(
     offline_banner = build_offline_banner(
         [
             "Hugging Face datasets and Hub push are disabled.",
-            "Runpod cloud training is disabled (Local Docker only).",
+            "Runpod cloud training is disabled (Local only).",
         ]
     )
     train_tab = build_training_tab(
@@ -4675,7 +4554,7 @@ def build_training_tab_with_logic(
             except Exception:
                 pass
 
-        # Disable passing HF token into local Docker container when offline
+        # Disable passing HF token into the local training process when offline
         try:
             local_pass_hf_token_cb.disabled = is_offline
             if is_offline:

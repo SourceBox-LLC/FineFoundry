@@ -1,6 +1,6 @@
-"""Local specs and Local Docker training section builder for FineFoundry.
+"""Local specs and Local training section builder for FineFoundry.
 
-This module composes the Local Training: System Specs + Docker sections using
+This module composes the Local Training: System Specs + Training section using
 controls created in main.py. No logic changes; only layout composition is centralized here.
 """
 
@@ -27,21 +27,13 @@ def build_local_specs_container(
     local_gpus_txt: ft.Text,
     local_flags_box: ft.Column,
     local_capability_txt: ft.Text,
-    # Docker pull controls
-    docker_image_tf: ft.TextField,
-    docker_pull_btn: ft.ElevatedButton,
-    docker_pull_ring: ft.ProgressRing,
-    docker_status: ft.Text,
-    docker_log_timeline: ft.ListView,
-    docker_log_placeholder: ft.Text,
     refresh_specs_click_cb,
-    # Local docker run controls - managed training runs
+    # Local training controls - native training subprocess
     local_training_run_dd: ft.Dropdown,
     local_training_run_refresh_btn: ft.IconButton,
     local_new_run_name_tf: ft.TextField,
     local_create_run_btn: ft.OutlinedButton,
     local_run_storage_info: ft.Text,
-    local_container_name_tf: ft.TextField,
     local_use_gpu_cb: ft.Checkbox,
     local_pass_hf_token_cb: ft.Checkbox,
     local_train_progress: ft.ProgressBar,
@@ -91,27 +83,6 @@ def build_local_specs_container(
                                         ft.Divider(),
                                         local_flags_box,
                                         local_capability_txt,
-                                        ft.Divider(),
-                                        section_title(
-                                            "Docker: Pull Image",
-                                            getattr(ICONS, "CLOUD_DOWNLOAD", getattr(ICONS, "DOWNLOAD", ICONS.CLOUD)),
-                                            "Pull a Docker image locally for training tasks.",
-                                            on_help_click=mk_help_handler(
-                                                "Use Docker Desktop. This pulls the image to your machine."
-                                            ),
-                                        ),
-                                        ft.Row(
-                                            [docker_image_tf, docker_pull_btn, docker_pull_ring], wrap=True, spacing=10
-                                        ),
-                                        docker_status,
-                                        ft.Container(
-                                            ft.Stack([docker_log_timeline, docker_log_placeholder], expand=True),
-                                            height=180,
-                                            width=1000,
-                                            border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
-                                            border_radius=8,
-                                            padding=10,
-                                        ),
                                         ft.Row(
                                             [
                                                 ft.OutlinedButton(
@@ -122,11 +93,11 @@ def build_local_specs_container(
                                         ),
                                         ft.Divider(),
                                         section_title(
-                                            "Local Docker: Run Training",
+                                            "Local: Run Training",
                                             getattr(ICONS, "PLAY_CIRCLE", getattr(ICONS, "TERMINAL", ICONS.PLAY_ARROW)),
-                                            "Builds and runs a local Docker container mirroring the Runpod training command.",
+                                            "Runs training directly on this machine (no Docker).",
                                             on_help_click=mk_help_handler(
-                                                "Runs the training script inside the selected Docker image with your dataset mounted at /data. Uses the same command builder as Runpod."
+                                                "Runs the integrated Unsloth trainer via a local Python subprocess."
                                             ),
                                         ),
                                         ft.Row(
@@ -139,7 +110,7 @@ def build_local_specs_container(
                                         ),
                                         local_run_storage_info,
                                         ft.Row(
-                                            [local_container_name_tf, local_use_gpu_cb, local_pass_hf_token_cb],
+                                            [local_use_gpu_cb, local_pass_hf_token_cb],
                                             wrap=True,
                                             spacing=10,
                                         ),

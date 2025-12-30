@@ -53,7 +53,6 @@ Unit tests cover focused, deterministic behavior without external services:
 - `test_local_inference.py` – local inference prompt shaping, chat templates, and repetition penalty wiring.
 - `test_scrape_orchestration.py` – Scrape-tab orchestration for 4chan/Reddit, including DB-save flows.
 - `test_merge.py` – dataset merge orchestration (DB/HF/JSON sources, interleave/concatenate) and DB writes.
-- `test_local_docker.py` – Docker image pull UX (daemon checks, image inspection, error hints).
 - `test_build.py` – Publish split validation, DB-source pipeline, and push preconditions.
 - `test_training_config.py` – database-backed training config helpers (list/save/delete/rename/last-used/validate).
 - `test_training_controller_local_infer.py` – UI-level wiring for Quick Local Inference (prompts, sliders, chat export) using mocks.

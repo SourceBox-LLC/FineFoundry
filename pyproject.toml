@@ -46,12 +46,13 @@ helpers = "src/helpers"
 ui = "src/ui"
 scrapers = "src/scrapers"
 runpod = "src/runpod"
+trainers = "src/trainers"
 main = "src/main.py"
 save_dataset = "src/save_dataset.py"
 
 [tool.hatch.build.targets.wheel]
 # Include exactly these packages/modules in the wheel
-only-include = ["helpers", "ui", "scrapers", "runpod", "main", "save_dataset"]
+only-include = ["helpers", "ui", "scrapers", "runpod", "trainers", "main", "save_dataset"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -78,7 +79,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
   "helpers.scrape",
-  "helpers.local_docker",
   "helpers.training_pod",
   "helpers.merge",
   "helpers.build",

@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+import getpass
 import json
 import os
 import shutil
+import stat
 import subprocess
-from typing import List, Callable
+import sys
+import time
+from pathlib import Path
+from typing import Callable, List
+
+try:
+    import grp  # type: ignore
+except Exception:  # pragma: no cover
+    grp = None
+
+try:
+    import pwd  # type: ignore
+except Exception:  # pragma: no cover
+    pwd = None
 
 import flet as ft
 
@@ -291,12 +306,17 @@ def build_hp_from_controls(
         "packing",
         "report_to",
         "optim",
+        "lr_scheduler",
+        "warmup_steps",
+        "weight_decay",
         "eval_every_steps",
         "save_every_steps",
         "save_total_limit",
         "use_lora",
         "lora_r",
         "lora_alpha",
+        "lora_dropout",
+        "use_rslora",
         "output_dir",
         "resume_from",
         "auto_resume",
@@ -305,33 +325,6 @@ def build_hp_from_controls(
     }
     hp = {k: v for k, v in hp.items() if k in _allowed}
     return hp
-
-
-async def _docker_daemon_ready(page: ft.Page, status_text: ft.Text) -> bool:
-    try:
-        if not shutil.which("docker"):
-            status_text.value = "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
-            status_text.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            await safe_update(page)
-            return False
-        info_res = await asyncio.to_thread(
-            lambda: subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=4)
-        )
-        if info_res.returncode != 0:
-            msg = (info_res.stderr or info_res.stdout or "").strip() or "Docker daemon not responding"
-            status_text.value = "Docker is not running. Start Docker Desktop, then retry.\n" + msg
-            status_text.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            await safe_update(page)
-            return False
-        return True
-    except Exception as ex:
-        status_text.value = f"Docker check failed: {ex}"
-        try:
-            status_text.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-        except Exception:
-            pass
-        await safe_update(page)
-        return False
 
 
 async def _append_local_log_line(
@@ -414,14 +407,12 @@ async def run_local_training(
     proxy_enable_cb: ft.Checkbox,
     use_env_cb: ft.Checkbox,
     proxy_url_tf: ft.TextField,
-    docker_image_tf: ft.TextField,
     train_source: ft.Dropdown,
     train_hf_repo: ft.TextField,
     train_hf_split: ft.Dropdown,
     train_json_path: ft.TextField,
     train_db_session_dd: ft.Dropdown,
     local_training_run_dd: ft.Dropdown,
-    local_container_name_tf: ft.TextField,
     local_train_status: ft.Text,
     local_train_progress: ft.ProgressBar,
     local_train_prog_label: ft.Text,
@@ -432,20 +423,12 @@ async def run_local_training(
     local_start_btn: ft.Control,
     local_stop_btn: ft.Control,
     build_hp_fn: Callable[[], dict],
-    DEFAULT_DOCKER_IMAGE: str,
-    rp_pod_module,
     ICONS_module=None,
     on_training_complete: Callable[[], None] = None,
 ) -> None:
     # Prevent concurrent runs
     if train_state.get("local", {}).get("running"):
         return
-
-    # Basic validations
-    if not await _docker_daemon_ready(page, local_train_status):
-        return
-
-    img = (docker_image_tf.value or "").strip() or DEFAULT_DOCKER_IMAGE
 
     # Get managed storage path from training run
     training_run_id = (local_training_run_dd.value or "").strip()
@@ -454,12 +437,6 @@ async def run_local_training(
         local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
         await safe_update(page)
         return
-
-    try:
-        train_state.setdefault("local", {})
-        train_state["local"]["training_run_id"] = training_run_id
-    except Exception:
-        pass
 
     try:
         from db.training_runs import get_run_storage_paths, update_training_run
@@ -481,19 +458,6 @@ async def run_local_training(
         local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
         await safe_update(page)
         return
-
-    # Ensure image exists (non-blocking pull hint if missing)
-    try:
-        insp = await asyncio.to_thread(
-            lambda: subprocess.run(["docker", "image", "inspect", img], capture_output=True, text=True)
-        )
-        if insp.returncode != 0:
-            local_train_status.value = f"Image not found locally: {img}. Pull it first in the section above."
-            local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-            await safe_update(page)
-            return
-    except Exception:
-        pass
 
     # Build HP and dataset flags similar to pod flow
     hp = build_hp_fn() or {}
@@ -550,8 +514,7 @@ async def run_local_training(
             dest_path = os.path.join(host_dir, json_filename)
             with open(dest_path, "w", encoding="utf-8") as f:
                 json.dump(chatml_data, f, ensure_ascii=False, indent=2)
-            # Update hp to use the container path
-            hp["json_path"] = f"/data/{json_filename}"
+            hp["json_path"] = dest_path
             del hp["db_session_id"]  # Remove db_session_id, trainer uses json_path
             await _append_local_log_line(
                 page,
@@ -575,14 +538,212 @@ async def run_local_training(
             # Copy JSON file to the mounted host directory
             json_filename = os.path.basename(host_json_path)
             dest_path = os.path.join(host_dir, json_filename)
-            shutil.copy2(host_json_path, dest_path)
-            # Update hp to use the container path (/data is the mount point)
-            hp["json_path"] = f"/data/{json_filename}"
+            try:
+                if os.path.abspath(host_json_path) != os.path.abspath(dest_path):
+                    shutil.copy2(host_json_path, dest_path)
+            except Exception:
+                pass
+            hp["json_path"] = dest_path
     except Exception as ex:
         local_train_status.value = f"Failed to copy JSON file: {ex}"
         local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
         await safe_update(page)
         return
+
+    # Ensure output_dir is mapped to managed storage root.
+    # Docker flow used /data/...; native flow uses OUTPUT_ROOT + relative output_dir.
+    abs_out_dir = ""
+    try:
+        out_dir = (hp.get("output_dir") or "").strip()
+        if out_dir.startswith("/data"):
+            rel = out_dir[len("/data") :].lstrip("/")
+            hp["output_dir"] = rel
+            abs_out_dir = os.path.join(host_dir, rel) if rel else host_dir
+        elif os.path.isabs(out_dir):
+            abs_out_dir = out_dir
+        else:
+            hp["output_dir"] = out_dir.lstrip("/")
+            abs_out_dir = os.path.join(host_dir, hp["output_dir"]) if hp["output_dir"] else host_dir
+    except Exception:
+        pass
+
+    # Preflight output directory writability. If a previous run created a root-owned or
+    # otherwise non-writable directory, fall back to a fresh directory under managed storage.
+    try:
+        if abs_out_dir:
+            os.makedirs(abs_out_dir, exist_ok=True)
+            _probe = os.path.join(abs_out_dir, ".ff_write_probe")
+            with open(_probe, "w", encoding="utf-8") as f:
+                f.write("ok")
+            try:
+                os.remove(_probe)
+            except Exception:
+                pass
+    except Exception as ex:
+        _repaired = False
+        try:
+            _user = ""
+            _uid = None
+            _gid = None
+            try:
+                _user = getpass.getuser()
+            except Exception:
+                _user = ""
+            try:
+                _uid = os.getuid()
+                _gid = os.getgid()
+            except Exception:
+                _uid = None
+                _gid = None
+
+            _stat_path = abs_out_dir or ""
+            _st = None
+            try:
+                if _stat_path:
+                    _st = os.stat(_stat_path)
+            except Exception:
+                _st = None
+
+            if _st is None and _stat_path:
+                try:
+                    _stat_path = os.path.dirname(_stat_path)
+                    if _stat_path:
+                        _st = os.stat(_stat_path)
+                except Exception:
+                    _st = None
+
+            _owner = "?"
+            _group = "?"
+            _mode = "?"
+            _type = "?"
+            try:
+                if _st is not None:
+                    if pwd is not None:
+                        _owner = pwd.getpwuid(_st.st_uid).pw_name
+                    if grp is not None:
+                        _group = grp.getgrgid(_st.st_gid).gr_name
+                    _mode = oct(stat.S_IMODE(_st.st_mode))
+                    _type = "dir" if stat.S_ISDIR(_st.st_mode) else "file"
+            except Exception:
+                pass
+
+            _diag = (
+                f"Output dir not writable. path={abs_out_dir} stat_path={_stat_path} "
+                f"type={_type} owner={_owner}:{_group} mode={_mode} "
+                f"current_user={_user} uid={_uid} gid={_gid} error={ex}"
+            )
+            try:
+                print(f"[local-train] {_diag}")
+            except Exception:
+                pass
+            try:
+                await _append_local_log_line(
+                    page,
+                    local_train_timeline,
+                    local_train_timeline_placeholder,
+                    local_log_buffer,
+                    local_save_logs_btn,
+                    _diag,
+                    color=WITH_OPACITY(0.8, COLORS.ORANGE),
+                    ICONS_module=ICONS_module,
+                )
+            except Exception:
+                pass
+
+            try:
+                if _st is not None and _uid is not None and _st.st_uid == _uid and _stat_path:
+                    _cur_mode = stat.S_IMODE(_st.st_mode)
+                    _new_mode = _cur_mode | stat.S_IWUSR
+                    if stat.S_ISDIR(_st.st_mode):
+                        _new_mode = _new_mode | stat.S_IXUSR
+                    if _new_mode != _cur_mode:
+                        os.chmod(_stat_path, _new_mode)
+                    if abs_out_dir:
+                        os.makedirs(abs_out_dir, exist_ok=True)
+                        _probe = os.path.join(abs_out_dir, ".ff_write_probe")
+                        with open(_probe, "w", encoding="utf-8") as f:
+                            f.write("ok")
+                        try:
+                            os.remove(_probe)
+                        except Exception:
+                            pass
+                        _repaired = True
+            except Exception:
+                _repaired = False
+
+            if _repaired:
+                try:
+                    await _append_local_log_line(
+                        page,
+                        local_train_timeline,
+                        local_train_timeline_placeholder,
+                        local_log_buffer,
+                        local_save_logs_btn,
+                        f"Repaired output_dir permissions; continuing with: {abs_out_dir}",
+                        color=WITH_OPACITY(
+                            0.8,
+                            getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", ACCENT_COLOR)),
+                        ),
+                        ICONS_module=ICONS_module,
+                    )
+                except Exception:
+                    pass
+
+            if not _repaired:
+                try:
+                    if _stat_path:
+                        _grp = _group if _group != "?" else "$(id -gn)"
+                        _usr = _user if _user else "$(id -un)"
+                        _suggest = (
+                            f"To fix permanently, run: sudo chown -R {_usr}:{_grp} '{_stat_path}' && "
+                            f"sudo chmod -R u+rwX '{_stat_path}'"
+                        )
+                        await _append_local_log_line(
+                            page,
+                            local_train_timeline,
+                            local_train_timeline_placeholder,
+                            local_log_buffer,
+                            local_save_logs_btn,
+                            _suggest,
+                            color=WITH_OPACITY(0.8, COLORS.ORANGE),
+                            ICONS_module=ICONS_module,
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        if not _repaired:
+            try:
+                base_rel = (hp.get("output_dir") or "outputs/local_run").strip()
+                if base_rel.startswith("/data"):
+                    base_rel = base_rel[len("/data") :].lstrip("/")
+                if os.path.isabs(base_rel):
+                    base_rel = "outputs/local_run"
+                base_rel = base_rel.strip().strip("/") or "outputs/local_run"
+                fallback_rel = f"{base_rel}_writable_{int(time.time())}"
+                hp["output_dir"] = fallback_rel
+                abs_out_dir = os.path.join(host_dir, fallback_rel)
+                os.makedirs(abs_out_dir, exist_ok=True)
+                try:
+                    print(f"[local-train] output_dir not writable, falling back: {abs_out_dir} ({ex})")
+                except Exception:
+                    pass
+                try:
+                    await _append_local_log_line(
+                        page,
+                        local_train_timeline,
+                        local_train_timeline_placeholder,
+                        local_log_buffer,
+                        local_save_logs_btn,
+                        f"Output dir not writable; using: {abs_out_dir}",
+                        color=WITH_OPACITY(0.8, COLORS.ORANGE),
+                        ICONS_module=ICONS_module,
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
     # Show the hyperparameters to confirm what will be passed as --flags
     try:
@@ -598,33 +759,9 @@ async def run_local_training(
     except Exception:
         pass
 
-    # Build docker run command
-    cont_name = (local_container_name_tf.value or "ds-local-train-").strip()
-    if cont_name.endswith("-"):
-        # Avoid trailing hyphen-only names
-        cont_name = f"{cont_name}{str(abs(hash(img)))[:6]}"
-    run_args: List[str] = [
-        "docker",
-        "run",
-        "--rm",
-        "--name",
-        cont_name,
-        "-v",
-        f"{host_dir}:/data",
-    ]
-    try:
-        is_beginner = (skill_level.value or "Beginner").lower() == "beginner"
-        if is_beginner:
-            if bool(getattr(local_use_gpu_cb, "value", False)):
-                run_args += ["--gpus", "all"]
-        else:
-            sel = expert_gpu_dd.value or "AUTO"
-            if str(sel).upper() == "AUTO":
-                run_args += ["--gpus", "all"]
-            else:
-                run_args += ["--gpus", f"device={sel}"]
-    except Exception:
-        pass
+    # Prepare environment for subprocess
+    env = dict(os.environ)
+    env["OUTPUT_ROOT"] = host_dir
 
     try:
         # Get HF token: if field is read-only (masked), use env var; otherwise use field value
@@ -641,13 +778,8 @@ async def run_local_training(
         _hf_tok = _hf_tok.strip()
         
         if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
-            # Match the environment variable names used by huggingface_hub and the Runpod flow
-            run_args += [
-                "-e",
-                f"HF_TOKEN={_hf_tok}",
-                "-e",
-                f"HUGGINGFACE_HUB_TOKEN={_hf_tok}",
-            ]
+            env["HF_TOKEN"] = _hf_tok
+            env["HUGGINGFACE_HUB_TOKEN"] = _hf_tok
     except Exception:
         pass
 
@@ -658,25 +790,41 @@ async def run_local_training(
             else:
                 _purl = (proxy_url_tf.value or "").strip()
                 if _purl:
-                    run_args += ["-e", f"http_proxy={_purl}", "-e", f"https_proxy={_purl}"]
+                    env["http_proxy"] = _purl
+                    env["https_proxy"] = _purl
     except Exception:
         pass
 
-    run_args += [img]
-
-    # Command inside container mirrors Runpod builder
+    # GPU selection / disabling
     try:
-        inner_cmd = rp_pod_module.build_cmd(hp)
-    except Exception as ex:
-        local_train_status.value = f"Failed building training command: {ex}"
-        local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
-        await safe_update(page)
-        return
-    run_args += inner_cmd
+        is_beginner = (skill_level.value or "Beginner").lower() == "beginner"
+        if not bool(getattr(local_use_gpu_cb, "value", False)):
+            env["CUDA_VISIBLE_DEVICES"] = ""
+        elif not is_beginner:
+            sel = (expert_gpu_dd.value or "AUTO").strip()
+            if sel and sel.upper() != "AUTO":
+                env["CUDA_VISIBLE_DEVICES"] = str(sel)
+    except Exception:
+        pass
+
+    # Build native training command: python -m trainers.unsloth_trainer --flags
+    run_args: List[str] = [sys.executable, "-m", "trainers.unsloth_trainer"]
+    try:
+        for k, v in (hp or {}).items():
+            flag = "--" + str(k)
+            if isinstance(v, bool):
+                if v:
+                    run_args.append(flag)
+            elif v is None:
+                continue
+            else:
+                run_args.extend([flag, str(v)])
+    except Exception:
+        pass
 
     # Launch process
     try:
-        local_train_status.value = "Starting local Docker container…"
+        local_train_status.value = "Starting local training…"
         local_train_status.color = None
         local_train_progress.value = 0.1
         local_train_prog_label.value = "Starting…"
@@ -708,15 +856,38 @@ async def run_local_training(
         pass
 
     try:
+        popen_cwd = None
+        try:
+            # Ensure src/ is on PYTHONPATH so `-m trainers.unsloth_trainer` resolves in src-layout checkouts.
+            repo_root = Path(__file__).resolve().parents[2]
+            src_dir = repo_root / "src"
+            if src_dir.is_dir():
+                existing_pp = (env.get("PYTHONPATH") or "").strip()
+                env["PYTHONPATH"] = str(src_dir) + (os.pathsep + existing_pp if existing_pp else "")
+                popen_cwd = str(repo_root)
+        except Exception:
+            popen_cwd = None
+
+        try:
+            print(f"[local-train] cwd={popen_cwd or os.getcwd()}")
+            print(f"[local-train] cmd={' '.join(run_args)}")
+            _pp = (env.get("PYTHONPATH") or "").strip()
+            if _pp:
+                print(f"[local-train] PYTHONPATH={_pp}")
+        except Exception:
+            pass
+
         proc = subprocess.Popen(
             run_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env,
+            cwd=popen_cwd,
         )
         train_state.setdefault("local", {})
-        train_state["local"] = {"running": True, "proc": proc, "container": cont_name}
+        train_state["local"] = {"running": True, "proc": proc}
         try:
             if hasattr(local_start_btn, "disabled"):
                 local_start_btn.disabled = True
@@ -735,6 +906,31 @@ async def run_local_training(
             color=WITH_OPACITY(0.8, COLORS.BLUE),
             ICONS_module=None,
         )
+        try:
+            await _append_local_log_line(
+                page,
+                local_train_timeline,
+                local_train_timeline_placeholder,
+                local_log_buffer,
+                local_save_logs_btn,
+                "CWD: " + str(popen_cwd or os.getcwd()),
+                color=WITH_OPACITY(0.65, COLORS.BLUE),
+                ICONS_module=None,
+            )
+            _pp2 = (env.get("PYTHONPATH") or "").strip()
+            if _pp2:
+                await _append_local_log_line(
+                    page,
+                    local_train_timeline,
+                    local_train_timeline_placeholder,
+                    local_log_buffer,
+                    local_save_logs_btn,
+                    "PYTHONPATH: " + _pp2,
+                    color=WITH_OPACITY(0.65, COLORS.BLUE),
+                    ICONS_module=None,
+                )
+        except Exception:
+            pass
         await _stream_local_logs(
             page,
             proc,
@@ -746,18 +942,10 @@ async def run_local_training(
         )
         rc = proc.wait()
         if rc == 0:
-            local_train_status.value = "Training finished (container exited)."
+            local_train_status.value = "Training finished."
             local_train_status.color = getattr(COLORS, "GREEN_400", getattr(COLORS, "GREEN", None))
             try:
-                out_dir = (hp.get("output_dir") or "").strip()
                 base_model_name = (hp.get("base_model") or "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit").strip()
-                abs_out_dir = ""
-                if out_dir:
-                    if out_dir.startswith("/data"):
-                        rel = out_dir[len("/data") :].lstrip("/")
-                        abs_out_dir = os.path.join(host_dir, rel)
-                    else:
-                        abs_out_dir = os.path.join(host_dir, out_dir.lstrip("/"))
                 adapter_path = ""
                 if abs_out_dir:
                     try:
@@ -823,8 +1011,8 @@ async def run_local_training(
                 pass
         elif rc == 137:
             local_train_status.value = (
-                "Container exited with code 137. Likely out-of-memory (OOM) or killed (SIGKILL).\n"
-                "This happens when the container runs out of memory or is manually stopped."
+                "Training exited with code 137. Likely out-of-memory (OOM) or killed (SIGKILL).\n"
+                "This happens when the training process runs out of memory or is manually stopped."
             )
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
             try:
@@ -855,7 +1043,7 @@ async def run_local_training(
             except Exception:
                 pass
         else:
-            local_train_status.value = f"Container exited with code {rc}."
+            local_train_status.value = f"Training exited with code {rc}."
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
             # Update training run status to failed
             try:
@@ -872,7 +1060,7 @@ async def run_local_training(
             except Exception:
                 pass
     except Exception as ex:
-        local_train_status.value = f"Failed to start container: {ex}"
+        local_train_status.value = f"Failed to start training: {ex}"
         try:
             local_train_status.color = getattr(COLORS, "RED_400", getattr(COLORS, "RED", None))
         except Exception:
@@ -922,18 +1110,9 @@ async def stop_local_training(
     local_train_prog_label: ft.Text,
 ) -> None:
     info = train_state.get("local") or {}
-    cont = (info.get("container") or "").strip()
     proc = info.get("proc")
-    if not cont and not proc:
+    if not proc:
         return
-    # Try docker stop by name first
-    try:
-        if cont:
-            await asyncio.to_thread(
-                lambda: subprocess.run(["docker", "stop", cont], capture_output=True, text=True, timeout=10)
-            )
-    except Exception:
-        pass
     # Ensure local process terminates
     try:
         if proc and (proc.poll() is None):

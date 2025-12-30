@@ -172,20 +172,20 @@ Build / Publish in the GUI is database-first:
 - Merged data is saved to the database as a new session.
 
 ## Training
-- Training target: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
+- Training target: choose **Runpod - Pod** (remote GPU pod) or **local** (runs directly on this machine).
 - Hyperparameters: base model, epochs, learning rate, batch size, grad accumulation, max steps, packing, resume.
-- Outputs & checkpoints: saved under **Output dir**. For containers, use paths under `/data/...` so they map back into your mounted host folder.
+- Outputs & checkpoints: saved under **Output dir** inside the selected Training run's managed storage.
 - Hugging Face auth: save a token in **Settings → Hugging Face** or export `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN`. Required for pushing models or using private datasets.
 
 Offline Mode notes:
-- Runpod training is disabled (local Docker only).
+- Runpod training is disabled (local only).
 - Hub push is disabled.
 
-### Local Training (Docker)
-- Requires Docker Desktop / `docker` CLI available on your machine.
-- Select or create a **Training run** for managed storage; the run's directory is mounted at `/data` inside the container.
-- Configure image, container name, GPU usage, and whether to **Pass HF token to container** (for private datasets / `--push`).
-- Click **Start Local Training** to run the same `train.py` command used for Runpod, but inside a local container.
+### Local Training
+- Runs the integrated Unsloth trainer directly via a local Python subprocess.
+- Select or create a **Training run** for managed storage.
+- Configure GPU usage and whether to **Pass HF token to trainer** (for private datasets).
+- Click **Start Local Training** to run training on your machine.
 - After a successful local run, a **Quick Local Inference** panel appears so you can test the trained adapter immediately.
 
 ### Quick Local Inference
@@ -205,7 +205,7 @@ Offline Mode notes:
 - Use **Save current setup** (in the Configuration section or near the training controls) to snapshot:
   - Dataset + hyperparameters
   - Training target (Runpod or local)
-  - Runpod infrastructure or local Docker settings
+  - Runpod infrastructure or local settings
 - Saved configs are stored in the database. The last used config auto‑loads on startup so you can continue where you left off.
 
 ## Dataset Analysis
@@ -1598,7 +1598,6 @@ Offline Mode is a global switch:
 
             training_tests = [
                 "tests/unit/test_training_config.py",
-                "tests/unit/test_local_docker.py",
             ]
             if (
                 await _run_step(
