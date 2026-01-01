@@ -7,8 +7,8 @@ This is where you chat with your trained AI model to see how well it learned! Th
 ## How It Works
 
 1. **Select a trained model** — Pick from your completed training runs
-2. **Type a message** — Ask it anything!
-3. **See the response** — Watch how your AI answers
+1. **Type a message** — Ask it anything!
+1. **See the response** — Watch how your AI answers
 
 It's like texting with your trained AI to see if it learned what you wanted.
 
@@ -19,14 +19,14 @@ ______________________________________________________________________
 ### Step 1: Select Your Model
 
 1. Choose a **base model** from the first dropdown
-2. Choose a **training run** from the second dropdown (only completed runs appear)
-3. Wait for the green "ready" status
+1. Choose a **training run** from the second dropdown (only completed runs appear)
+1. Wait for the green "ready" status
 
 ### Step 2: Start Chatting
 
 1. Type your message in the text box
-2. Click **"Generate"**
-3. Read the AI's response below
+1. Click **"Generate"**
+1. Read the AI's response below
 
 Try different questions to see how well your model performs!
 
@@ -53,6 +53,7 @@ Want a more chat-like experience? Click **"Full Chat View"** to open a dedicated
 ![Full Chat View](../../img/new/ff_inference_chat_view.png)
 
 This shows your conversation as message bubbles, just like a messaging app. Great for:
+
 - Extended conversations
 - Demos to show others
 - Testing multi-turn dialogues
@@ -64,8 +65,8 @@ ______________________________________________________________________
 Not sure what to ask? FineFoundry can suggest prompts from your datasets:
 
 1. Select a dataset from the dropdown
-2. Choose from the suggested prompts
-3. The prompt auto-fills in your text box
+1. Choose from the suggested prompts
+1. The prompt auto-fills in your text box
 
 Click the refresh button to get different suggestions.
 
@@ -81,6 +82,7 @@ The AI model needs to load into memory the first time. After that, responses are
 
 **The responses don't seem right. What's wrong?**
 Your training data might need work. Try:
+
 - Training for more steps
 - Collecting more/better data
 - Checking data quality in the Analysis tab

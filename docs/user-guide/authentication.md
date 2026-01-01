@@ -9,8 +9,8 @@ You'll need a Hugging Face token with write permissions to push datasets or adap
 FineFoundry looks for your token in three places, in order:
 
 1. The HF Token field in the Settings tab
-2. The `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` environment variable
-3. A cached login from `huggingface-cli login`
+1. The `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` environment variable
+1. A cached login from `huggingface-cli login`
 
 Use whichever method fits your workflow—you don't need all three.
 

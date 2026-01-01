@@ -7,9 +7,9 @@ This is where you collect data to train your AI. You can grab conversations from
 ## How It Works
 
 1. **Pick a source** — Choose where to get your data from
-2. **Set your limits** — How much data do you want?
-3. **Click Start** — Watch as data flows in
-4. **Preview results** — See what you collected
+1. **Set your limits** — How much data do you want?
+1. **Click Start** — Watch as data flows in
+1. **Preview results** — See what you collected
 
 All your data is **automatically saved**, so you won't lose anything if you close the app.
 
@@ -18,37 +18,45 @@ ______________________________________________________________________
 ## Where Can I Get Data From?
 
 ### 4chan
+
 Collects conversations from 4chan boards. Good for casual, unfiltered dialogue.
 
 **How to use:**
+
 1. Click the board chips you want (like `b`, `pol`, `x`)
-2. Set how many threads and pairs to collect
-3. Click Start
+1. Set how many threads and pairs to collect
+1. Click Start
 
 ### Reddit
+
 Collects conversations from Reddit posts and comments. Great for topic-specific data.
 
 **How to use:**
+
 1. Paste a subreddit URL (like `https://www.reddit.com/r/LocalLLaMA/`)
-2. Or paste a specific post URL
-3. Set how many posts to fetch
-4. Click Start
+1. Or paste a specific post URL
+1. Set how many posts to fetch
+1. Click Start
 
 ### Stack Exchange
+
 Collects question-and-answer pairs from sites like Stack Overflow. Perfect for technical/factual training data.
 
 **How to use:**
+
 1. Pick a Stack Exchange site from the dropdown
-2. Set how many Q&A pairs you want
-3. Click Start
+1. Set how many Q&A pairs you want
+1. Click Start
 
 ### Synthetic (From Your Own Documents)
+
 Creates training data from your own files—PDFs, Word docs, or text files. An AI reads your documents and generates question-answer pairs from them.
 
 **How to use:**
+
 1. Browse for your files (or paste URLs)
-2. Choose what to generate: Q&A pairs, reasoning examples, or summaries
-3. Click Start
+1. Choose what to generate: Q&A pairs, reasoning examples, or summaries
+1. Click Start
 
 **Note:** The first time takes 30-60 seconds to load the AI model. After that, it's faster.
 
@@ -70,6 +78,7 @@ ______________________________________________________________________
 ## Examples
 
 ### Quick Test Run
+
 - Source: 4chan
 - Boards: Pick 2-3 boards
 - Max Threads: 50
@@ -80,6 +89,7 @@ ______________________________________________________________________
 This takes about 1-3 minutes and gives you enough data to test the whole workflow.
 
 ### Building a Reddit Dataset
+
 - Source: Reddit
 - URL: Paste your favorite subreddit
 - Max Posts: 100
@@ -88,6 +98,7 @@ This takes about 1-3 minutes and gives you enough data to test the whole workflo
 Good for creating topic-specific training data.
 
 ### Creating Data from Your Documents
+
 - Source: Synthetic
 - Add your PDF, Word doc, or text file
 - Generation Type: `qa` (question-answer pairs)

@@ -15,9 +15,9 @@ ______________________________________________________________________
 ## How to Merge (Step by Step)
 
 1. **Click "Add Dataset"** — Creates a row for each source you want to combine
-2. **Select your sources** — Pick from your collections or enter a Hugging Face dataset
-3. **Name your merged dataset** — Something descriptive like "combined_reddit_stackoverflow"
-4. **Click "Merge Datasets"**
+1. **Select your sources** — Pick from your collections or enter a Hugging Face dataset
+1. **Name your merged dataset** — Something descriptive like "combined_reddit_stackoverflow"
+1. **Click "Merge Datasets"**
 
 That's it! Your combined data appears as a new collection you can use for training.
 
@@ -28,12 +28,16 @@ ______________________________________________________________________
 You have two options for how to combine:
 
 ### Concatenate (Default)
+
 Stacks all data together in order.
+
 - Dataset A rows, then Dataset B rows, then Dataset C rows...
 - **Use when:** Order doesn't matter, you just want everything together
 
 ### Interleave
+
 Alternates between sources.
+
 - Row from A, row from B, row from A, row from B...
 - **Use when:** You want variety throughout (helps training see diverse examples)
 
@@ -42,31 +46,35 @@ ______________________________________________________________________
 ## Adding Different Sources
 
 ### From Your Collections
+
 1. Set source type to "Database Session"
-2. Pick a collection from the dropdown
-3. Columns are mapped automatically
+1. Pick a collection from the dropdown
+1. Columns are mapped automatically
 
 ### From Hugging Face
+
 1. Set source type to "Hugging Face"
-2. Enter the dataset name (like `databricks/dolly-15k`)
-3. Pick the split (usually "train")
-4. FineFoundry auto-detects the columns (or you can specify them manually)
+1. Enter the dataset name (like `databricks/dolly-15k`)
+1. Pick the split (usually "train")
+1. FineFoundry auto-detects the columns (or you can specify them manually)
 
 ______________________________________________________________________
 
 ## Examples
 
 ### Combining Two Collections
+
 1. Add Dataset → Select your Reddit collection
-2. Add Dataset → Select your Stack Exchange collection
-3. Name it "reddit_stackoverflow_mix"
-4. Click Merge
+1. Add Dataset → Select your Stack Exchange collection
+1. Name it "reddit_stackoverflow_mix"
+1. Click Merge
 
 ### Adding an External Dataset
+
 1. Add Dataset → Select your local collection
-2. Add Dataset → Set to Hugging Face, enter `OpenAssistant/oasst1`
-3. Name it "my_data_plus_oasst"
-4. Click Merge
+1. Add Dataset → Set to Hugging Face, enter `OpenAssistant/oasst1`
+1. Name it "my_data_plus_oasst"
+1. Click Merge
 
 ______________________________________________________________________
 

@@ -7,8 +7,8 @@ This is where you prepare your data for training and optionally share it with th
 ## What Can You Do Here?
 
 1. **Build a dataset** — Organize your collected data into proper training format
-2. **Share your dataset** — Upload to Hugging Face for others to use
-3. **Share your trained models** — Upload your trained AI adapters
+1. **Share your dataset** — Upload to Hugging Face for others to use
+1. **Share your trained models** — Upload your trained AI adapters
 
 ______________________________________________________________________
 
@@ -19,16 +19,17 @@ After collecting data in the Data Sources tab, you need to "build" it before tra
 ### How to Build
 
 1. **Select your data** — Pick a collection from the dropdown
-2. **Set the split** (optional):
+1. **Set the split** (optional):
    - Training data: What the AI learns from (usually 90-95%)
    - Validation data: Used to check progress (usually 5-10%)
-3. **Click "Build Dataset"**
+1. **Click "Build Dataset"**
 
 That's it! Your data is now ready for training.
 
 ### What Are Splits?
 
 Think of it like studying for a test:
+
 - **Training data** = The textbook you study from
 - **Validation data** = Practice quizzes to check if you're learning
 
@@ -41,16 +42,17 @@ ______________________________________________________________________
 Want others to use your dataset? You can upload it to Hugging Face.
 
 ### What You'll Need
+
 - A free [Hugging Face account](https://huggingface.co/join)
 - A "write" access token (create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens))
 
 ### How to Share
 
 1. **Build your dataset first** (see above)
-2. **Enable "Push to Hub"**
-3. **Enter your repo name** — Something like `yourusername/my-dataset`
-4. **Add your token** (or set it up in Settings first)
-5. **Click "Push + Upload README"**
+1. **Enable "Push to Hub"**
+1. **Enter your repo name** — Something like `yourusername/my-dataset`
+1. **Add your token** (or set it up in Settings first)
+1. **Click "Push + Upload README"**
 
 FineFoundry automatically creates a nice description page for your dataset!
 
@@ -63,8 +65,8 @@ After training an AI model, you can share the results on Hugging Face.
 ### How to Share a Model
 
 1. **Select a completed training run** from the dropdown
-2. **Enter your model repo name** — Like `yourusername/my-chatbot`
-3. **Click "Publish adapter"**
+1. **Enter your model repo name** — Like `yourusername/my-chatbot`
+1. **Click "Publish adapter"**
 
 **Note:** FineFoundry uploads "adapters" (small files that modify a base model) rather than full models. This is more efficient and is the standard practice.
 

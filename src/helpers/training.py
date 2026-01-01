@@ -9,17 +9,19 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, List
+from typing import Any, Callable, List, Optional
+
+grp: Any = None
+pwd: Any = None
+try:
+    import grp
+except Exception:  # pragma: no cover
+    pass
 
 try:
-    import grp  # type: ignore
+    import pwd
 except Exception:  # pragma: no cover
-    grp = None
-
-try:
-    import pwd  # type: ignore
-except Exception:  # pragma: no cover
-    pwd = None
+    pass
 
 import flet as ft
 
@@ -423,7 +425,7 @@ async def run_local_training(
     local_stop_btn: ft.Control,
     build_hp_fn: Callable[[], dict],
     ICONS_module=None,
-    on_training_complete: Callable[[], None] = None,
+    on_training_complete: Optional[Callable[[], None]] = None,
 ) -> None:
     # Prevent concurrent runs
     if train_state.get("local", {}).get("running"):
@@ -1094,7 +1096,7 @@ async def run_local_training(
         except Exception:
             pass
         # Always refresh UI after training ends (success or failure)
-        if on_training_complete:
+        if on_training_complete is not None:
             try:
                 on_training_complete()
             except Exception:
