@@ -49,6 +49,7 @@ from ui.tabs.build_controller import build_build_tab_with_logic
 from ui.tabs.merge_controller import build_merge_tab_with_logic
 from ui.tabs.analysis_controller import build_analysis_tab_with_logic
 from ui.tabs.inference_controller import build_inference_tab_with_logic
+from ui.tabs.evaluate_controller import build_evaluate_tab_with_logic
 from ui.tabs.training_controller import build_training_tab_with_logic
 from helpers.settings_ollama import (
     load_config as load_ollama_config_helper,
@@ -1833,6 +1834,14 @@ Offline Mode is a global switch:
         train_state=train_state,
     )
 
+    # ---------- EVALUATE TAB (systematic model evaluation with benchmarks) ----------
+    evaluate_tab = build_evaluate_tab_with_logic(
+        page,
+        section_title=section_title,
+        _mk_help_handler=_mk_help_handler,
+        train_state=train_state,
+    )
+
     # ---------- SETTINGS TAB (Proxy config + Offline Mode + Ollama + Database & Storage + System Check) ----------
     settings_tab = build_settings_tab(
         section_title=section_title,
@@ -1901,6 +1910,11 @@ Offline Mode is a global switch:
         icon=getattr(ICONS, "PSYCHOLOGY", getattr(ICONS, "CHAT", ICONS.PLAY_CIRCLE)),
         content=inference_tab,
     )
+    evaluate_tab_tab = ft.Tab(
+        text="Evaluate",
+        icon=getattr(ICONS, "ASSESSMENT", getattr(ICONS, "LEADERBOARD", ICONS.ANALYTICS)),
+        content=evaluate_tab,
+    )
     settings_tab_tab = ft.Tab(text="Settings", icon=ICONS.SETTINGS, content=settings_tab)
 
     tabs = ft.Tabs(
@@ -1910,6 +1924,7 @@ Offline Mode is a global switch:
             merge_datasets_tab,
             training_tab_tab,
             inference_tab_tab,
+            evaluate_tab_tab,
             build_publish_tab,
             settings_tab_tab,
         ],
