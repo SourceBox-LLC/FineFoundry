@@ -41,6 +41,8 @@ FineFoundry is a desktop app that lets you collect training data, teach AI model
   - <a href="#scrape-tab">Scrape tab</a>
   - <a href="#build--publish-tab">Publish tab</a>
   - <a href="#training-tab">Training tab</a>
+  - <a href="#inference-tab">Inference tab</a>
+  - <a href="#evaluate-tab">Evaluate tab</a>
   - <a href="#merge-datasets-tab">Merge Datasets tab</a>
   - <a href="#dataset-analysis-tab">Dataset Analysis tab</a>
   - <a href="#settings-tab">Settings tab</a>
@@ -72,6 +74,7 @@ FineFoundry is a desktop app that lets you collect training data, teach AI model
 - Dataset analysis with sentiment, duplicates, and quality metrics
 - Training via Runpod or locally with Unsloth‑based LoRA fine‑tuning
 - Local inference with Transformers + PEFT + bitsandbytes
+- Model evaluation with EleutherAI lm-evaluation-harness (14 benchmarks including MMLU, HellaSwag, TruthfulQA)
 
 </details>
 
@@ -145,7 +148,7 @@ python src/main.py
 flet run src/main.py
 ```
 
-The app opens a desktop window. Use the tabs: Scrape, Publish, Training, Inference, Merge Datasets, Dataset Analysis, and Settings.
+The app opens a desktop window. Use the tabs: Scrape, Publish, Training, Inference, Evaluate, Merge Datasets, Dataset Analysis, and Settings.
 
 ## 📚 Documentation
 
@@ -330,6 +333,40 @@ You can export data to JSON via the database helpers if needed for external tool
   - **Clear history** button to reset the shared conversation.
 - **Full Chat View** button opens a focused chat dialog where you can have multi‑turn conversations with the same adapter/base model pair.
   - The main Prompt & responses history and Full Chat View share a single conversation history, so you can switch back and forth without losing context.
+
+<a id="evaluate-tab"></a>
+
+### 📊 Evaluate tab
+
+![Evaluate tab](img/new/ff_evaluate.png)
+
+Systematically benchmark your fine-tuned models using [EleutherAI's lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) — the same framework that powers the HuggingFace Open LLM Leaderboard.
+
+- **Model Selection**: Pick a completed training run to evaluate. The base model and adapter path are auto-detected.
+- **Benchmark Selection**: Choose from 14 benchmarks across different categories:
+  - **Quick tests** (⚡): HellaSwag, TruthfulQA, ARC Easy, Winogrande, BoolQ — fast to run, great for quick validation
+  - **Full benchmarks**: ARC Challenge, MMLU (57 tasks), MMLU-PRO, GSM8K (math)
+  - **Advanced**: IFEval (instruction following), BBH (Big Bench Hard), GPQA (PhD-level), MuSR (multistep reasoning), HumanEval (code)
+- **Configuration**: Set max samples (limit dataset size for faster runs) and batch size.
+- **Comparison Mode**: Optionally evaluate the base model too and see the delta (Δ) showing improvement or regression.
+- **Visual Results**: 
+  - Metrics table showing accuracy percentages
+  - Visual bar charts for each metric (accuracy, normalized accuracy)
+  - Color-coded delta values (green = improvement, red = regression)
+
+#### Evaluate workflow
+
+1. Train a model in the **Training** tab
+2. Test it manually in the **Inference** tab ("does it feel right?")
+3. **Evaluate** it systematically ("here are the numbers proving it works")
+4. **Publish** to Hugging Face with confidence
+
+#### Tips
+
+- Start with **quick benchmarks** (⚡) to get fast feedback
+- Use **100 samples** for testing, increase for final evaluation
+- **Comparison mode** doubles eval time but shows if fine-tuning actually helped
+- GPU memory is automatically cleared between evaluations
 
 <a id="settings-tab"></a>
 

@@ -27,6 +27,7 @@ FineFoundry has several tabs, each with a specific job:
 | [Publish](user-guide/build-publish-tab.md) | Prepare your data and share it online |
 | [Training](user-guide/training-tab.md) | Teach an AI model using your data |
 | [Inference](user-guide/inference-tab.md) | Chat with your trained model to test it |
+| [Evaluate](user-guide/evaluate-tab.md) | Benchmark your model with standardized tests |
 | [Merge Datasets](user-guide/merge-tab.md) | Combine data from different sources |
 | [Analysis](user-guide/analysis-tab.md) | Check your data quality before training |
 | [Settings](user-guide/settings-tab.md) | Set up your accounts and preferences |
