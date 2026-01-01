@@ -8,7 +8,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Callable, List
 
@@ -37,32 +36,32 @@ except Exception:
 
 async def _fetch_hf_samples(repo_id: str, split: str, num_samples: int = 10):
     """Fetch random sample prompts from a HuggingFace dataset.
-    
+
     Returns list of (prompt, expected_answer) tuples.
     """
     import asyncio
     import random
-    
+
     if hf_load_dataset is None:
         return []
-    
+
     def _load():
         try:
             ds = hf_load_dataset(repo_id, split=split, trust_remote_code=True)
             if len(ds) == 0:
                 return []
-            
+
             # Get random indices
             indices = list(range(len(ds)))
             random.shuffle(indices)
             indices = indices[:num_samples]
-            
+
             samples = []
             for idx in indices:
                 row = ds[idx]
                 prompt = ""
                 expected = ""
-                
+
                 # Try to extract prompt/response from common column formats
                 # ChatML format (messages column)
                 if "messages" in row:
@@ -98,14 +97,14 @@ async def _fetch_hf_samples(repo_id: str, split: str, num_samples: int = 10):
                 elif "prompt" in row:
                     prompt = row.get("prompt", "")
                     expected = row.get("completion", "") or row.get("response", "")
-                
+
                 if prompt:
                     samples.append((str(prompt).strip(), str(expected).strip() if expected else ""))
-            
+
             return samples
         except Exception:
             return []
-    
+
     return await asyncio.to_thread(_load)
 
 
@@ -716,6 +715,7 @@ async def run_local_training(
         if not _repaired:
             try:
                 from datetime import datetime
+
                 base_rel = (hp.get("output_dir") or "outputs/local_run").strip()
                 if base_rel.startswith("/data"):
                     base_rel = base_rel[len("/data") :].lstrip("/")
@@ -770,7 +770,7 @@ async def run_local_training(
         _hf_tok = ""
         tf_value = (hf_token_tf.value or "").strip()
         tf_readonly = getattr(hf_token_tf, "read_only", False)
-        
+
         if tf_readonly or tf_value.startswith("•"):
             # Token is saved and masked - retrieve from environment (set by _apply_hf_env_from_cfg)
             _hf_tok = os.environ.get("HF_TOKEN", "") or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
@@ -778,7 +778,7 @@ async def run_local_training(
             # Use explicit token from text field, fall back to env
             _hf_tok = tf_value or os.environ.get("HF_TOKEN", "") or os.environ.get("HUGGINGFACE_HUB_TOKEN", "")
         _hf_tok = _hf_tok.strip()
-        
+
         if bool(getattr(local_pass_hf_token_cb, "value", False)) and _hf_tok:
             env["HF_TOKEN"] = _hf_tok
             env["HUGGINGFACE_HUB_TOKEN"] = _hf_tok

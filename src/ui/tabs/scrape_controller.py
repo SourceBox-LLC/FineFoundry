@@ -19,6 +19,7 @@ import flet as ft
 
 from helpers.boards import load_4chan_boards
 from helpers.common import safe_update
+from helpers.error_messages import friendly_scrape_error
 from helpers.scrape import (
     run_reddit_scrape as run_reddit_scrape_helper,
     run_real_scrape as run_real_scrape_helper,
@@ -203,34 +204,44 @@ def build_scrape_tab_with_logic(
             ft.dropdown.Option("summary", "Summary"),
         ],
         width=180,
+        tooltip="Q&A: question/answer pairs. CoT: step-by-step reasoning. Summary: condensed versions.",
     )
     synthetic_num_pairs = ft.TextField(
         label="Pairs per Chunk",
         value="25",
         width=140,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="How many training pairs to generate from each document chunk.",
     )
     synthetic_max_chunks = ft.TextField(
         label="Max Chunks",
         value="10",
         width=140,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="Maximum document chunks to process. More chunks = more data but longer processing.",
     )
-    synthetic_curate_cb = ft.Checkbox(label="Quality Curation", value=False)
+    synthetic_curate_cb = ft.Checkbox(
+        label="Quality Curation",
+        value=False,
+        tooltip="Filter out low-quality pairs using AI scoring. Slower but higher quality.",
+    )
     synthetic_threshold = ft.TextField(
         label="Threshold (1-10)",
         value="7.5",
         width=120,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="Quality threshold when curation is enabled. Higher = stricter filtering.",
     )
     synthetic_multimodal_cb = ft.Checkbox(
         label="Multimodal (extract images from PDFs)",
         value=False,
+        tooltip="Extract and describe images from PDF documents.",
     )
     synthetic_model = ft.TextField(
         label="Model",
         value="unsloth/Llama-3.2-3B-Instruct",
         width=300,
+        tooltip="Local LLM model to use for generating training data.",
     )
 
     max_threads = ft.TextField(
@@ -238,24 +249,28 @@ def build_scrape_tab_with_logic(
         value="50",
         width=160,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="Maximum number of threads/posts to visit. Start small (50) to test.",
     )
     max_pairs = ft.TextField(
         label="Max Pairs",
         value="5000",
         width=160,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="Stop collecting after this many conversation pairs.",
     )
     delay = ft.TextField(
         label="Delay (s)",
         value="1.0",
         width=160,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="Seconds to wait between requests. Higher = slower but less likely to be blocked.",
     )
     min_len = ft.TextField(
         label="Min Length",
         value="3",
         width=160,
         keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip="Skip pairs where input or output is shorter than this many characters.",
     )
     # JSON export removed - data is always saved to database only
     # These controls are kept for internal compatibility but hidden
@@ -902,11 +917,13 @@ def build_scrape_tab_with_logic(
                     dataset_name=(dataset_name_tf.value or "").strip() or None,
                 )
         except Exception as e:
+            source_name = source_dd.value or "unknown"
+            user_msg = friendly_scrape_error(e, source=source_name)
             try:
-                log_list.controls.append(ft.Text(f"Scrape failed: {e}"))
+                log_list.controls.append(ft.Text(f"❌ {user_msg}", color=COLORS.ERROR))
             except Exception:
                 pass
-            page.snack_bar = ft.SnackBar(ft.Text(f"Scrape failed: {e}"))
+            page.snack_bar = ft.SnackBar(ft.Text(user_msg))
             page.open(page.snack_bar)
             await safe_update(page)
         finally:

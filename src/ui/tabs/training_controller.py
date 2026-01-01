@@ -99,7 +99,9 @@ def _find_first_file(root_dir: str, filename: str) -> str:
     return ""
 
 
-def _load_trainer_metrics(output_dir: str) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], Dict[str, Any]]:
+def _load_trainer_metrics(
+    output_dir: str,
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], Dict[str, Any]]:
     train_pts: List[Tuple[float, float]] = []
     eval_pts: List[Tuple[float, float]] = []
     stats: Dict[str, Any] = {}
@@ -2449,7 +2451,9 @@ def build_training_tab_with_logic(
     local_save_config_btn = ft.OutlinedButton(
         "Save current setup",
         icon=getattr(ICONS, "SAVE", ICONS.CHECK),
-        tooltip=("Save the current training setup (dataset, hyperparameters, target, and local settings) as a reusable config."),
+        tooltip=(
+            "Save the current training setup (dataset, hyperparameters, target, and local settings) as a reusable config."
+        ),
         on_click=lambda e: page.run_task(on_save_current_config),
     )
     local_train_progress = ft.ProgressBar(value=0.0, width=280)
@@ -2664,7 +2668,7 @@ def build_training_tab_with_logic(
         """Refresh the sample prompts dropdown with random prompts from the training dataset."""
         try:
             local_infer_info = train_state.get("local_infer", {})
-            
+
             # Check if HuggingFace dataset was used - use cached HF samples if available
             hf_dataset_id = local_infer_info.get("hf_dataset_id")
             if hf_dataset_id:
@@ -2672,10 +2676,11 @@ def build_training_tab_with_logic(
                 if hf_samples:
                     # Use cached HF samples
                     import random
+
                     samples_to_show = list(hf_samples)
                     random.shuffle(samples_to_show)
                     samples_to_show = samples_to_show[:5]
-                    
+
                     expected_by_prompt: Dict[str, str] = {}
                     options = []
                     for i, (prompt, expected) in enumerate(samples_to_show):
@@ -2683,10 +2688,10 @@ def build_training_tab_with_logic(
                         display_text = prompt[:80] + "..." if len(prompt) > 80 else prompt
                         display_text = display_text.replace("\n", " ")
                         options.append(ft.dropdown.Option(key=prompt, text=f"{i + 1}. {display_text}"))
-                    
+
                     local_infer_sample_prompts_dd.options = options
                     local_infer_sample_prompts_dd.value = None
-                    
+
                     # Store mapping for selection -> expected answer
                     try:
                         li = train_state.get("local_infer")
@@ -2696,7 +2701,7 @@ def build_training_tab_with_logic(
                         li["expected_by_prompt"] = expected_by_prompt
                     except Exception:
                         pass
-                    
+
                     try:
                         local_infer_expected_tf.value = ""
                         local_infer_expected_tf.visible = False
@@ -2717,7 +2722,7 @@ def build_training_tab_with_logic(
                         pass
                     page.update()
                     return
-            
+
             # Get the dataset session ID from training state
             session_id = local_infer_info.get("dataset_session_id")
             if not session_id:
@@ -3105,7 +3110,11 @@ def build_training_tab_with_logic(
                             ft.Container(
                                 ft.Row(
                                     [
-                                        ft.Container(width=10, height=2, bgcolor=WITH_OPACITY(0.9, getattr(COLORS, "BLUE", ACCENT_COLOR))),
+                                        ft.Container(
+                                            width=10,
+                                            height=2,
+                                            bgcolor=WITH_OPACITY(0.9, getattr(COLORS, "BLUE", ACCENT_COLOR)),
+                                        ),
                                         ft.Text("Train loss", size=12),
                                     ],
                                     spacing=6,
@@ -3118,7 +3127,9 @@ def build_training_tab_with_logic(
                                         ft.Container(
                                             width=10,
                                             height=2,
-                                            bgcolor=WITH_OPACITY(0.9, getattr(COLORS, "ORANGE", getattr(COLORS, "AMBER", ACCENT_COLOR))),
+                                            bgcolor=WITH_OPACITY(
+                                                0.9, getattr(COLORS, "ORANGE", getattr(COLORS, "AMBER", ACCENT_COLOR))
+                                            ),
                                         ),
                                         ft.Text("Eval loss", size=12),
                                     ],

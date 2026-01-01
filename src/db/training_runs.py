@@ -39,8 +39,12 @@ def create_training_run(
     cursor = conn.cursor()
 
     # Create unique storage directory for this run
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Include microseconds for uniqueness when creating multiple runs quickly
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+    # Truncate name to prevent filesystem path length errors (max ~100 chars for name)
+    if len(safe_name) > 100:
+        safe_name = safe_name[:100]
     storage_name = f"{safe_name}_{timestamp}"
     storage_root = get_managed_storage_root()
     storage_path = os.path.join(storage_root, storage_name)

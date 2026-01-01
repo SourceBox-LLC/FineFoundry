@@ -147,16 +147,22 @@ def test_build_hp_filters_unallowed_keys():
     controls = _make_controls_for_hf()
     hp = training.build_hp_from_controls(**controls)
 
-    # These keys should be filtered out
-    assert "warmup_steps" not in hp
-    assert "weight_decay" not in hp
-    assert "lr_scheduler" not in hp
+    # These keys ARE now allowed and should be present when set
+    assert "warmup_steps" in hp
+    assert hp["warmup_steps"] == "10"
+    assert "weight_decay" in hp
+    assert hp["weight_decay"] == "0.01"
+    assert "lr_scheduler" in hp
+    assert hp["lr_scheduler"] == "cosine"
+
+    # These keys should still be filtered out (not in _allowed set)
     assert "logging_steps" not in hp
     assert "seed" not in hp
     assert "save_strategy" not in hp
     assert "pin_memory" not in hp
-    assert "fp16" not in hp
-    assert "bf16" not in hp
+    # fp16/bf16 only added when checkbox is True; bf16 is True in test data
+    assert "fp16" not in hp  # fp16_cb is False
+    assert "bf16" not in hp  # bf16 is not in _allowed set
 
 
 def test_build_hp_optimizer_renamed():
