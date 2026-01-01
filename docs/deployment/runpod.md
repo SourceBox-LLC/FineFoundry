@@ -8,7 +8,7 @@ For the Training tab UI details, see the [Training Tab Guide](../user-guide/trai
 
 When you select Runpod as your training target, FineFoundry connects using your API key, ensures a network volume exists (mounted at `/data`), creates or reuses a pod template, and launches training. Checkpoints and adapters get written to the network volume so they persist after the pod terminates.
 
-The default trainer image (`sbussiso/unsloth-trainer:latest`) bundles the same LoRA fine-tuning stack used for local Docker training.
+The default trainer image (`sbussiso/unsloth-trainer:latest`) bundles the same LoRA fine-tuning stack used for local training.
 
 ## What You Need
 

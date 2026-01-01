@@ -1,50 +1,112 @@
 # Settings Tab
 
-The Settings tab is your control center for credentials, proxy configuration, and optional integrations. Everything you configure here flows through to the other tabs—your Hugging Face token enables publishing, your Runpod key enables cloud training, and your proxy settings affect how scrapers reach the web.
+This is where you set up your accounts and preferences. You only need to do this once—your settings are saved automatically.
 
-## Hugging Face
+## What Can You Set Up Here?
 
-Paste your Hugging Face token here if you want to push datasets or adapters to the Hub. You'll need a token with write permissions, which you can create at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
-
-Click Test to verify the token works, then Save to persist it. The Publish tab uses this token when pushing datasets, and Training uses it when you enable push-to-hub for adapters.
-
-If you prefer not to store tokens in the app, you can set the `HF_TOKEN` environment variable instead—FineFoundry will pick it up automatically.
-
-## Runpod
-
-If you're using Runpod for cloud GPU training, paste your API key here. Get it from the [Runpod console settings](https://runpod.io/console/user/settings). Click Test to verify connectivity, then Save.
-
-This key lets the Training tab create and manage network volumes, pod templates, and training pods on your behalf.
-
-## Proxy Settings
-
-If you're scraping through Tor or a custom proxy, configure it here. Toggle on proxy support, enter your proxy URL (like `socks5h://127.0.0.1:9050` for Tor), and the scrapers will route their requests through it.
-
-You can also enable "Use env proxies" to pick up `HTTP_PROXY` and `HTTPS_PROXY` from your environment instead of specifying a URL directly.
-
-## Ollama (Optional)
-
-If you have Ollama running locally, you can connect FineFoundry to it for generating dataset and model cards. Enable Ollama, set the base URL (usually `http://localhost:11434`), and pick a model from the dropdown. Click Test to verify the connection works.
-
-This is entirely optional—you can always write cards manually or use the simple template instead.
-
-## System Check
-
-The System Check panel at the bottom runs diagnostics to verify your environment is set up correctly. It executes the test suite in focused groups (data collection, dataset build, training and inference) and then runs full coverage.
-
-Results appear in a live log view, and after completion you get a summary showing which areas passed or failed. This is useful when you first install FineFoundry, after upgrading dependencies, or whenever something seems off and you want a quick sanity check.
-
-You can download the full diagnostics log to attach to bug reports or share with collaborators.
-
-## Tips
-
-Store long-lived tokens in environment variables when possible—it's more secure than pasting them into the UI, and they persist across sessions. Always click Test after changing credentials to catch typos early. If scraping seems slow or blocked, check your proxy settings here first.
+| Setting | What It's For |
+|---------|---------------|
+| **Hugging Face** | Sharing datasets and models online |
+| **Runpod** | Training on cloud GPUs |
+| **Proxy** | Routing traffic through Tor or a VPN |
+| **Ollama** | Auto-generating descriptions (optional) |
 
 ______________________________________________________________________
 
-## Related Guides
+## Hugging Face Setup
 
-For more on authentication, see the [Authentication Guide](authentication.md). Proxy details are in [Proxy Setup](../deployment/proxy-setup.md). The [Training Tab](training-tab.md) and [Publish Tab](build-publish-tab.md) are the main consumers of these settings.
+Needed if you want to share datasets or trained models on Hugging Face.
+
+### How to Set Up
+
+1. **Create a free account** at [huggingface.co](https://huggingface.co/join)
+2. **Get your token:**
+   - Go to [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+   - Click "New token"
+   - Give it a name and select **"Write"** access
+   - Copy the token
+3. **In FineFoundry:**
+   - Paste the token in the Hugging Face field
+   - Click "Test" to verify it works
+   - Click "Save"
+
+**Don't have an account yet?** That's fine! You can still collect data and train locally without Hugging Face.
+
+______________________________________________________________________
+
+## Runpod Setup
+
+Needed if you want to train on cloud GPUs (faster, but costs money).
+
+### How to Set Up
+
+1. **Create a Runpod account** at [runpod.io](https://runpod.io)
+2. **Add payment info** (training costs ~$0.50-$2 per hour)
+3. **Get your API key:**
+   - Go to [runpod.io/console/user/settings](https://runpod.io/console/user/settings)
+   - Copy your API key
+4. **In FineFoundry:**
+   - Paste the API key
+   - Click "Test" to verify
+   - Click "Save"
+
+**Don't want to pay?** No problem! You can train on your own computer for free if you have a GPU.
+
+______________________________________________________________________
+
+## Proxy Settings (Optional)
+
+Only needed if you want to route your data collection through Tor or another proxy for privacy.
+
+### How to Set Up Tor
+
+1. **Install Tor** on your computer
+2. **Start Tor** and make sure it's running
+3. **In FineFoundry:**
+   - Enable proxy
+   - Enter: `socks5h://127.0.0.1:9050`
+   - Click "Save"
+
+**Don't need privacy features?** Leave this off—everything works fine without it.
+
+______________________________________________________________________
+
+## Ollama Setup (Optional)
+
+Ollama can auto-generate nice descriptions for your datasets and models. Completely optional.
+
+### How to Set Up
+
+1. **Install Ollama** from [ollama.ai](https://ollama.ai)
+2. **Start Ollama** on your computer
+3. **In FineFoundry:**
+   - Enable Ollama
+   - URL is usually `http://localhost:11434`
+   - Pick a model from the dropdown
+   - Click "Test" then "Save"
+
+**Don't want this?** Skip it! You can always write descriptions manually.
+
+______________________________________________________________________
+
+## System Check
+
+At the bottom of Settings, there's a "System Check" panel. This runs tests to make sure everything is working correctly.
+
+**When to use it:**
+- After first installing FineFoundry
+- If something seems broken
+- When reporting bugs (attach the log)
+
+Click "Run System Check" and wait for results. Green = good, red = problem.
+
+______________________________________________________________________
+
+## Tips
+
+- **Test before saving** — Always click "Test" after entering credentials
+- **Save your work** — Click "Save" to keep your settings
+- **One-time setup** — You usually only need to do this once
 
 ______________________________________________________________________
 

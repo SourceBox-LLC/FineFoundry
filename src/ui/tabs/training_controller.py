@@ -2918,7 +2918,7 @@ def build_training_tab_with_logic(
         disabled=True,
     )
 
-    # Keep minimal state for local process/container
+    # Keep minimal state for local training process
     train_state.setdefault("local", {})
 
     def _update_local_gpu_default_from_specs():

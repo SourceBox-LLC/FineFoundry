@@ -254,7 +254,7 @@ The database uses thread-local connections, making it safe to use from multiple 
 ### Temporary Files
 
 - **Synthetic data generation** uses OS temp directories (`/tmp/finefoundry_synth_*`) that are automatically cleaned up after generation completes.
-- **Docker/RunPod training** exports database sessions to temporary JSON files in mounted directories (required by Unsloth trainer).
+- **Training** exports database sessions to temporary JSON files (required by Unsloth trainer).
 
 ### Optional Exports
 

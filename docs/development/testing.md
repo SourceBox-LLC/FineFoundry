@@ -175,7 +175,7 @@ For non-developers (or for a quick visual check), the **Settings → System Chec
 - Runs targeted `pytest` groups for key feature areas:
   - Scraping utilities and scrape-tab orchestration.
   - Merge and publish pipelines.
-  - Training config + local Docker training helpers.
+  - Training config + local training helpers.
   - Quick Local Inference and its UI wiring.
 - Runs the full test suite: `pytest tests`.
 - Runs coverage:

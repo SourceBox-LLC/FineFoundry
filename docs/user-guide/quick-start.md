@@ -1,85 +1,126 @@
 # Quick Start Guide
 
-This guide will take you from a freshly cloned repo to a running desktop app with your first dataset in just a few minutes. By the end, you'll have scraped some data, built a dataset, and be ready to start training.
+Get your first dataset ready in about 10 minutes! This guide walks you through installing FineFoundry and collecting your first batch of training data.
 
-## Before You Begin
+## What You'll Need
 
-You'll need Python 3.10 or newer installed on your machine—Windows, macOS, and Linux are all supported. Git is helpful for cloning the repository but not strictly required. For package management, we recommend using `uv` (it's fast and handles everything automatically), though pip works fine too.
+- **A computer** running Windows, macOS, or Linux
+- **Python 3.10 or newer** — [Download Python here](https://www.python.org/downloads/) if you don't have it
+- **An internet connection** for downloading and collecting data
 
-If you plan to publish datasets to Hugging Face, you'll also want a [Hugging Face account](https://huggingface.co/) with an [access token](https://huggingface.co/settings/tokens) that has write permissions.
+**Optional** (for sharing your work online):
+- A free [Hugging Face account](https://huggingface.co/join)
 
-## Installation
+## Step 1: Download and Install
 
-The fastest way to get started is with `uv`. Clone the repository and run the launcher script—it handles the virtual environment and dependencies for you:
+### Option A: The Easy Way (Recommended)
+
+Open your terminal (Command Prompt on Windows, Terminal on Mac/Linux) and run these commands:
 
 ```bash
 git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
+pip install uv
+```
 
-# One-time setup on macOS/Linux: make the script executable
+Then start the app:
+
+**On Mac/Linux:**
+```bash
 chmod +x run_finefoundry.sh
 ./run_finefoundry.sh
 ```
 
-If you don't have `uv` installed, you can install it with `pip install uv`, or you can use the alternative without the launcher: `uv run src/main.py`.
+**On Windows:**
+```bash
+uv run src/main.py
+```
 
-If you prefer the traditional pip workflow, create a virtual environment and install the package:
+### Option B: Traditional Installation
+
+If the above doesn't work, try this instead:
 
 ```bash
-git clone https://github.com/SourceBox-LLC/FineFoundry.git
+git clone https://github.com/SourceBox-LLC/FineFoundry.git FineFoundry-Core
 cd FineFoundry-Core
-
 python -m venv venv
-source venv/bin/activate  # On Windows: ./venv/Scripts/Activate.ps1
+```
 
+Activate your virtual environment:
+- **Mac/Linux:** `source venv/bin/activate`
+- **Windows:** `.\venv\Scripts\Activate.ps1`
+
+Then install and run:
+```bash
 pip install -e .
 python src/main.py
 ```
 
-## What You'll See
+## Step 2: Tour the App
 
-When FineFoundry launches, a desktop window opens with tabs across the top. The **Data Sources** tab is where you collect training data from 4chan, Reddit, Stack Exchange, or generate synthetic data from your own documents. **Dataset Analysis** helps you understand your data quality, while **Merge Datasets** lets you combine data from different sources.
+When FineFoundry opens, you'll see a window with tabs across the top:
 
-The **Training** tab is where the magic happens—fine-tune models on Runpod's cloud GPUs or locally via Docker. After training, the **Inference** tab gives you a playground to chat with your fine-tuned model and verify it learned what you intended. **Publish** handles pushing your datasets and adapters to Hugging Face Hub, and **Settings** is where you configure authentication and preferences.
+- **Data Sources** — Where you collect data from websites or documents
+- **Publish** — Prepare and share your datasets
+- **Training** — Teach AI models with your data
+- **Inference** — Test your trained models by chatting with them
+- **Merge Datasets** — Combine multiple data collections
+- **Analysis** — Check your data quality
+- **Settings** — Set up accounts and preferences
 
-## Your First Dataset
+## Step 3: Collect Your First Data
 
-Let's walk through creating a simple dataset to see how everything fits together.
+Let's grab some data to work with:
 
-### Scraping Some Data
+1. **Click the "Data Sources" tab**
+2. **Choose a source** — For this example, select "4chan"
+3. **Pick some boards** — Click a few board chips like `b`, `pol`, or `x`
+4. **Set your limits:**
+   - Max Threads: `50`
+   - Max Pairs: `500`
+   - Delay: `0.5`
+   - Min Length: `10`
+5. **Click "Start"**
 
-Head to the **Data Sources** tab and select a few boards to scrape (like `pol`, `b`, or `x`). For a quick test, set Max Threads to 50, Max Pairs to 500, Delay to 0.5 seconds, and Min Length to 10 characters. Hit **Start** and watch the progress bar fill up as data comes in. The logs panel shows you exactly what's happening in real time.
+Watch the progress bar and logs as data flows in. This usually takes 1-3 minutes.
 
-When the scrape finishes, click **Preview Dataset** to see what you collected. You'll see a two-column view of input/output pairs—this is the raw material for training. Your data is automatically saved to the database, so you won't lose it.
+## Step 4: Preview Your Data
 
-### Building a Dataset (Optional)
+When the collection finishes:
 
-If you want to create proper train/validation/test splits, go to the **Publish** tab. Select your scrape session from the dropdown, adjust the split percentages with the sliders, and click **Build Dataset**. 
+1. Click **"Preview Dataset"**
+2. You'll see a two-column view showing conversation pairs
 
-Want to share your dataset with the world? Enable **Push to Hub**, set your Repo ID (something like `username/my-first-dataset`), add your HF Token, and click **Push + Upload README**. FineFoundry generates a dataset card for you automatically.
+Each row shows an "input" (like a question or prompt) and an "output" (the response). This is what the AI will learn from!
 
-### Checking Data Quality (Optional)
+**Your data is automatically saved**, so you won't lose it if you close the app.
 
-Before training, it's worth understanding what you're working with. The **Dataset Analysis** tab lets you run various analysis modules—sentiment distribution, duplicate detection, readability scores, and more. Select your dataset, enable the modules you're curious about, and click **Analyze Dataset**. The insights can help you decide whether to filter, clean, or augment your data before training.
+## What's Next?
 
-## Where to Go From Here
+You've just collected your first dataset! Here's what you can do now:
 
-Now that you've got the basics down, you're ready to explore further.
+### Want to train a model?
+Go to the [Training Tab Guide](training-tab.md) to learn how to teach an AI using your data.
 
-For training, check out the [Training Tab Guide](training-tab.md)—it covers everything from beginner-friendly presets that auto-configure based on your GPU to expert-level hyperparameter control. The same training script runs on Runpod pods or your local machine, so you can iterate quickly.
+### Want to share your dataset?
+Go to the [Publish Tab](build-publish-tab.md) to upload it to Hugging Face.
 
-After a successful local training run, the Quick Local Inference panel appears right in the Training tab. It's a quick way to smoke-test your adapter—just type a prompt and see how your model responds. For more extensive testing, the [Inference Tab](inference-tab.md) offers a dedicated playground with prompt history and a full chat view.
+### Want more data?
+- Try different sources (Reddit, Stack Exchange)
+- Collect from multiple boards
+- Generate synthetic data from your own documents
 
-Training configs are saved to the database, so you can snapshot a working setup and reload it later. The last config you used auto-loads on startup, making it easy to pick up where you left off.
+### Want to combine datasets?
+Use the [Merge Datasets Tab](merge-tab.md) to mix data from different collections.
 
-For a complete tour of the interface, read the [GUI Overview](gui-overview.md). If you want to automate things, the [CLI Usage](cli-usage.md) guide shows you how. And if you need to combine datasets from different sources, the [Merge Datasets Tab](merge-tab.md) has you covered.
+## Having Problems?
 
-## If Something Goes Wrong
+- **App won't start?** Make sure Python 3.10+ is installed
+- **No data collected?** Check your internet connection and try different boards
+- **Other issues?** See the [Troubleshooting Guide](troubleshooting.md)
 
-Check the [Troubleshooting Guide](troubleshooting.md) first—it covers the most common issues. The [FAQ](faq.md) has answers to frequently asked questions. For deeper debugging, enable debug mode to get detailed logs (see the [Logging Guide](../development/logging.md)).
-
-If you're still stuck, open an issue on [GitHub](https://github.com/SourceBox-LLC/FineFoundry/issues).
+Still stuck? Ask for help in [GitHub Discussions](https://github.com/SourceBox-LLC/FineFoundry/discussions).
 
 ______________________________________________________________________
 
-**Next**: [GUI Overview](gui-overview.md) | [Back to Documentation Index](../README.md)
+**Next**: [Data Sources Tab](scrape-tab.md) | [Back to Documentation Index](../README.md)

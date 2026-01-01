@@ -1,88 +1,133 @@
 # Data Sources Tab
 
-The Data Sources tab is where you collect the raw material for training—conversational data organized as input/output pairs. You can scrape from 4chan, Reddit, or Stack Exchange, or generate synthetic training data from your own documents using local LLMs.
+This is where you collect data to train your AI. You can grab conversations from websites like Reddit and 4chan, or create training data from your own documents.
 
 ![Data Sources Tab](../../img/new/ff_data_sources.png)
 
 ## How It Works
 
-The workflow is straightforward: pick a data source, configure a few parameters, and hit Start. The tab shows you progress and logs in real time as data comes in. When it's done, you can preview what you collected in a two-column grid before moving on to publishing, merging, or training.
+1. **Pick a source** — Choose where to get your data from
+2. **Set your limits** — How much data do you want?
+3. **Click Start** — Watch as data flows in
+4. **Preview results** — See what you collected
 
-Everything you collect gets saved to the database automatically, so you won't lose your work. The data uses a simple schema—either standard input/output pairs or ChatML format with a messages array. If you need to export for external tools, the database helpers can dump to JSON.
-
-```json
-{"input": "...", "output": "..."}
-```
-
-Or in ChatML format:
-
-```json
-{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
-```
+All your data is **automatically saved**, so you won't lose anything if you close the app.
 
 ______________________________________________________________________
 
-## The Data Sources
+## Where Can I Get Data From?
 
 ### 4chan
+Collects conversations from 4chan boards. Good for casual, unfiltered dialogue.
 
-For 4chan scraping, you select which boards to scrape using the chip selector (with Select All and Clear buttons for convenience). The scraper supports two modes: **normal** creates pairs from adjacent posts in a thread, while **contextual** builds richer context by looking at quote chains, cumulative history, or the last K posts.
+**How to use:**
+1. Click the board chips you want (like `b`, `pol`, `x`)
+2. Set how many threads and pairs to collect
+3. Click Start
 
 ### Reddit
+Collects conversations from Reddit posts and comments. Great for topic-specific data.
 
-Reddit scraping works with either subreddit URLs or individual post URLs. Set how many posts to fetch, and the scraper handles comment expansion automatically. Like 4chan, you can choose between simple parent-child pairing or contextual mode for richer conversations.
+**How to use:**
+1. Paste a subreddit URL (like `https://www.reddit.com/r/LocalLLaMA/`)
+2. Or paste a specific post URL
+3. Set how many posts to fetch
+4. Click Start
 
 ### Stack Exchange
+Collects question-and-answer pairs from sites like Stack Overflow. Perfect for technical/factual training data.
 
-Stack Exchange pulls Q&A pairs from sites like Stack Overflow, Super User, and others. Just pick a site and set how many pairs you want. The scraper focuses on questions with accepted answers to ensure quality.
+**How to use:**
+1. Pick a Stack Exchange site from the dropdown
+2. Set how many Q&A pairs you want
+3. Click Start
 
-### Synthetic
+### Synthetic (From Your Own Documents)
+Creates training data from your own files—PDFs, Word docs, or text files. An AI reads your documents and generates question-answer pairs from them.
 
-Synthetic generation is different—instead of scraping the web, you feed it your own documents (PDFs, Word docs, text files, HTML, or URLs) and it uses a local LLM to generate training pairs. You can create Q&A pairs, chain-of-thought reasoning examples, or summaries. The Curate option adds quality filtering to keep only the best generations.
+**How to use:**
+1. Browse for your files (or paste URLs)
+2. Choose what to generate: Q&A pairs, reasoning examples, or summaries
+3. Click Start
 
-### Common Settings
+**Note:** The first time takes 30-60 seconds to load the AI model. After that, it's faster.
 
-Regardless of which source you choose, you can set the output format (standard input/output or ChatML), a polite delay between requests (for network sources), and a minimum character length to filter out low-quality pairs.
+______________________________________________________________________
+
+## Settings Explained
+
+| Setting | What It Does |
+|---------|--------------|
+| **Max Threads/Posts** | How many pages to collect from |
+| **Max Pairs** | Stop after collecting this many conversation pairs |
+| **Delay** | Pause between requests (be polite to websites!) |
+| **Min Length** | Skip pairs shorter than this (filters out junk) |
+
+**Tip:** Start with small numbers (like 50 threads, 500 pairs) to test, then scale up.
 
 ______________________________________________________________________
 
 ## Examples
 
-### Quick 4chan Scrape
+### Quick Test Run
+- Source: 4chan
+- Boards: Pick 2-3 boards
+- Max Threads: 50
+- Max Pairs: 500
+- Delay: 0.5
+- Click Start
 
-Select 4chan, pick a couple boards like `pol` and `b`, set Max Threads to 50, Max Pairs to 500, Delay to 0.5, and Min Length to 10. Leave Mode as normal for simple adjacent pairs. Hit Start and watch the progress, then preview what you got.
+This takes about 1-3 minutes and gives you enough data to test the whole workflow.
 
-### Building Contextual Conversations
+### Building a Reddit Dataset
+- Source: Reddit
+- URL: Paste your favorite subreddit
+- Max Posts: 100
+- Click Start
 
-For richer multi-turn data, use contextual mode with the quote_chain strategy. Set K to 6 for up to 6 turns of context, and Max Input Chars to 2000 to keep inputs manageable. Enable "require question" if you only want pairs where the context contains a question.
+Good for creating topic-specific training data.
 
-### Reddit Subreddit Crawl
+### Creating Data from Your Documents
+- Source: Synthetic
+- Add your PDF, Word doc, or text file
+- Generation Type: `qa` (question-answer pairs)
+- Num Pairs: 25
+- Click Start
 
-Select Reddit, paste a subreddit URL like `https://www.reddit.com/r/LocalLLaMA/`, set Max Posts to 50, and start. The logs show you each post and comment thread as they're fetched.
-
-### Generating Synthetic Data
-
-Select Synthetic, browse for a PDF (a research paper, manual, or any document), and configure the generation. The default model works well for most cases. Set Generation Type to `qa` for question-answer pairs, Num Pairs to 25 per chunk, and Max Chunks to 10. The first run takes 30-60 seconds while the model loads, but subsequent runs are faster.
-
-______________________________________________________________________
-
-## Tips
-
-Start with smaller runs to validate your configuration before scaling up. Watch the logs for network issues, rate limiting, or parsing errors. The min length filter is useful for cutting out low-signal or spammy content.
-
-For synthetic generation, the quality of your output depends heavily on the quality of your input documents. Larger models produce better results but need more VRAM. After any scrape or generation, use the Publish tab to create proper splits and the Analysis tab to check data quality before training.
-
-______________________________________________________________________
-
-## Offline Mode
-
-When Offline Mode is enabled, only the Synthetic source is available—all network-based sources are disabled. The UI shows a banner explaining this, and if you try to start a network scrape, you'll get a snackbar telling you to switch to Synthetic.
+Perfect when you want the AI to learn from specific information.
 
 ______________________________________________________________________
 
-## Related Guides
+## Checking Your Results
 
-Once you've collected data, head to the [Publish Tab](build-publish-tab.md) to create train/val/test splits, or the [Merge Datasets Tab](merge-tab.md) if you want to combine multiple sessions. The [Analysis Tab](analysis-tab.md) helps you understand your data quality before training, and the [Training Tab](training-tab.md) is where you fine-tune models on your prepared dataset.
+After collection finishes, click **"Preview Dataset"** to see what you got. You'll see two columns:
+
+- **Input** — The prompt or question
+- **Output** — The response or answer
+
+This is exactly what the AI will learn from during training.
+
+______________________________________________________________________
+
+## Tips for Better Data
+
+- **Quality matters more than quantity** — 500 good pairs often beat 5000 bad ones
+- **Check your preview** — Make sure the data looks right before training
+- **Use the Analysis tab** — It can spot problems in your data
+- **Try different sources** — Mix Reddit + Stack Exchange for variety
+
+______________________________________________________________________
+
+## Common Questions
+
+**Why is collection slow?**
+The delay setting adds pauses between requests to avoid overwhelming websites. This is intentional and polite.
+
+**Why did I get fewer pairs than expected?**
+Some threads might be empty, or the min length filter removed low-quality pairs. This is usually fine.
+
+**Can I collect from multiple sources?**
+Yes! Collect from each source separately, then use the Merge tab to combine them.
 
 ______________________________________________________________________
 

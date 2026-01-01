@@ -127,8 +127,8 @@ Business logic separated from UI:
 
 #### `training.py`
 
-- `run_local_training()` - Local Docker training (mirrors Runpod command builder inside a container)
-- `stop_local_training()` - Stop local training and clean up Docker state
+- `run_local_training()` - Native local training via Python subprocess
+- `stop_local_training()` - Stop local training subprocess
 - `build_hp_from_controls()` - Hyperparameter extraction shared between Runpod and local
 
 #### `training_config.py`
@@ -336,11 +336,11 @@ Multiple sources (DB sessions / HF) → helpers/merge.py
 ```
 Configuration (UI) → helpers/training.py or helpers/training_pod.py
                     ↓
-                  Runpod pod creation OR Local Docker
+                  Runpod pod creation OR Native local subprocess
                     ↓
-                  train.py execution (in container)
+                  Unsloth trainer execution
                     ↓
-                  Checkpoints to /data or local volume
+                  Checkpoints to /data (Runpod) or local output dir
                     ↓
                   Optional Hub push
 ```

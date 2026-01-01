@@ -1,51 +1,102 @@
 # Inference Tab
 
-The Inference tab is your playground for testing fine-tuned models. Pick a training run, load the adapter, and start chatting with your model to see how it performs. Unlike Quick Local Inference in the Training tab, this dedicated space lets you test against any dataset and offers a full chat view for extended conversations.
+This is where you chat with your trained AI model to see how well it learned! Think of it as a testing playground where you can ask questions and see how your model responds.
 
 ![Inference Tab](../../img/new/ff_inference.png)
 
-## Getting Started
+## How It Works
 
-Select a base model and a completed training run from the dropdowns. FineFoundry validates the adapter directory automatically—you'll see a spinner while it checks, then either a green "ready" status or a red error if something's wrong.
+1. **Select a trained model** — Pick from your completed training runs
+2. **Type a message** — Ask it anything!
+3. **See the response** — Watch how your AI answers
 
-Once validated, the prompt controls unlock. Type a prompt, pick a preset (Deterministic for predictable outputs, Balanced for general use, Creative for more variety), and click Generate. Your response appears in the output list below.
-
-## Sample Prompts
-
-Unlike the Training tab's Quick Local Inference (which pulls samples from the training dataset), here you can select any saved dataset from your database. This is useful for testing how your model handles data it wasn't trained on.
-
-Pick a dataset from the dropdown, and you'll get 5 random prompts to choose from. Click the refresh button to get different samples. Selecting one fills the prompt box automatically.
-
-## Full Chat View
-
-For deeper testing or demos, click Full Chat View to open a focused chat dialog. It shows your conversation as alternating user/assistant bubbles, with a message composer at the bottom.
-
-![Full Chat View](../../img/new/ff_inference_chat_view.png)
-
-The main tab and Full Chat View share the same conversation history. Messages you generate in either place show up in both. Clear history resets everything.
-
-## Generation Settings
-
-The presets handle most use cases:
-
-- **Deterministic** uses low temperature for consistent, predictable outputs—good for verifying your model learned what you intended
-- **Balanced** sits in the middle and works for general testing
-- **Creative** uses higher temperature and longer max tokens for more varied, exploratory responses
-
-You can also adjust temperature and max tokens directly with the sliders if you want finer control.
-
-## Under the Hood
-
-Inference runs entirely on your local machine using Hugging Face Transformers, PEFT for loading LoRA adapters, and bitsandbytes for 4-bit quantization when you have a CUDA GPU. No external APIs are called—everything stays local.
-
-## Tips
-
-If adapter validation keeps failing, make sure the training run actually completed and produced an adapter directory with the expected files (`adapter_config.json` and weight files). Use Deterministic mode first to verify your fine-tuning worked as expected, then switch to Creative to explore the model's behavior more broadly.
-
-For quick tests right after training, Quick Local Inference in the Training tab is convenient. Move to this Inference tab when you want a dedicated space for extended testing, different sample datasets, or the full chat experience.
+It's like texting with your trained AI to see if it learned what you wanted.
 
 ______________________________________________________________________
 
-## Related Guides
+## Getting Started
 
-Set up and run training in the [Training Tab](training-tab.md). For the overall workflow, see the [Quick Start Guide](quick-start.md). If something's not working, check [Troubleshooting](troubleshooting.md).
+### Step 1: Select Your Model
+
+1. Choose a **base model** from the first dropdown
+2. Choose a **training run** from the second dropdown (only completed runs appear)
+3. Wait for the green "ready" status
+
+### Step 2: Start Chatting
+
+1. Type your message in the text box
+2. Click **"Generate"**
+3. Read the AI's response below
+
+Try different questions to see how well your model performs!
+
+______________________________________________________________________
+
+## Response Styles
+
+Choose how your AI should respond:
+
+| Style | Best For |
+|-------|----------|
+| **Deterministic** | Consistent, predictable answers. Good for testing if training worked. |
+| **Balanced** | General use. A mix of consistency and variety. |
+| **Creative** | More varied, surprising responses. Fun for exploration. |
+
+**Tip:** Start with "Deterministic" to verify your training worked, then try "Creative" to see what else it can do.
+
+______________________________________________________________________
+
+## Full Chat View
+
+Want a more chat-like experience? Click **"Full Chat View"** to open a dedicated chat window.
+
+![Full Chat View](../../img/new/ff_inference_chat_view.png)
+
+This shows your conversation as message bubbles, just like a messaging app. Great for:
+- Extended conversations
+- Demos to show others
+- Testing multi-turn dialogues
+
+______________________________________________________________________
+
+## Sample Prompts
+
+Not sure what to ask? FineFoundry can suggest prompts from your datasets:
+
+1. Select a dataset from the dropdown
+2. Choose from the suggested prompts
+3. The prompt auto-fills in your text box
+
+Click the refresh button to get different suggestions.
+
+______________________________________________________________________
+
+## Common Questions
+
+**Why does it say "validating"?**
+FineFoundry is checking that your trained model files exist and are complete. This takes a few seconds.
+
+**Why is the first response slow?**
+The AI model needs to load into memory the first time. After that, responses are faster.
+
+**The responses don't seem right. What's wrong?**
+Your training data might need work. Try:
+- Training for more steps
+- Collecting more/better data
+- Checking data quality in the Analysis tab
+
+**Can I save my conversation?**
+Yes! Use the export button to save your chat to a text file.
+
+______________________________________________________________________
+
+## Tips for Better Testing
+
+- **Test with similar prompts** to your training data first
+- **Try edge cases** — What happens with unusual questions?
+- **Compare styles** — Same prompt, different response styles
+- **Use the clear button** to start fresh conversations
+
+______________________________________________________________________
+
+**Next**: [Merge Datasets Tab](merge-tab.md) | **Previous**: [Training Tab](training-tab.md) | [Back to Documentation Index](../README.md)

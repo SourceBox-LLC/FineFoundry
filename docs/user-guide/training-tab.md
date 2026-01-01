@@ -1,107 +1,158 @@
 # Training Tab
 
-The Training tab is where you fine-tune language models on your own data. You can train on Runpod's cloud GPUs or locally via Docker—the same training script works in both environments, so you can develop locally and scale up when you're ready.
+This is where you teach an AI model using your collected data. Think of it like training a pet—you show it examples of what you want, and it learns to respond similarly.
 
 ![Training Tab](../../img/new/ff_training.png)
 
-## How Training Works
+## The Big Picture
 
-The basic flow is straightforward: choose where to train (Runpod or local), pick your dataset, configure hyperparameters, and start the run. If you're new to training, the beginner presets handle most of the complexity for you. If you know what you're doing, expert mode gives you full control.
+Training works in three simple steps:
 
-After a successful local run, the Quick Local Inference panel appears so you can immediately test your adapter with a few prompts. And at any point, you can save your entire training setup as a configuration that you can reload later—the last config you used even auto-loads on startup.
+1. **Pick where to train** — Your computer or cloud GPUs
+2. **Choose your data** — Select the dataset you collected earlier
+3. **Click Start** — Watch as the AI learns from your examples
 
-______________________________________________________________________
-
-## Choosing Where to Train
-
-### Runpod (Cloud GPUs)
-
-When you select Runpod as your training target, you're running on cloud GPUs. The tab shows infrastructure helpers to create network volumes and pod templates, GPU selection options, and controls to start training on a pod. Logs stream in real time so you can monitor progress.
-
-### Local Docker
-
-For local training, FineFoundry runs the training script inside a Docker container on your machine. You set which local folder to mount as `/data` in the container, choose whether to use your GPU, and optionally pass your HF token so push-to-hub works. The logs panel shows everything happening inside the container, and you can stop the run at any time.
-
-![Auto Set (local) preset](../../img/new/ff_auto_set.png)
-
-## Dataset and Hyperparameters
-
-Your dataset can come from a Database Session (any of your scrape history) or directly from Hugging Face. The output directory is where checkpoints and the final adapter get saved—it's a path inside the container that maps back to your real filesystem.
-
-The hyperparameters section gives you control over the base model (defaulting to a 4-bit Llama 3.1 8B), epochs, learning rate, batch size, gradient accumulation, and max steps. Enable packing if your examples are short to improve throughput. Auto-resume lets you pick up from the latest checkpoint if training gets interrupted.
-
-If you want to push your trained adapter to Hugging Face Hub, enable that option and provide your repo ID. Make sure your HF token has write permissions.
-
-## Beginner Presets
-
-In Beginner mode, you get presets that handle the complexity for you. For Runpod, choose between "Fastest" (optimized for throughput on good GPUs) or "Cheapest" (conservative settings for smaller GPUs). For local training, "Quick local test" does a short run for sanity checking, "Auto Set" reads your GPU specs and configures things aggressively but safely, and "Simple custom" gives you three intuitive sliders for duration, memory usage, and quality.
-
-Expert mode hides the presets and exposes all hyperparameters directly for full control.
-
-## Quick Local Inference
-
-After a successful local training run, the Quick Local Inference panel appears. This is your instant demo station—you can immediately test your new adapter without leaving the tab.
-
-The panel shows which adapter and base model you're using, and gives you controls for temperature, max tokens, and generation presets (Deterministic, Balanced, Creative). There's even a dropdown with sample prompts pulled from your training dataset so you can quickly verify the model learned what you intended.
-
-Type a prompt and click Run Inference. The button disables while the model loads and generates, then your response appears in a scrollable list. You can clear history or export your conversation to a text file.
-
-For more extensive testing with full chat history and multi-turn conversations, see the [Inference Tab](inference-tab.md).
-
-## Saving and Loading Configurations
-
-Training configurations capture your entire setup—training target, dataset, hyperparameters, skill level, and infrastructure settings. Click "Save current setup" to snapshot everything with a descriptive name. Configs are stored in the database and the last one you used auto-loads on startup.
-
-To reload a config, pick it from the dropdown and click Load. The app switches to the right training target and populates all the fields. The dropdown filters configs by training target to avoid accidentally loading a Runpod config when you're in local mode.
+When training finishes, you can immediately test your model to see what it learned!
 
 ______________________________________________________________________
 
-## Step-by-Step: Training on Runpod
+## Where Should I Train?
 
-Select Runpod as your training target, then configure your dataset and hyperparameters. If you're new to this, use Beginner mode and pick either "Fastest" for maximum throughput or "Cheapest" for budget-friendly runs.
+You have two options:
 
-In the Runpod section, use the infrastructure helpers to create a network volume and pod template if you don't have them yet. Select your GPU type and region, then start training. Logs stream in real time so you can monitor progress. When training completes, you can optionally push your adapter to Hugging Face Hub.
+### Option 1: Train on Your Computer (Free)
 
-## Step-by-Step: Training Locally
+Best if you have a gaming graphics card (GPU) with at least 8GB of memory.
 
-Select Local as your training target. For quick experiments, use Beginner mode with the "Quick local test" preset. For serious runs on your GPU, "Auto Set" reads your specs and configures things optimally.
+**Pros:**
+- Free
+- Private—your data stays on your machine
+- Good for small experiments
 
-Set your host data directory (this is where outputs will appear), enable GPU usage if you have a CUDA-capable card, and optionally pass your HF token to the container if you want to push results. Click Start Local Training and watch the logs. You can stop anytime if something looks wrong.
+**Cons:**
+- Needs a decent GPU
+- Can be slow for large datasets
 
-After a successful run, Quick Local Inference appears with your new adapter ready to test.
+### Option 2: Train in the Cloud (Runpod)
 
-______________________________________________________________________
+Best if you don't have a GPU or want faster training.
 
-## Under the Hood
+**Pros:**
+- Works without a GPU
+- Much faster for large jobs
+- Powerful hardware available
 
-Both Runpod and local Docker training run the same `train.py` script inside an Unsloth-based trainer image. The stack includes PyTorch for training, Hugging Face Transformers for model loading, bitsandbytes for 4-bit quantization, and PEFT/LoRA via Unsloth for parameter-efficient fine-tuning.
+**Cons:**
+- Costs money (typically $0.50-$2 per hour)
+- Requires a Runpod account
 
-The default base models are Unsloth-optimized variants of popular open models like Llama 3.1 8B. Adapters and checkpoints get written to your output directory and are picked up by Quick Local Inference and the Inference Tab.
-
-## Tips
-
-Start in Beginner mode until you've found stable hyperparameters for your use case. Use "Quick local test" for rapid experiments and "Auto Set" for your first real run on a new GPU. Once you have settings that work, save them as a config so you can reload and iterate.
-
-Enable packing when your examples are short—it significantly improves throughput. And keep an eye on the logs for early signs of out-of-memory errors or dataset issues.
-
-______________________________________________________________________
-
-## Offline Mode
-
-When Offline Mode is enabled, only local training works. Runpod is disabled, the training target is forced to Local, and Hugging Face datasets and Hub push are unavailable. If you were using a HF dataset, the UI resets to Database. A banner at the top of the tab explains what's disabled and why.
+![Auto Set preset](../../img/new/ff_auto_set.png)
 
 ______________________________________________________________________
 
-## Troubleshooting
+## How to Train (Step by Step)
 
-If you run into problems, check the [Troubleshooting Guide](troubleshooting.md). Common issues include CUDA out-of-memory errors (exit code 137) for local Docker runs, HF authentication problems inside containers, and config-related mistakes that saved setups help avoid.
+### Training on Your Computer
+
+1. **Select "Local"** as your training target
+2. **Choose your dataset** from the dropdown (your collected data)
+3. **Pick a preset:**
+   - **Quick local test** — Fast 2-minute test to make sure everything works
+   - **Auto Set** — Automatically configures settings based on your GPU
+4. **Click "Start Local Training"**
+5. **Watch the logs** — You'll see progress updates as training happens
+
+When it's done, a "Quick Local Inference" panel appears so you can test your model immediately!
+
+### Training on Runpod (Cloud)
+
+1. **Set up Runpod first** (one-time):
+   - Go to the Settings tab and add your Runpod API key
+   - Back in Training, click "Ensure Infrastructure" to create storage space
+2. **Select "Runpod - Pod"** as your training target
+3. **Choose your dataset** from the dropdown
+4. **Pick a GPU type** (RTX 4090 is a good balance of speed and cost)
+5. **Click "Start Training"**
+
+Training on the cloud is faster but costs money. Watch your Runpod dashboard to monitor costs.
 
 ______________________________________________________________________
 
-## Related Guides
+## Beginner vs Expert Mode
 
-For the overall workflow, see the [Quick Start Guide](quick-start.md). After training, use the [Inference Tab](inference-tab.md) for extensive testing with chat history. The [Merge Datasets Tab](merge-tab.md) helps combine multiple datasets, and the [Logging Guide](../development/logging.md) covers debugging training runs.
+**Beginner Mode** (Recommended for new users)
+- Simple presets that "just work"
+- Automatically configures complex settings
+- Harder to make mistakes
+
+**Expert Mode** (For advanced users)
+- Full control over all settings
+- Lets you fine-tune performance
+- Easy to break things if you're not careful
+
+Stick with Beginner mode until you've done several successful training runs!
 
 ______________________________________________________________________
 
-**Next**: [Merge Datasets Tab](merge-tab.md) | **Previous**: [Publish Tab](build-publish-tab.md) | [Back to Documentation Index](../README.md)
+## Testing Your Trained Model
+
+After training finishes successfully, a "Quick Local Inference" panel appears. This lets you chat with your newly trained model:
+
+1. **Type a prompt** in the text box
+2. **Click "Run Inference"**
+3. **See the response** — Does it match what you expected?
+
+Try several prompts to see how well the model learned. There's also a dropdown with sample prompts from your training data.
+
+**Generation styles:**
+- **Deterministic** — Consistent, predictable responses
+- **Balanced** — Good for general testing
+- **Creative** — More varied, sometimes surprising responses
+
+______________________________________________________________________
+
+## Saving Your Settings
+
+Found settings that work well? Save them!
+
+1. Click **"Save current setup"**
+2. Give it a descriptive name (like "Reddit bot v1")
+3. Your settings are now saved
+
+Next time, just select your saved config from the dropdown and click "Load" to restore everything.
+
+**Bonus:** The app remembers your last used settings and loads them automatically when you restart.
+
+______________________________________________________________________
+
+## Common Problems
+
+**"Out of memory" error**
+Your GPU doesn't have enough space. Try:
+- Using the "Quick local test" preset (uses less memory)
+- Reducing batch size in Expert mode
+- Using Runpod instead
+
+**Training seems stuck**
+Check the logs—it might just be slow. Training 8B models can take hours depending on your data size and hardware.
+
+**Model gives weird responses**
+Your training data might need work. Try:
+- Collecting more data
+- Using the Analysis tab to check data quality
+- Training for more steps
+
+For more help, see the [Troubleshooting Guide](troubleshooting.md).
+
+______________________________________________________________________
+
+## Tips for Better Results
+
+- **Start small** — Do a quick test run before committing to hours of training
+- **Check your data first** — Use the Analysis tab to spot problems before training
+- **Save working configs** — When something works, save those settings!
+- **Watch the logs** — They'll warn you about problems early
+
+______________________________________________________________________
+
+**Next**: [Inference Tab](inference-tab.md) | **Previous**: [Publish Tab](build-publish-tab.md) | [Back to Documentation Index](../README.md)

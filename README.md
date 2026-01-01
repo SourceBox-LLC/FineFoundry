@@ -1,19 +1,31 @@
 # FineFoundry
 
-A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze, build/publish, and train on Runpod or locally — then ship to the Hugging Face Hub.
+**Create your own custom AI models — no coding required.**
+
+FineFoundry is a desktop app that lets you collect training data, teach AI models, and test the results. Whether you want to build a chatbot, create a specialized assistant, or just experiment with AI, FineFoundry makes it accessible to everyone.
 
 <p align="center">
   <img src="img/FineForge-logo.png" alt="FineFoundry logo" width="420" />
-  <br/>
-  <br/>
+</p>
+
+## ✨ What Can You Do?
+
+- **Collect data** from Reddit, 4chan, Stack Exchange, or your own documents
+- **Train AI models** on your computer or in the cloud
+- **Test your models** by chatting with them
+- **Share your work** on Hugging Face
+
+<p align="center">
+  <a href="#quick-start-gui">🚀 Quick Start</a> ·
+  <a href="docs/README.md">📚 Full Documentation</a> ·
+  <a href="docs/user-guide/troubleshooting.md">🔧 Troubleshooting</a>
+</p>
+
+<hr/>
+
+<p align="center">
   <a href="https://www.python.org/">
     <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-  </a>
-  <a href="https://flet.dev/">
-    <img alt="Flet 0.28.3" src="https://img.shields.io/badge/Flet-0.28.3-03A9F4?style=for-the-badge&logo=flutter&logoColor=white" />
-  </a>
-  <a href="https://huggingface.co/docs/datasets">
-    <img alt="datasets 4.1.1+" src="https://img.shields.io/badge/datasets-4.1.1%2B-FF6F00?style=for-the-badge&logo=huggingface&logoColor=white" />
   </a>
   <img alt="OS" src="https://img.shields.io/badge/OS-Windows%20|%20macOS%20|%20Linux-2E3440?style=for-the-badge&logo=windows&logoColor=white" />
   <a href="#license">
@@ -21,18 +33,8 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
   </a>
 </p>
 
-<p align="center">
-  <a href="#quick-start-gui">Quick Start</a> ·
-  <a href="docs/README.md">📚 Full Documentation</a> ·
-  <a href="docs/user-guide/troubleshooting.md">Troubleshooting</a> ·
-  <a href="docs/development/logging.md">Logging</a> ·
-  <a href="#license">License</a>
-</p>
-
-<hr/>
-
 <details>
-  <summary><b>Table of Contents</b></summary>
+  <summary><b>📋 Full Table of Contents</b></summary>
 
 - <a href="#quick-start-gui">Quick Start</a>
 - <a href="#using-the-app">Using the App</a>
@@ -58,17 +60,20 @@ A desktop studio to curate datasets and fine-tune models. Scrape, merge, analyze
 
 </details>
 
-Built with Flet for a fast, native-like UI. Includes:
+<details>
+  <summary><b>🔧 Technical Features (for developers)</b></summary>
 
-- 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning.
-- Reddit scraper CLI for subreddits or single posts; expands “more” comments; builds pairs (parent→child or contextual).
-- Stack Exchange Q/A scraper (programmatic) for accepted answers.
-- **Resilient HTTP scrapers** with proxy support, polite rate limiting, exponential backoff, and automatic retries for 4chan, Reddit, and Stack Exchange.
-- **Synthetic data generation** using Unsloth's SyntheticDataKit — generate Q&A pairs, chain-of-thought, or summaries from PDFs, documents, and URLs using local LLMs.
-- Dataset builder for train/val/test splits with Hugging Face `datasets`, with optional push + dataset card.
-- Dataset analysis with togglable modules (sentiment, class balance, extra proxy metrics).
-- Training via Runpod (managed pods, network volume at /data) or local Docker, backed by an Unsloth‑based LoRA fine‑tuning stack (PyTorch, Transformers, bitsandbytes, PEFT), with packing, auto‑resume, a **Quick Local Inference** panel (presets, temperature / max‑tokens / repetition‑penalty sliders, dataset‑sampled prompts, chat export), and reusable training configurations.
-- Local inference using the same adapters and base models in a dedicated **Inference** tab (prompt history, presets, sliders including repetition penalty, dataset‑sampled prompts, and Full Chat View), powered by Hugging Face Transformers + PEFT + bitsandbytes on top of PyTorch.
+- 4chan scraper with adjacent and contextual pairing (quote‑chain or cumulative) and robust cleaning
+- Reddit scraper for subreddits or single posts with comment expansion
+- Stack Exchange Q/A scraper for accepted answers
+- Resilient HTTP scrapers with proxy support, rate limiting, and automatic retries
+- Synthetic data generation using Unsloth's SyntheticDataKit
+- Dataset builder with train/val/test splits and Hugging Face Hub integration
+- Dataset analysis with sentiment, duplicates, and quality metrics
+- Training via Runpod or locally with Unsloth‑based LoRA fine‑tuning
+- Local inference with Transformers + PEFT + bitsandbytes
+
+</details>
 
 <a id="contents"></a>
 
@@ -222,10 +227,10 @@ You can export data to JSON via the database helpers if needed for external tool
 
 ![Training tab](img/new/ff_training.png)
 
-- **Training target**: choose **Runpod - Pod** (remote GPU pod) or **local** (Docker on this machine).
+- **Training target**: choose **Runpod - Pod** (remote GPU pod) or **Local** (native training on this machine).
 - **Dataset source**: select a **Database Session** from your scrape history, or a **Hugging Face** repo and split.
 - **Hyperparameters**: Base model (default `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`), Epochs, LR, Per-device batch size, Grad accum steps, Max steps, Packing, Auto-resume.
-- **Output**: `Output dir` is used inside the container (typically under `/data/outputs/...`) and mapped back into your host folder when using Runpod or local Docker.
+- **Output**: `Output dir` is where checkpoints and adapters are saved. On Runpod this is under `/data/outputs/...` on the network volume; locally it's a path on your filesystem.
 - **Push to Hub**: toggle to upload trained weights/adapters; set HF repo id and ensure authentication (HF token in Settings or env).
 - **Skill level & Beginner presets**: pick Beginner or Expert. In Beginner mode, presets adapt to the training target:
   - **Runpod - Pod**: `Fastest (Runpod)` vs `Cheapest (Runpod)`.
@@ -233,15 +238,15 @@ You can export data to JSON via the database helpers if needed for external tool
 - **Run on Runpod**:
   - First, ensure infrastructure: create/reuse a Network Volume and a Pod Template. The default mount path is `/data` (avoid `/workspace` to prevent hiding `train.py` baked into the image).
   - Start training on a pod from the template; checkpoints will appear under `/data/outputs/...` on the volume.
-- **Run locally via Docker**:
-  - Choose a host data directory to mount as `/data`, select image and GPU, optionally pass the HF token into the container, then launch.
-  - Outputs and the trained adapter are written under your mounted host folder (e.g. `.../outputs/local_run`).
+- **Run locally (native)**:
+  - Enable GPU if you have a CUDA-capable card, optionally pass your HF token for Hub push, then launch.
+  - Outputs and the trained adapter are written to your configured output directory (e.g. `.../outputs/local_run`).
 - **Quick Local Inference**:
   - After a successful local run, a Quick Local Inference panel appears.
   - Test the trained adapter with prompt input, temperature / max token sliders, presets (Deterministic / Balanced / Creative), and a clear-history button.
   - When you click **Run Inference**, the button is disabled and a small progress ring plus status text indicate that the fine-tuned model is loading and generating; the response appears in the panel once it is ready.
 - **Training configurations**:
-  - Save the current setup (dataset, hyperparameters, training target, Runpod infra or local Docker settings) as a named configuration.
+  - Save the current setup (dataset, hyperparameters, training target, Runpod infra or local settings) as a named configuration.
   - Load configs from the **Configuration** section to quickly restore full training setups.
   - Configurations are stored in the database and the last used config auto-loads on startup.
 

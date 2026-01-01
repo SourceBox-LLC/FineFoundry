@@ -531,7 +531,7 @@ async def run_local_training(
         await safe_update(page)
         return
 
-    # For local JSON files, copy to mounted directory and update path for container
+    # For local JSON files, copy to managed storage directory
     try:
         host_json_path = hp.get("json_path", "")
         if host_json_path and os.path.isfile(host_json_path):
@@ -551,7 +551,7 @@ async def run_local_training(
         return
 
     # Ensure output_dir is mapped to managed storage root.
-    # Docker flow used /data/...; native flow uses OUTPUT_ROOT + relative output_dir.
+    # Runpod uses /data/...; native local flow uses OUTPUT_ROOT + relative output_dir.
     abs_out_dir = ""
     try:
         out_dir = (hp.get("output_dir") or "").strip()
@@ -715,13 +715,15 @@ async def run_local_training(
 
         if not _repaired:
             try:
+                from datetime import datetime
                 base_rel = (hp.get("output_dir") or "outputs/local_run").strip()
                 if base_rel.startswith("/data"):
                     base_rel = base_rel[len("/data") :].lstrip("/")
                 if os.path.isabs(base_rel):
                     base_rel = "outputs/local_run"
                 base_rel = base_rel.strip().strip("/") or "outputs/local_run"
-                fallback_rel = f"{base_rel}_writable_{int(time.time())}"
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                fallback_rel = f"{base_rel}_{ts}"
                 hp["output_dir"] = fallback_rel
                 abs_out_dir = os.path.join(host_dir, fallback_rel)
                 os.makedirs(abs_out_dir, exist_ok=True)

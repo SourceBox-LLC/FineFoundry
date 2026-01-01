@@ -1,54 +1,108 @@
-# Dataset Analysis Tab
+# Analysis Tab
 
-The Dataset Analysis tab helps you understand your data before committing to a long training run. You can check for duplicates, analyze sentiment distribution, spot potential data leakage, and assess overall quality—all without writing any code.
+This is where you check your data quality before training. Think of it as a health checkup for your dataset—it can spot problems before they waste hours of training time.
 
 ![Dataset Analysis Tab](../../img/new/ff_data_analysis.png)
 
-## How It Works
+## Why Analyze?
 
-Select a dataset (either a database session from your scrape history or a Hugging Face dataset when online), enable the analysis modules you're interested in, and click Analyze dataset. The results show up as metrics, charts, and sample previews so you can quickly assess whether your data is ready for training.
+Training on bad data = bad results. Analysis helps you catch issues like:
+- Too many duplicate entries
+- Unbalanced content (all short responses, or all negative sentiment)
+- Low-quality or gibberish text
 
-## Analysis Modules
-
-The tab offers several analysis modules you can toggle on or off depending on what you want to check:
-
-**Basic Stats** gives you record counts and average input/output lengths—a quick sanity check that your dataset has what you expect. **Duplicates & Similarity** uses hashing to estimate how many duplicate pairs you have, which can hurt training if too high. **Sentiment** shows the distribution of positive, negative, and neutral content across your samples.
-
-**Class Balance** buckets your data by length (short, medium, long) so you can see if you're skewed toward one type. The **Extra metrics** section provides lightweight proxy signals for things like coverage overlap, potential data leakage, conversation depth, readability, toxicity, and more. These aren't perfect measures, but they surface potential issues worth investigating.
-
-## When to Run Analysis
-
-Run analysis before committing to a long training run—it's much easier to fix data problems now than to debug a model later. Run it again after major changes to your scraping, merging, or cleaning logic to verify you didn't introduce issues.
-
-## Examples
-
-### Quick Sanity Check
-
-After building a dataset in the Publish tab, load it here and enable Basic Stats, Duplicates, and Sentiment. Confirm your record count looks right, duplicates are low, and sentiment distribution makes sense for your use case.
-
-### Curriculum Planning
-
-If you're planning to train in stages or weight certain examples, check Class Balance and Conversation depth. See if you need to rebalance short vs long samples or adjust which sources you're pulling from.
-
-### Safety Review
-
-Enable Toxicity/Politeness and Data leakage proxies before training. High toxicity might mean you need additional filtering. Leakage flags suggest your input and output columns might share too much content, which could lead to trivial learning.
-
-## Tips
-
-Use analysis iteratively—check your raw scrape, then check again after merging, and once more after filtering. Each step can introduce or fix issues. The Duplicates module is especially useful after merging multiple datasets, since overlapping sources can inflate duplicate rates.
-
-Don't over-rely on proxy metrics. They're heuristics, not ground truth. Use them to surface things worth a closer look, not as definitive judgments.
-
-## Offline Mode
-
-When Offline Mode is enabled, Hugging Face dataset sources are disabled (the UI resets to Database if you were using HF). The HF Inference API backend is also disabled, falling back to local processing. A banner explains what's unavailable.
+**5 minutes of analysis can save hours of wasted training.**
 
 ______________________________________________________________________
 
-## Related Guides
+## How to Analyze
 
-Collect data in the [Data Sources Tab](scrape-tab.md), build splits in the [Publish Tab](build-publish-tab.md), combine datasets in the [Merge Datasets Tab](merge-tab.md), then train in the [Training Tab](training-tab.md).
+1. **Select a dataset** from the dropdown
+2. **Choose what to check** — Toggle on the modules you want
+3. **Click "Analyze Dataset"**
+4. **Review the results** — Charts and numbers show what's in your data
+
+______________________________________________________________________
+
+## What Can You Check?
+
+### Basic Stats
+Quick overview of your data:
+- How many entries you have
+- Average length of inputs and outputs
+- **Look for:** Too few entries (< 100), very short texts
+
+### Duplicates
+How much repeated content is in your data:
+- **Low duplicates (< 5%)** — Good!
+- **High duplicates (> 20%)** — Consider cleaning your data
+
+### Sentiment
+The emotional tone of your content:
+- Positive, negative, or neutral distribution
+- **Look for:** Unexpected skew (all negative when you expected balanced)
+
+### Length Balance
+Distribution of short vs. medium vs. long entries:
+- **Look for:** Heavy skew toward one length (may affect training)
+
+### Extra Checks
+Additional quality signals:
+- **Toxicity** — Potentially offensive content
+- **Readability** — How complex the text is
+- **Data leakage** — When input and output are too similar
+
+______________________________________________________________________
+
+## When Should I Analyze?
+
+- **After collecting data** — Before doing anything else
+- **After merging** — Combining sources can introduce duplicates
+- **Before training** — Final check that everything looks good
+
+______________________________________________________________________
+
+## Reading the Results
+
+### Good Signs
+- Duplicate rate under 10%
+- Balanced sentiment (unless you want a specific tone)
+- Mix of short, medium, and long entries
+- Low toxicity (unless that's intentional)
+
+### Warning Signs
+- Duplicate rate over 25%
+- Extremely short average lengths (< 50 characters)
+- All entries clustering in one category
+- High data leakage score
+
+______________________________________________________________________
+
+## What to Do About Problems
+
+**Too many duplicates?**
+- Go back to Data Sources and collect from different boards/subreddits
+- Or filter your data manually
+
+**Unbalanced sentiment?**
+- Collect from different sources
+- This might be fine depending on your goal
+
+**Very short entries?**
+- Increase the "Min Length" setting when collecting
+- Collect from sources with longer discussions
+
+**High toxicity?**
+- May be expected for some sources (like 4chan)
+- Consider if this matches your intended use case
+
+______________________________________________________________________
+
+## Tips
+
+- **Don't obsess over perfect numbers** — These are guidelines, not rules
+- **Context matters** — A 4chan dataset will look different from a Stack Overflow one
+- **Run analysis multiple times** — Before and after each processing step
 
 ______________________________________________________________________
 
