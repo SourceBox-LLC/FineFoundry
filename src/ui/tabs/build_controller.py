@@ -27,6 +27,7 @@ from helpers.build import (
 from helpers.settings_ollama import (
     load_config as load_ollama_config_helper,
     chat as ollama_chat_helper,
+    chat_stream as ollama_chat_stream,
 )
 
 from huggingface_hub import HfApi, HfFolder, create_repo
@@ -1209,25 +1210,61 @@ Specify license and any restrictions.
         )
 
         try:
-            ollama_status_text.value = f"Generating with Ollama model '{model_name}'…"
+            ollama_status_text.value = f"Streaming from '{model_name}'…"
         except Exception:
             pass
+        
+        # Prepare editor for streaming
+        use_custom_card.value = True
+        _on_toggle_custom_card(None)
+        card_editor.value = ""
         await safe_update(page)
+        
+        # Track tokens for periodic UI updates
+        token_count = [0]
+        accumulated = [""]
+        
+        def on_token(chunk: str):
+            accumulated[0] += chunk
+            token_count[0] += 1
+        
+        async def update_editor_periodically():
+            last_len = 0
+            while True:
+                await asyncio.sleep(0.15)
+                current = accumulated[0]
+                if len(current) > last_len:
+                    card_editor.value = current
+                    last_len = len(current)
+                    try:
+                        ollama_status_text.value = f"Streaming… ({token_count[0]} tokens)"
+                    except Exception:
+                        pass
+                    await safe_update(page)
+        
         try:
-            md = await ollama_chat_helper(
-                base_url,
-                model_name,
-                [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            use_custom_card.value = True
-            _on_toggle_custom_card(None)
+            update_task = asyncio.create_task(update_editor_periodically())
+            try:
+                md = await ollama_chat_stream(
+                    base_url,
+                    model_name,
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    on_token=on_token,
+                )
+            finally:
+                update_task.cancel()
+                try:
+                    await update_task
+                except asyncio.CancelledError:
+                    pass
+            
             card_editor.value = md
             _update_preview()
             try:
-                ollama_status_text.value = "Generated with Ollama ✓"
+                ollama_status_text.value = f"Generated with Ollama ✓ ({token_count[0]} tokens)"
             except Exception:
                 pass
             try:

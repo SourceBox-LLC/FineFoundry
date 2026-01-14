@@ -37,6 +37,9 @@ def build_evaluate_tab(
     # Results
     eval_results_container: ft.Container,
     eval_comparison_container: ft.Container,
+    # History
+    eval_history_container: ft.Container,
+    eval_history_refresh_btn: ft.IconButton,
 ) -> ft.Container:
     """Build the Evaluate tab layout."""
 
@@ -161,6 +164,36 @@ def build_evaluate_tab(
         padding=10,
     )
 
+    # History section
+    history_section = ft.Container(
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        section_title(
+                            "Evaluation History",
+                            getattr(ICONS, "HISTORY", getattr(ICONS, "SCHEDULE", ICONS.TIMER)),
+                            "Past evaluation runs stored in the database.",
+                            on_help_click=_mk_help_handler(
+                                "All evaluation runs are automatically saved to the database. "
+                                "View your evaluation history to track model performance over time "
+                                "and compare different benchmarks."
+                            ),
+                        ),
+                        eval_history_refresh_btn,
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                eval_history_container,
+            ],
+            spacing=10,
+        ),
+        width=1000,
+        border=ft.border.all(1, WITH_OPACITY(0.1, BORDER_BASE)),
+        border_radius=8,
+        padding=10,
+    )
+
     return ft.Container(
         content=ft.Row(
             [
@@ -171,6 +204,7 @@ def build_evaluate_tab(
                             benchmark_section,
                             action_section,
                             results_section,
+                            history_section,
                         ],
                         spacing=12,
                         scroll=ft.ScrollMode.AUTO,

@@ -52,6 +52,14 @@ from .logs import (
     get_log_count,
     setup_database_logging,
 )
+from .evaluation_runs import (
+    save_evaluation_run,
+    get_evaluation_run,
+    get_evaluation_runs_for_training,
+    get_recent_evaluation_runs,
+    get_evaluation_history_for_model,
+    delete_evaluation_run,
+)
 
 __all__ = [
     # Core
@@ -96,4 +104,11 @@ __all__ = [
     "clear_logs",
     "get_log_count",
     "setup_database_logging",
+    # Evaluation runs
+    "save_evaluation_run",
+    "get_evaluation_run",
+    "get_evaluation_runs_for_training",
+    "get_recent_evaluation_runs",
+    "get_evaluation_history_for_model",
+    "delete_evaluation_run",
 ]

@@ -5,7 +5,8 @@ Uses SQLite database for storage.
 
 from __future__ import annotations
 
-from typing import List
+import json
+from typing import AsyncIterator, Callable, List, Optional
 
 import httpx
 
@@ -112,3 +113,51 @@ async def chat(base_url: str, model: str, messages: List[dict]) -> str:
             raise RuntimeError("Empty response from Ollama /api/generate")
         except Exception as gen_exc:
             raise RuntimeError(f"Ollama request failed: {gen_exc}") from chat_exc
+
+
+async def chat_stream(
+    base_url: str,
+    model: str,
+    messages: List[dict],
+    on_token: Optional[Callable[[str], None]] = None,
+) -> str:
+    """Stream chat completion from Ollama, calling on_token for each chunk.
+    
+    Returns the full accumulated response.
+    """
+    base = (base_url or "").rstrip("/")
+    if not base:
+        raise RuntimeError("Missing Ollama base URL")
+    if not (model or "").strip():
+        raise RuntimeError("Missing Ollama model")
+
+    timeout = httpx.Timeout(300.0, connect=10.0)
+    chat_url = f"{base}/api/chat"
+    payload = {"model": model, "messages": messages, "stream": True}
+    
+    accumulated = ""
+    
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", chat_url, json=payload) as response:
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                raise RuntimeError(f"Ollama HTTP {response.status_code}: {e}") from e
+            
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    msg = data.get("message", {})
+                    content = msg.get("content", "")
+                    if content:
+                        accumulated += content
+                        if on_token:
+                            on_token(content)
+                    if data.get("done", False):
+                        break
+                except json.JSONDecodeError:
+                    continue
+    
+    return accumulated.strip()

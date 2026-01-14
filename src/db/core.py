@@ -162,6 +162,23 @@ def init_db(db_path: Optional[str] = None) -> None:
         )
     """)
 
+    # Evaluation runs table - store benchmark results
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS evaluation_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            training_run_id INTEGER,
+            base_model TEXT NOT NULL,
+            adapter_path TEXT,
+            benchmark TEXT NOT NULL,
+            num_samples INTEGER,
+            batch_size INTEGER,
+            metrics_json TEXT NOT NULL,
+            is_base_eval INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (training_run_id) REFERENCES training_runs(id) ON DELETE SET NULL
+        )
+    """)
+
     # Application logs table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS app_logs (
@@ -201,6 +218,16 @@ def init_db(db_path: Optional[str] = None) -> None:
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_training_runs_status 
         ON training_runs(status)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_evaluation_runs_training 
+        ON evaluation_runs(training_run_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_evaluation_runs_benchmark 
+        ON evaluation_runs(benchmark)
     """)
 
     conn.commit()

@@ -410,14 +410,13 @@ async def run_merge(
         from db.scraped_data import create_scrape_session, add_scraped_pairs
 
         # Create a new scrape session for the merged data
-        session = await asyncio.to_thread(
+        session_id = await asyncio.to_thread(
             create_scrape_session,
             source="Merged",
             source_details=session_name,
             dataset_format="standard",
             metadata={"operation": op, "source_count": len(entries)},
         )
-        session_id = session["id"]
 
         # Add all merged pairs to the session
         pairs_to_add = [{"input": rec.get("input", ""), "output": rec.get("output", "")} for rec in merged_examples]

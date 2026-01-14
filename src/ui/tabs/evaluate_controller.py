@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 import flet as ft
 
+from db.evaluation_runs import get_recent_evaluation_runs, save_evaluation_run
 from helpers.common import safe_update
 from helpers.logging_config import get_logger
 from helpers.theme import ACCENT_COLOR, BORDER_BASE, COLORS, ICONS
@@ -178,6 +179,35 @@ def build_evaluate_tab_with_logic(
         content=eval_comparison_chart,
     )
 
+    # History controls
+    eval_history_table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text("Date")),
+            ft.DataColumn(ft.Text("Benchmark")),
+            ft.DataColumn(ft.Text("Model")),
+            ft.DataColumn(ft.Text("Accuracy"), numeric=True),
+            ft.DataColumn(ft.Text("Type")),
+        ],
+        rows=[],
+        visible=False,
+    )
+
+    eval_history_placeholder = ft.Text(
+        "No evaluation history yet. Run an evaluation to start tracking.",
+        color=WITH_OPACITY(0.5, BORDER_BASE),
+        italic=True,
+    )
+
+    eval_history_container = ft.Container(
+        content=ft.Column([eval_history_placeholder, eval_history_table]),
+        padding=10,
+    )
+
+    eval_history_refresh_btn = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Refresh evaluation history",
+    )
+
     # --- Handlers ---
 
     def _refresh_training_runs(_=None):
@@ -224,6 +254,61 @@ def build_evaluate_tab_with_logic(
                 page.update()
         except Exception as e:
             logger.error(f"Error selecting run: {e}")
+
+    def _refresh_history(_=None):
+        """Refresh the evaluation history from the database."""
+        try:
+            runs = get_recent_evaluation_runs(limit=20)
+            if not runs:
+                eval_history_placeholder.visible = True
+                eval_history_table.visible = False
+                page.update()
+                return
+
+            rows = []
+            for run in runs:
+                # Format date
+                created = run.get("created_at", "")[:16].replace("T", " ")
+                
+                # Get benchmark name
+                benchmark = run.get("benchmark", "unknown")
+                
+                # Get model info
+                adapter = run.get("adapter_path", "")
+                if adapter:
+                    model_name = adapter.split("/")[-2] if "/" in adapter else "fine-tuned"
+                else:
+                    model_name = run.get("base_model", "unknown").split("/")[-1]
+                
+                # Get accuracy from metrics
+                metrics = run.get("metrics", {})
+                acc = metrics.get("acc,none", metrics.get("acc", 0))
+                if isinstance(acc, (int, float)):
+                    acc_str = f"{acc * 100:.1f}%"
+                else:
+                    acc_str = "N/A"
+                
+                # Type (base vs fine-tuned)
+                eval_type = "Base" if run.get("is_base_eval") else "Fine-tuned"
+                
+                rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(created, size=11)),
+                            ft.DataCell(ft.Text(benchmark, size=11)),
+                            ft.DataCell(ft.Text(model_name[:20], size=11, tooltip=model_name)),
+                            ft.DataCell(ft.Text(acc_str, size=11)),
+                            ft.DataCell(ft.Text(eval_type, size=11)),
+                        ]
+                    )
+                )
+
+            eval_history_table.rows = rows
+            eval_history_placeholder.visible = False
+            eval_history_table.visible = True
+            page.update()
+        except Exception as e:
+            logger.error(f"Failed to refresh history: {e}")
 
     async def _run_evaluation(_=None):
         """Run the benchmark evaluation."""
@@ -307,6 +392,24 @@ def build_evaluate_tab_with_logic(
             # Display results
             _display_results(finetuned_results, base_results, benchmark)
 
+            # Save results to database
+            try:
+                _save_eval_to_db(
+                    training_run_id=int(run_id),
+                    base_model=base_model,
+                    adapter_path=adapter_path,
+                    benchmark=benchmark,
+                    num_samples=int(num_samples) if num_samples else None,
+                    batch_size=int(batch_size) if batch_size else 4,
+                    finetuned_results=finetuned_results,
+                    base_results=base_results if compare_mode else None,
+                )
+                logger.info(f"Saved evaluation results to database for {benchmark}")
+                # Refresh history to show new results
+                _refresh_history()
+            except Exception as db_err:
+                logger.warning(f"Failed to save eval results to database: {db_err}")
+
             eval_status.value = "Evaluation complete!"
             eval_status.color = COLORS.GREEN
             eval_progress_label.value = ""
@@ -355,6 +458,7 @@ def build_evaluate_tab_with_logic(
                 "tasks": tasks,
                 "batch_size": int(batch_size) if batch_size else 4,
                 "device": "cuda" if _has_cuda() else "cpu",
+                "apply_chat_template": True,  # Proper handling for instruct models
             }
 
             if num_samples:
@@ -387,6 +491,47 @@ def build_evaluate_tab_with_logic(
             return torch.cuda.is_available()
         except Exception:
             return False
+
+    def _save_eval_to_db(
+        *,
+        training_run_id: int,
+        base_model: str,
+        adapter_path: str,
+        benchmark: str,
+        num_samples: Optional[int],
+        batch_size: int,
+        finetuned_results: Dict[str, Any],
+        base_results: Optional[Dict[str, Any]],
+    ) -> None:
+        """Save evaluation results to the database."""
+        # Extract metrics from results
+        ft_metrics = finetuned_results.get("metrics", {}).get(benchmark, {})
+        
+        # Save fine-tuned model evaluation
+        save_evaluation_run(
+            training_run_id=training_run_id,
+            base_model=base_model,
+            adapter_path=adapter_path,
+            benchmark=benchmark,
+            num_samples=num_samples,
+            batch_size=batch_size,
+            metrics=ft_metrics,
+            is_base_eval=False,
+        )
+        
+        # Save base model evaluation if comparison mode was used
+        if base_results:
+            base_metrics = base_results.get("metrics", {}).get(benchmark, {})
+            save_evaluation_run(
+                training_run_id=training_run_id,
+                base_model=base_model,
+                adapter_path=None,  # No adapter for base model
+                benchmark=benchmark,
+                num_samples=num_samples,
+                batch_size=batch_size,
+                metrics=base_metrics,
+                is_base_eval=True,
+            )
 
     def _display_results(
         finetuned: Dict[str, Any],
@@ -565,9 +710,11 @@ def build_evaluate_tab_with_logic(
     eval_training_run_dd.on_change = _on_training_run_selected
     eval_run_btn.on_click = lambda e: page.run_task(_run_evaluation)
     eval_stop_btn.on_click = _stop_evaluation
+    eval_history_refresh_btn.on_click = _refresh_history
 
     # Initial refresh
     _refresh_training_runs()
+    _refresh_history()
 
     # Build the tab
     return build_evaluate_tab(
@@ -591,4 +738,6 @@ def build_evaluate_tab_with_logic(
         eval_progress_label=eval_progress_label,
         eval_results_container=eval_results_container,
         eval_comparison_container=eval_comparison_container,
+        eval_history_container=eval_history_container,
+        eval_history_refresh_btn=eval_history_refresh_btn,
     )
